@@ -1,0 +1,29 @@
+rue 0
+# Negative case E0206: secret-producing op reachable from reestablish
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
+# `lab`). The checker must refuse with exactly E0206.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  secrets deliver_to: [requester()]
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :tunnel, _ do
+  footprint held: proc.tunnel
+  do: run("tunnel up")
+  undo: run("tunnel down")
+  undo_pre proc.tunnel
+  outputs token, secret: true
+  suspend: run("tunnel suspend")
+  reestablish: run("tunnel up")   # re-runs do: the secret would be minted a second time
+end
+
+defplan :tunnel, %{name: "db-01"} do
+  wane 1h
+  tunnel()
+end

@@ -1,0 +1,64 @@
+{
+  "backstop": null,
+  "commit_step": null,
+  "controller_only_undos": [
+    1
+  ],
+  "deferred": [
+    1
+  ],
+  "diagnostics": [
+    {
+      "code": "E0211",
+      "message": "op bmc_login: secret bmc_pw via env: on api-01, whose executor cannot honor the stdin preamble (do, prim 1)",
+      "step": 1
+    }
+  ],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "db-01",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "controller",
+        "host": "api-01"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "temporary",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "bmc_login",
+  "point_of_no_return": null,
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 1,
+  "status": "refused",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": "defer",
+      "footprint": [
+        "modified: bmc:session"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "host(api-01)",
+      "n": 1,
+      "op": "bmc_login",
+      "refusal": "revert",
+      "undo": "restore bmc:session from snapshot",
+      "undo_locus": "controller"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": 3600
+}

@@ -1,0 +1,13 @@
+# Reverts: a permanent plan's wait needs window: or a site max_wait (section 5.5, E0506) -- otherwise Waiting holds umbras until cancelled.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -719,7 +719,7 @@
+     };
+     let can_hold = !holds_at.is_empty() || steps.iter().any(|(_, it)| lapse_hold(it));
+     let unbounded_wait = |n: u32| -> bool {
+-        let no_max = site.max_wait.is_none();
++        let no_max = false;
+         match steps.iter().find(|(m, _)| *m == n).map(|(_, it)| *it) {
+             Some(Item::Assert { window, .. }) | Some(Item::When { window, .. }) => {
+                 window.is_none() && no_max

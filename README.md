@@ -76,10 +76,13 @@ for the owner to reconcile.
 
 | Claim | Status |
 |---|---|
-| Verdicts on plans the tenants do not exercise | The checker is exercised by four tenants (seven host cases) and thirty negatives; nothing is proven about a construct none of them uses |
-| The `.rue` text | Unparsed in Phase 0. The checked form of each tenant is its Haskell term; Phase 2's front end must accept the text and produce the same verdict |
-| 26 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205, E0207, E0208, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509 |
-| The other 30 codes | Not modeled: the surface's E01xx (parsing, names, kinds, totality), the secret rules E0206, E0209-E0211, E0411, the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0606. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
+| Verdicts on plans the tenants do not exercise | The checker is exercised by four tenants (seven host cases) and thirty-five negatives; nothing is proven about a construct none of them uses |
+| The `.rue` text | Unparsed. The checked form of each tenant is its Rust term under `tenants/harness/src/tenants/`, transcribed from the text body by body; Phase 2's front end must accept the text and produce the same verdict |
+| 31 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205-E0211, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509, E0606 |
+| The other 25 codes | Not modeled: the surface's E01xx (parsing, names, kinds, totality), E0411 (sinks are not declared in the site model), the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0605. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
+| E0202's positions | Closure treats a plan parameter and a host-record field as bakeable (closed) and an earlier step's output as never closed, positions section 5.3 does not state; recorded for the owner |
+| E0206 | Decided only as a structural re-run: a `reestablish` primitive equal to one of the op's `do` primitives. The full rule ("reachable from") needs an op reference bodies do not carry |
+| E0211 | Decided for static hosts only; a `:controller` step and a host bound at runtime are not judged at check |
 | Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md` as a finding for the owner: thirteen items, from the requester as an input to `check` to the verdict's new `mode` field. None is folded into the roadmap yet |
 | Windows beyond wine | The whole suite is built for `x86_64-pc-windows-gnu` and run under wine, on the Ubuntu reaper guest and in the pipeline; that proves the logic and the bytes and nothing about services, named pipes or the Task Scheduler, which Phase 3 tests on a real machine |
 | The Rust pipeline steps | Present and gated: each prints a skip line until a `Cargo.toml` exists in Phase 1 |

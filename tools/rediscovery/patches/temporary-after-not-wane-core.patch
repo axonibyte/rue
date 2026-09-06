@@ -1,0 +1,13 @@
+# Reverts: a temporary plan's after: trigger must equal its wane (section 5.9, E0503) -- a backstop that fires at another time is a second, contradictory expiry.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/backstop.rs
++++ b/core/src/backstop.rs
+@@ -94,7 +94,7 @@
+             let mut v: Vec<TriggerViolation> = b
+                 .triggers
+                 .iter()
+-                .filter(|t| matches!(t, Trigger::After(d) if Some(*d) != wane))
++                .filter(|t| matches!(t, Trigger::After(d) if Some(*d) != wane) && false)
+                 .map(|_| TriggerViolation::AfterNotWane)
+                 .collect();
+             v.extend(

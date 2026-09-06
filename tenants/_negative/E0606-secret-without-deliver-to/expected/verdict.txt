@@ -1,0 +1,1 @@
+token on db-01: refused; E0606 at step 1: op issue_token: a secret output and the site declares no secrets deliver_to.

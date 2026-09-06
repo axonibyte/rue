@@ -10,6 +10,7 @@ use crate::algebra::{numbered, op_of, step_of};
 use crate::backstop::{
     coverage, heartbeat_violations, reach_violations, trigger_violations, TriggerViolation,
 };
+use crate::body::Body;
 use crate::closure;
 use crate::diagnostics::Code;
 use crate::explain::undo_line;
@@ -21,6 +22,7 @@ use crate::interference::{
     anchor_duplicates, conflict, mayconflict, par_violations, Conflict, Fact,
 };
 use crate::model::*;
+use crate::secrets;
 use crate::util::nub;
 use crate::verdict::*;
 
@@ -38,6 +40,29 @@ fn step_host(p: &Plan, o: &Op) -> Result<Host, String> {
 
 fn host_record<'a>(site: &'a Site, h: &str) -> Option<&'a HostRecord> {
     site.hosts.iter().find(|r| r.name == h)
+}
+
+/// The undo body, when the undo is one.
+fn undo_body(o: &Op) -> Option<&Body> {
+    match &o.undo {
+        Undo::Computed { body, .. } | Undo::Compensate { body, .. } => Some(body),
+        Undo::Restore | Undo::NoUndo => None,
+    }
+}
+
+/// Every body an op has, named as the surface names them.
+fn bodies(o: &Op) -> Vec<(&'static str, &Body)> {
+    let mut v = vec![("do", &o.do_)];
+    if let Some(b) = undo_body(o) {
+        v.push(("undo", b));
+    }
+    if let Some(b) = &o.suspend {
+        v.push(("suspend", b));
+    }
+    if let Some(b) = &o.reestablish {
+        v.push(("reestablish", b));
+    }
+    v
 }
 
 /// A step is deferred when its host is one the running engine cannot act
@@ -446,6 +471,89 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
                 n,
                 format!("op {}: reach op whose undo is drift: :defer", o.id),
             ));
+        }
+
+        // Secret placement (section 5.8), over every body the op has.
+        let has_secret_output = o.outputs.iter().any(|out| out.secret);
+        if has_secret_output && site.secrets_deliver_to.is_empty() {
+            diagnostics.push(d(
+                Code::E0606,
+                n,
+                format!(
+                    "op {}: a secret output and the site declares no secrets deliver_to",
+                    o.id
+                ),
+            ));
+        }
+        if has_secret_output {
+            if let Some(i) = o
+                .reestablish
+                .as_ref()
+                .and_then(|r| secrets::reruns(&o.do_, r))
+            {
+                diagnostics.push(d(
+                    Code::E0206,
+                    n,
+                    format!(
+                        "op {}: reestablish re-runs its do (prim {}); the secret output would be produced again",
+                        o.id,
+                        i + 1
+                    ),
+                ));
+            }
+        }
+        if o.undo_locus == UndoLocus::Target {
+            if let Some(f) = undo_body(o).and_then(secrets::anywhere) {
+                diagnostics.push(d(
+                    Code::E0210,
+                    n,
+                    format!(
+                        "op {}: :target undo references secret {} ({}, prim {})",
+                        o.id,
+                        f.r.label(),
+                        f.position,
+                        f.index + 1
+                    ),
+                ));
+            }
+        }
+        let preamble_host = match &o.locus {
+            Locus::Controller => None,
+            _ => step_host(p, o).ok().and_then(|h| {
+                host_record(site, &h)
+                    .filter(|r| !r.stdin_preamble)
+                    .map(|r| r.name.clone())
+            }),
+        };
+        for (name, body) in bodies(o) {
+            if let Some(f) = secrets::in_run_string(body) {
+                diagnostics.push(d(
+                    Code::E0209,
+                    n,
+                    format!(
+                        "op {}: secret {} interpolated into a run string ({}, prim {})",
+                        o.id,
+                        f.r.label(),
+                        name,
+                        f.index + 1
+                    ),
+                ));
+            }
+            if let (Some(h), Some(f)) = (&preamble_host, secrets::in_channel(body)) {
+                diagnostics.push(d(
+                    Code::E0211,
+                    n,
+                    format!(
+                        "op {}: secret {} via {}: on {}, whose executor cannot honor the stdin preamble ({}, prim {})",
+                        o.id,
+                        f.r.label(),
+                        f.position,
+                        h,
+                        name,
+                        f.index + 1
+                    ),
+                ));
+            }
         }
     }
 

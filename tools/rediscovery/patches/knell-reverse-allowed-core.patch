@@ -1,0 +1,15 @@
+# Reverts: a plan with a knell anywhere refuses to reverse (section 5.4) -- a knell has no inverse, and reversing past one would claim it does.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/algebra.rs
++++ b/core/src/algebra.rs
+@@ -55,9 +55,7 @@
+                 .map(reverse_item)
+                 .collect::<Result<_, _>>()?,
+         }),
+-        Item::Knell(_) => Err(Refused {
+-            at: Box::new(it.clone()),
+-        }),
++        Item::Knell(s) => Ok(Item::Knell(flip_step(s))),
+         Item::Repeat { form, var, body } => Ok(Item::Repeat {
+             form: form.clone(),
+             var: var.clone(),

@@ -26,6 +26,7 @@ pub mod ledger;
 pub mod model;
 pub mod prose;
 pub mod request;
+pub mod secrets;
 pub mod states;
 pub mod util;
 pub mod verdict;

@@ -1,0 +1,62 @@
+{
+  "backstop": null,
+  "commit_step": null,
+  "controller_only_undos": [
+    1
+  ],
+  "deferred": [],
+  "diagnostics": [
+    {
+      "code": "E0606",
+      "message": "op issue_token: a secret output and the site declares no secrets deliver_to",
+      "step": 1
+    }
+  ],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "db-01",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "controller",
+        "host": "controller"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "temporary",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "token",
+  "point_of_no_return": null,
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 1,
+  "status": "refused",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": "defer",
+      "footprint": [
+        "modified: api:token"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 1,
+      "op": "issue_token",
+      "refusal": "revert",
+      "undo": "hook :revoke_token()",
+      "undo_locus": "controller"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": 3600
+}

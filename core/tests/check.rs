@@ -993,3 +993,212 @@ fn closure_of_a_target_undo_follows_the_body() {
         "{m}"
     );
 }
+
+/// Secret placement (docs/ROADMAP.md 5.8) as far as the model decides it.
+#[test]
+fn secret_rules() {
+    let pw = || Value::Ref(secret("pw"));
+    let run_with = |cmd: &str, env: Option<Value>, stdin: Option<Value>| {
+        Prim::Run(Run {
+            cmd: vec![text(cmd)],
+            env: env
+                .into_iter()
+                .map(|value| EnvVar {
+                    name: "PW".into(),
+                    value,
+                })
+                .collect(),
+            stdin,
+        })
+    };
+    let string_secret = || run(vec![text("login "), interp(secret("pw"))]);
+    let delivering = Site {
+        secrets_deliver_to: vec!["requester".into()],
+        ..site0()
+    };
+
+    // E0209: a secret in the string of a run, in any body of the op.
+    pair(
+        Code::E0209,
+        &temp(vec![s(Op {
+            do_: vec![string_secret()],
+            ..owned("a")
+        })]),
+        &temp(vec![s(Op {
+            do_: vec![run_with("login", Some(pw()), Some(pw()))],
+            ..owned("a")
+        })]),
+    );
+    for body in ["undo", "suspend", "reestablish"] {
+        let mut o = Op::new("t", vec![FootprintEntry::entry(Kind::Held, "proc:t")]);
+        o.suspend = Some(vec![]);
+        o.reestablish = Some(vec![]);
+        match body {
+            "undo" => o.undo = computed(vec![string_secret()], &["proc:t"]),
+            "suspend" => o.suspend = Some(vec![string_secret()]),
+            _ => o.reestablish = Some(vec![string_secret()]),
+        }
+        assert!(raises(Code::E0209, &temp(vec![s(o)])), "{body}");
+    }
+    // An earlier step's secret output counts; a plain output does not.
+    assert!(raises(
+        Code::E0209,
+        &temp(vec![s(Op {
+            do_: vec![run(vec![interp(output("bmc", "pw", true))])],
+            ..owned("a")
+        })])
+    ));
+    assert!(!raises(
+        Code::E0209,
+        &temp(vec![s(Op {
+            do_: vec![run(vec![interp(output("bmc", "port", false))])],
+            ..owned("a")
+        })])
+    ));
+
+    // E0210: a secret anywhere in a :target undo, and not also E0202.
+    let target_undo_with = |stdin: Option<Value>| {
+        temp(vec![s(Op {
+            undo: computed(vec![run_with("restore", None, stdin)], &["file:/a"]),
+            ..target(owned("a"))
+        })])
+    };
+    pair(
+        Code::E0210,
+        &target_undo_with(Some(pw())),
+        &target_undo_with(None),
+    );
+    assert_eq!(codes_of(&target_undo_with(Some(pw()))), vec![Code::E0210]);
+    assert!(!raises(
+        Code::E0210,
+        &temp(vec![s(Op {
+            undo: computed(vec![run_with("restore", None, Some(pw()))], &["file:/a"]),
+            ..owned("a")
+        })])
+    ));
+
+    // E0211: env:/stdin: on a static host whose record cannot carry it.
+    let on = |locus: Locus, prim: Prim| {
+        temp(vec![s(Op {
+            locus,
+            do_: vec![prim],
+            ..Op::new("m", vec![FootprintEntry::entry(Kind::Modified, "x:y")])
+        })])
+    };
+    let api = || Locus::Host(HostRef::Static("api-01".into()));
+    pair(
+        Code::E0211,
+        &on(api(), run_with("login", Some(pw()), None)),
+        &on(api(), run_with("login", None, None)),
+    );
+    assert!(raises(
+        Code::E0211,
+        &on(api(), run_with("login", None, Some(pw())))
+    ));
+    assert!(!raises(
+        Code::E0211,
+        &on(Locus::Target, run_with("login", Some(pw()), None))
+    ));
+    assert!(!raises(
+        Code::E0211,
+        &on(
+            Locus::Host(HostRef::Static("db-01".into())),
+            run_with("login", Some(pw()), None)
+        )
+    ));
+    assert!(!raises(
+        Code::E0211,
+        &on(Locus::Controller, run_with("login", Some(pw()), None))
+    ));
+    assert!(!raises(
+        Code::E0211,
+        &on(
+            Locus::Host(HostRef::Bound("pick".into())),
+            run_with("login", Some(pw()), None)
+        )
+    ));
+    // The record's preamble flag decides, not its filesystem: a hook executor
+    // may have a filesystem and no shim, an appliance the reverse.
+    let mut odd = site0();
+    odd.hosts.push(HostRecord {
+        name: "fs-no-shim".into(),
+        os: "freebsd".into(),
+        reach: vec!["ssh".into()],
+        filesystem: true,
+        stdin_preamble: false,
+    });
+    odd.hosts.push(HostRecord {
+        name: "shim-no-fs".into(),
+        os: "appliance".into(),
+        reach: vec!["api".into()],
+        filesystem: false,
+        stdin_preamble: true,
+    });
+    let on_host = |h: &str| {
+        on(
+            Locus::Host(HostRef::Static(h.into())),
+            run_with("login", Some(pw()), None),
+        )
+    };
+    assert!(codes_with(&odd, &on_host("fs-no-shim")).contains(&Code::E0211));
+    assert!(!codes_with(&odd, &on_host("shim-no-fs")).contains(&Code::E0211));
+    let v = check(
+        &site0(),
+        "requester",
+        &on(api(), run_with("login", Some(pw()), None)),
+    );
+    let m = &v
+        .diagnostics
+        .iter()
+        .find(|d| d.code == Code::E0211)
+        .unwrap()
+        .message;
+    assert_eq!(
+        m,
+        "op m: secret pw via env: on api-01, whose executor cannot honor the stdin preamble (do, prim 1)"
+    );
+
+    // E0206: a reestablish that re-runs a do primitive of a secret-producing op.
+    let tunnel = |reestablish: Vec<Prim>, secret_out: bool| {
+        temp(vec![s(Op {
+            do_: vec![run_lit("tunnel up"), run_lit("tunnel announce")],
+            undo: computed(vec![run_lit("tunnel down")], &["proc:t"]),
+            suspend: Some(vec![run_lit("tunnel suspend")]),
+            reestablish: Some(reestablish),
+            outputs: vec![Output {
+                name: "tok".into(),
+                secret: secret_out,
+            }],
+            ..Op::new("t", vec![FootprintEntry::entry(Kind::Held, "proc:t")])
+        })])
+    };
+    assert!(
+        !codes_with(&delivering, &tunnel(vec![run_lit("tunnel resume")], true))
+            .contains(&Code::E0206)
+    );
+    assert!(codes_with(
+        &delivering,
+        &tunnel(
+            vec![run_lit("tunnel resume"), run_lit("tunnel announce")],
+            true
+        )
+    )
+    .contains(&Code::E0206));
+    assert!(
+        !codes_with(&delivering, &tunnel(vec![run_lit("tunnel up")], false)).contains(&Code::E0206)
+    );
+
+    // E0606: a secret output with no acceptor declared.
+    let token = |secret_out: bool| {
+        temp(vec![s(Op {
+            outputs: vec![Output {
+                name: "tok".into(),
+                secret: secret_out,
+            }],
+            ..owned("a")
+        })])
+    };
+    assert_eq!(codes_of(&token(true)), vec![Code::E0606]);
+    assert!(clean(&token(false)));
+    assert!(codes_with(&delivering, &token(true)).is_empty());
+}

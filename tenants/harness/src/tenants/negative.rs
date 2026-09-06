@@ -43,6 +43,15 @@ pub fn lab() -> Site {
     }
 }
 
+/// The lab with a secret acceptor declared, for the secret rules that are
+/// not E0606.
+fn lab_delivering() -> Site {
+    Site {
+        secrets_deliver_to: strings(&["requester"]),
+        ..lab()
+    }
+}
+
 /// A one-hour temporary plan on db-01.
 fn temp(name: &str, items: Vec<Item>) -> Plan {
     Plan {
@@ -517,6 +526,111 @@ pub fn cases() -> Vec<Negative> {
                     gate: Some(wait(1800)),
                     window: Some(dur(3600)),
                     ..StepI::new(fence_knell(Ack::NoAck("driver verified off".into())))
+                })],
+            ),
+        ),
+        // Secret placement (section 5.8), on the lab.
+        neg(
+            Code::E0206,
+            "reestablish-reruns-do",
+            lab_delivering(),
+            temp(
+                "tunnel",
+                vec![s(Op {
+                    do_: vec![run_lit("tunnel up")],
+                    undo: computed(vec![run_lit("tunnel down")], &["proc:tunnel"]),
+                    suspend: Some(vec![run_lit("tunnel suspend")]),
+                    // Re-running `do` would mint the secret a second time.
+                    reestablish: Some(vec![run_lit("tunnel up")]),
+                    outputs: vec![Output {
+                        name: "token".into(),
+                        secret: true,
+                    }],
+                    ..Op::new(
+                        "tunnel",
+                        vec![FootprintEntry::entry(Kind::Held, "proc:tunnel")],
+                    )
+                })],
+            ),
+        ),
+        neg(
+            Code::E0209,
+            "secret-in-run-string",
+            lab(),
+            temp(
+                "posture",
+                vec![s(Op {
+                    do_: vec![run(vec![
+                        text("curl -u admin:"),
+                        interp(secret("db_pw")),
+                        text(" https://db/posture"),
+                    ])],
+                    ..owned("a")
+                })],
+            ),
+        ),
+        neg(
+            Code::E0210,
+            "secret-in-target-undo",
+            lab(),
+            temp(
+                "posture",
+                vec![s(Op {
+                    // On stdin, so that E0209 does not also fire; a secret
+                    // reference is E0210's finding, not E0202's.
+                    undo: computed(
+                        vec![Prim::Run(Run {
+                            cmd: vec![text("db-restore /etc/a")],
+                            env: vec![],
+                            stdin: Some(Value::Ref(secret("db_pw"))),
+                        })],
+                        &["file:/etc/a"],
+                    ),
+                    ..target_undo(owned("a"))
+                })],
+            ),
+        ),
+        neg(
+            Code::E0211,
+            "executor-without-stdin-preamble",
+            lab(),
+            temp(
+                "bmc_login",
+                vec![s(Op {
+                    locus: Locus::Host(HostRef::Static("api-01".into())),
+                    do_: vec![Prim::Run(Run {
+                        cmd: vec![text("bmc login")],
+                        env: vec![EnvVar {
+                            name: "BMC_PW".into(),
+                            value: Value::Ref(secret("bmc_pw")),
+                        }],
+                        stdin: None,
+                    })],
+                    ..Op::new(
+                        "bmc_login",
+                        vec![FootprintEntry::entry(Kind::Modified, "bmc:session")],
+                    )
+                })],
+            ),
+        ),
+        neg(
+            Code::E0606,
+            "secret-without-deliver-to",
+            lab(),
+            temp(
+                "token",
+                vec![s(Op {
+                    locus: Locus::Controller,
+                    do_: vec![hook("issue_token", vec![])],
+                    undo: computed(vec![hook("revoke_token", vec![])], &["api:token"]),
+                    outputs: vec![Output {
+                        name: "token".into(),
+                        secret: true,
+                    }],
+                    ..Op::new(
+                        "issue_token",
+                        vec![FootprintEntry::entry(Kind::Modified, "api:token")],
+                    )
                 })],
             ),
         ),

@@ -48,3 +48,9 @@ chain-skips-prev-hash-core.patch	1	-	cargo	a_chain_verifies	-
 expiry-at-boundary-open-core.patch	4	-	cargo	expiry_is_observed	-
 closure-uses-controller-fact-core.patch	1	-	cargo	closure_of_a_target_undo	-
 secret-in-explain-core.patch	1	-	cargo	marks_every_secret_ref	-
+secret-in-run-string-core.patch	1	-	cargo	secret_rules	-
+secret-in-target-undo-core.patch	1	-	cargo	secret_rules	-
+knell-reverse-allowed-core.patch	1	-	cargo	refuses_to_reverse	-
+reach-defer-drift-accepted-core.patch	1	-	cargo	op_rules	-
+temporary-after-not-wane-core.patch	1	-	cargo	backstop_rules	-
+wait-unbounded-core.patch	1	-	cargo	wait_rules	-

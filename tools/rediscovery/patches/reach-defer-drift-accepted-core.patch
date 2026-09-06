@@ -1,0 +1,13 @@
+# Reverts: a reach op whose undo is drift: :defer is E0410 (section 5.6) -- a deferred undo on the path that restores reachability can never run.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -465,7 +465,7 @@
+                 ),
+             ));
+         }
+-        if !o.reach.is_empty() && o.effective_drift() == Some(Drift::Defer) {
++        if !o.reach.is_empty() && o.effective_drift() == Some(Drift::Defer) && false {
+             diagnostics.push(d(
+                 Code::E0410,
+                 n,

@@ -138,12 +138,14 @@ primitive and asserts it reads and writes back byte for byte.
 ## Negative cases
 
 A negative case is a plan the checker must refuse with exactly one named
-code. `Test.Tenants` requires the set of codes across the negative goldens to
-equal `Test.Check.emittedCodes`, in both directions: a new check without a
-negative golden fails, and a negative golden for a code the checker cannot
-raise fails. The twelve of the roadmap's Phase 0 task 8 derive from T1 and
-T3 by one change each; the rest are minimal plans on the lab site described
-in `Rue.Proto.Tenants.Negative`.
+code. `tenants/harness/tests/tenants.rs` requires the set of codes across
+the negative goldens to equal `rue_tenants::EMITTED_CODES`, in both
+directions: a new check without a negative golden fails, and a negative
+golden for a code the checker cannot raise fails. The twelve of the
+roadmap's Phase 0 task 8 derive from T1 and T3 by one change each; the rest
+are minimal plans on the lab site described in
+`tenants/harness/src/tenants/negative.rs`. Every negative has a `plan.rue`
+beside its goldens, the text Phase 2 must refuse the same way.
 
 ## Mutation checks
 

@@ -196,6 +196,26 @@ pub const NEGATIVES: &[NegativeCase] = &[
         code: Code::E0509,
         slug: "zero-human-step-gate",
     },
+    NegativeCase {
+        code: Code::E0206,
+        slug: "reestablish-reruns-do",
+    },
+    NegativeCase {
+        code: Code::E0209,
+        slug: "secret-in-run-string",
+    },
+    NegativeCase {
+        code: Code::E0210,
+        slug: "secret-in-target-undo",
+    },
+    NegativeCase {
+        code: Code::E0211,
+        slug: "executor-without-stdin-preamble",
+    },
+    NegativeCase {
+        code: Code::E0606,
+        slug: "secret-without-deliver-to",
+    },
 ];
 
 /// The codes the checker emits. Every other code in the table is a surface,
@@ -207,8 +227,12 @@ pub const EMITTED_CODES: &[Code] = &[
     Code::E0202,
     Code::E0203,
     Code::E0205,
+    Code::E0206,
     Code::E0207,
     Code::E0208,
+    Code::E0209,
+    Code::E0210,
+    Code::E0211,
     Code::E0301,
     Code::E0302,
     Code::E0303,
@@ -229,6 +253,7 @@ pub const EMITTED_CODES: &[Code] = &[
     Code::E0507,
     Code::E0508,
     Code::E0509,
+    Code::E0606,
 ];
 
 impl TenantCase {

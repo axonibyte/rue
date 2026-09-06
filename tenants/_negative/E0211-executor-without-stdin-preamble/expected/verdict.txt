@@ -1,0 +1,1 @@
+bmc_login on db-01: refused; E0211 at step 1: op bmc_login: secret bmc_pw via env: on api-01, whose executor cannot honor the stdin preamble (do, prim 1).

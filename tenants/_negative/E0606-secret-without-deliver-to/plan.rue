@@ -1,0 +1,27 @@
+rue 0
+# Negative case E0606: plan has a secret output and the site declares no secrets deliver_to
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
+# `lab`). The checker must refuse with exactly E0606.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :issue_token, _ do
+  footprint modified: api.token
+  do: hook(:issue_token)
+  undo: hook(:revoke_token)
+  undo_pre api.token
+  outputs token, secret: true   # and the site above names no acceptor
+  locus: :controller
+end
+
+defplan :token, %{name: "db-01"} do
+  wane 1h
+  issue_token()
+end
