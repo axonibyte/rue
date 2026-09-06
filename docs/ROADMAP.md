@@ -90,14 +90,16 @@ When in doubt: the owner decides what rue is *for* and how it *feels*; the imple
 
 ### 1.1 The claim
 
-> rue is the first plan language in which "this can be undone" is a compile-time verdict rather than a comment — computed from declared footprints, undo loci and refusal modes, and stated as prose and as a stable structured form.
+> rue is the first language for operations against hosts in which "this can be undone" is a compile-time verdict rather than a comment — computed from declared footprints, undo loci and refusal modes rather than by search over a world model, and stating where the undo runs, past which step it cannot, what that step costs and who must acknowledge it, and how long the plan is bounded, as prose and as a stable structured form.
 
-The claim is narrow on purpose. It is tested by trying to falsify it; the prior-art table is the falsification attempt, maintained as part of the README.
+The claim is narrow on purpose. It is tested by trying to falsify it; the prior-art table is the falsification attempt, maintained as part of the README. Deciding undoability offline is not new (action reversibility in AI planning; the compensation calculi); deciding it for a plan language from declarations, with locus and cost in the answer, is. The 2026-09-06 sweep that narrowed the sentence to this form is `docs/prior-art.md`.
 
 ### 1.2 Prior art, and the delta from each
 
 | Prior art | What it has | What rue adds |
 |---|---|---|
+| Action reversibility in AI planning (Eiter, Erdem & Faber 2008; Morak, Chrpa, Faber & Fišer, KR 2020; Med et al. 2024, 2025) | Decides offline whether an action's effects can be undone, by search over a STRIPS-like domain; PSPACE-hard in general | Decides from declarations, not search; the verdict states locus, cost, acknowledgement, arming order and bound, none of which the planning model has |
+| Compensation calculi (Bruni, Melgratti & Montanari, POPL 2005; Sagas calculi; compensating CSP) | Semantics and expressiveness of compensations; decidability with static compensations | No footprints; no check that a given program's compensations compose; rue is the checker the calculi lack |
 | Sagas / compensating transactions (Garcia-Molina & Salem, 1987) | Sequenced steps with hand-written compensations | The compensations are typed, checked for composition, and their locus is known |
 | Temporal / Cadence | Durable execution; saga pattern for compensation | Checks nothing about compensations; no undo that survives the engine's death; no point of no return |
 | Junos `commit confirmed` | Apply, auto-revert unless confirmed, on one device | Generalised to any op with a target-standalone undo; the `reach` rule proves the arming order |
@@ -113,7 +115,7 @@ The claim is narrow on purpose. It is tested by trying to falsify it; the prior-
 
 ### 1.3 Falsification standing order
 
-Before Phase 0 exits, and again before any public release, one person spends one day trying to name a system that makes reversibility a checked property across heterogeneous operations. If one is found, the claim is narrowed in §1.1 and the delta added to §1.2.
+Before Phase 0 exits, and again before any public release, one person spends one day trying to name a system that makes reversibility a checked property across heterogeneous operations. If one is found, the claim is narrowed in §1.1 and the delta added to §1.2. Done once, 2026-09-06 (`docs/prior-art.md`): two were found and the claim was narrowed as above.
 
 ---
 
@@ -476,8 +478,8 @@ Revert < Hold < Knell        (a plan's mode up to each knell is the join of its 
 
 For a plan `[s1 .. sn]`:
 
-- **Reversible through k**: for every knell-free prefix `[s1..sk]`, running `undo(sk) .. undo(s1)` restores every umbra fact to its pre-plan value, because no later step's umbra overlaps an earlier step's in a way that falsifies the earlier undo's precondition (§5.7).
-- **Holding at k**: the first step with `refusal: Hold` at or before the first knell. A refusal after it leaves the world as-is from k on.
+- **Reversible through k**: for every knell-free prefix `[s1..sk]`, running `undo(sk) .. undo(s1)` restores every umbra fact to its pre-plan value, because no later step's umbra overlaps an earlier step's in a way that falsifies the earlier undo's precondition (§5.7). The verdict's `reversible_through` is the step before the first knell when there is one (steps that only observe are reversible trivially), else the last mutating step: `confirm()`, `commit()` and observations after it change nothing and do not extend it.
+- **Holding at k**: the first step with `refusal: Hold` in each knell segment — the items before the first knell, and between consecutive knells. A refusal after it leaves the world as-is from k on. The verdict's `holds_at` lists one step per segment; `held_indefinitely` lists every `:hold` step of a permanent plan and every deferred step (§5.9 rule 3).
 - **Point of no return at k**: the first knell. Everything before it is reversible up to it; everything after is reversible back to it.
 - **Partial reversal is the real operation.** `reverse_from(k)` undoes the applied prefix last-in-first-out. `reverse` is `reverse_from(n)`.
 - `par` blocks are reversible iff every child is, with undos run in parallel; admitted iff children's umbras are pairwise disjoint (E0303); `reach` inside `par` is refused (E0304).
@@ -488,7 +490,7 @@ For a plan `[s1 .. sn]`:
 A backstop is an op: its footprint is the artifact file inside the instance directory plus a `Region` in the scheduler anchored by instance id; it is checked for interference like any other op. Its rendering and installation are §7.7.
 
 - **Triggers follow intent.** A temporary plan's backstop is `after:` equal to its `wane` (E0503 otherwise) and MAY add `unless_heartbeat:`; a `fires_by_construction` plan is the one temporary plan whose expiry is `unless_confirmed:` instead of `after:`, its duration serving as `wane`. A permanent plan's backstop is `unless_confirmed:` and/or `unless_heartbeat:`; `confirm()` disarms `unless_confirmed`, `commit()` disarms everything. A permanent plan with a backstop MUST reach `confirm()` or `commit()` on every non-refusing path (E0504) unless it declares `fires_by_construction: true`, in which case the verdict says the undo fires by construction.
-- **Install before the first covered step; arm per `arm_before`.** The artifact and its marker directory are installed before the first covered step runs (E0406). No step is considered committed before the backstop covering it is *armed*. Where `reach` is empty, arming may follow the step (late arming) and the verdict states the engine-only window. Where `reach` is non-empty, arming MUST precede the step (E0401).
+- **Install before the first covered step; arm per `arm_before`.** The artifact and its marker directory are installed before the first covered step runs (E0406; in the Phase 0 model installation precedes the first covered step by construction, so the code is unreachable there and is an engine-time check unless installation gains a placement of its own). No step is considered committed before the backstop covering it is *armed*. Where `reach` is empty, arming may follow the step (late arming) and the verdict states the engine-only window. Where `reach` is non-empty, arming MUST precede the step (E0401).
 - **Extension is an op.** `wane` renewal rearms the backstop *before* the new expiry is committed; a rearm that fails refuses the renewal (E0402 at check for an impossible ordering, R0404 at runtime). Renewal is accepted only within `renew_within` of expiry, anchored at renewal, never for an expired plan; the numbers are plan declarations.
 - **Backstop locus viability is a precondition.** A `:target` backstop needs the scheduler binding to report presence on the host (E0403 at check, R0401 at apply) and the target bootstrapped (R0407).
 - **Heartbeat.** `unless_heartbeat:` is sent by the engine at `interval` (default deadline/3; MUST be ≤ deadline/3, E0405) as a touch of a heartbeat file in the instance directory; the artifact compares that file's age to the deadline on the target's clock.
@@ -511,6 +513,8 @@ par_ok(P)         :- par(P), forall X,Y in children(P), X != Y => disjoint_umbra
 
 `conflict` is E0301. `mayconflict` is E0302 under `:strict` and a verdict clause under `:warn`. Iterations of one `repeat over:` loop are disjoint by construction; conflicts between the loop body and steps outside it remain shape-level.
 
+A fact is a shape **on a host**: `writes`, `maywrite` and `needs` range over (host, shape) pairs, resolved from each step's locus (`:target` is the owner host, `:controller` the controller, `host(...)` the named host), so the same shape on two hosts never conflicts (§5.12). A step whose host is bound at runtime is penumbral by host: every fact it touches is `maywrite`, and the verdict lists the binding under `unresolved_bindings`. `before` is undefined between children of one `par`; they are judged by `par_ok` alone and never as `conflict`. A conflict whose fact is an anchor declared twice on one shape is reported as E0305, the specific diagnosis, and not also as E0301.
+
 ### 5.8 The verdict
 
 Schema at `docs/verdict-schema.json`, versioned; additions are allowed without a bump, removals and renames bump. Every "the verdict says" in this document names a field.
@@ -520,7 +524,7 @@ Schema at `docs/verdict-schema.json`, versioned; additions are allowed without a
   "verdict_version": 1,
   "plan": "breakglass", "host": "db-01",
   "status": "ok | refused",
-  "intent": "temporary | permanent", "rehearsal": false,
+  "intent": "temporary | permanent", "rehearsal": false, "mode": "manual | auto",
   "commit_step": null, "fires_by_construction": false,
   "reversible_through": 2, "holds_at": null,
   "point_of_no_return": { "step": 3, "guard": "fence_verdict(host)", "cost": "none", "ack": "thresh(1, humans())", "gate": "auth(:oncall)" },
@@ -548,7 +552,7 @@ Schema at `docs/verdict-schema.json`, versioned; additions are allowed without a
 }
 ```
 
-Field notes: `rehearsal` (a request dry-run, §7.9); `commit_step` (permanent plans); `held_indefinitely` (steps that hold without bound in a permanent plan); `induced_defer` (`:defer` steps under `mode: :auto`, §7.12); `steps[].conditional` (the foreign-region condition, §5.2; `backstop.conditional` is derived from it); `hosts_touched[].directory` (`target` or `controller`, §7.7); `gate.wait_alone_at_s` (earliest instant a gate is satisfiable by wait alone).
+Field notes: `rehearsal` (a request dry-run, §7.9); `mode` (`manual` or `auto`: which hold and acknowledgement rules applied, and which hold clause the prose uses); `commit_step` (permanent plans); `held_indefinitely` (steps that hold without bound in a permanent plan); `induced_defer` (`:defer` steps under `mode: :auto`, §7.12); `steps[].conditional` (the foreign-region condition, §5.2; `backstop.conditional` is derived from it); `hosts_touched[].directory` (`target` or `controller`, §7.7); `gate.wait_alone_at_s` (earliest instant a gate is satisfiable by wait alone).
 
 Prose rendering (Appendix A), one clause per field group, in this order: intent, reversibility, hold, point of no return, gate, step gates, backstop, conditionals, controller-only undos, hosts touched, dispatch, may-conflicts, unresolved bindings. Example:
 
@@ -568,7 +572,7 @@ dispatch from inventory.
 Five class rules, from which the diagram and the tier-4 truth table are derived:
 
 1. **Terminal:** `Closed`, `Committed`.
-2. **Bounded by `wane` in a temporary plan:** every non-terminal state except `DriftHeld` and `Stuck`; `Pending`'s bound is its approval window. `wane` elapsing is always `Expired → Reverting`, never a hold, because the armed artifact fires on that deadline and the engine must agree with it. A temporary plan that can reach `Waiting`, `Held` or `Deferred` MUST declare `wane` (E0506).
+2. **Bounded by `wane` in a temporary plan:** every non-terminal state except `DriftHeld` and `Stuck`; `Pending`'s bound is its approval window — a plan-entry gate with no `window:` on a site with no `max_wait` is E0506, since `Pending` would reserve umbras without bound. `wane` elapsing is always `Expired → Reverting`, never a hold, because the armed artifact fires on that deadline and the engine must agree with it. A temporary plan that can reach `Waiting`, `Held` or `Deferred` MUST declare `wane` (E0506).
 3. **Unbounded, by declaration:** `DriftHeld` and `Stuck` in any plan (the alternatives are a policy override or a lie); `Held` and `Deferred` in a permanent plan (they wait for `resume`, `handoff-done`, `recant`, `commit` or `abandon`). A permanent plan's `Waiting` is bounded by the step's `window:` or the site's `max_wait` (E0506 if neither). Every unbounded state re-sends its notification on every reap pass, in any mode.
 4. **Refusal during `Applying`** goes to `Reverting`, unless an earlier applied step has `refusal: :hold`, in which case to `Held{step}`. `:hold` under `mode: :auto` is not refused: in a temporary plan it is reverted at `wane`; in a permanent plan it holds until an operator acts. A `window:`/`max_wait` lapse that arrives before `wane` resolves per `on_lapse:` (`:revert` default; `:hold`; always `:revert` under `:auto`), journaled `WaitLapsed`.
 5. **Commit** is reached from `Applying` by the item, from `Held` or `Deferred` by the verb. `commit`, `renew` and `confirm` on a plan whose intent does not admit them are R0102.
@@ -611,6 +615,7 @@ What each state holds:
 | Applying, Applied, Waiting, Held, Deferred, Suspended, Reverting, Stuck, DriftHeld, Expired | yes | yes | yes (run-capable hosts only) |
 | Closed, Committed | no | no | no (removed; orphans per §7.7) |
 
+- `Applied` and `Suspended` exist only for temporary plans: a permanent plan goes from `Applying` to `Committed` and never rests, so `confirm` on a permanent plan happens while `Applying`. `renew` is meaningful while `Applying` as well as `Applied`, since `wane` is anchored at approval.
 - All observations take `now`. `Expired` and `ApprovalExpired` are observed, never scheduled. The boundary is closed: observed *at* the instant is expired.
 - `Applying` is persisted (write-ahead) before any `do`. A crash in `Applying` demotes to `Reverting` at boot.
 - Apply is atomic-or-reported: a failed step is itself reverted (it may be half-applied). `Stuck` is persisted and retried every pass; `Closed{reverted}` is journaled only when clean.
@@ -656,13 +661,13 @@ factor   := "auth(" ATOM ("," "weight:" INT)? ")"        -- an authenticator id 
 - **Rue owns the shape; the binding owns trust.** The approval binding publishes the authenticator ids it can verify, each flagged `human: true|false`. `check` refuses a gate naming an unknown id, an unsatisfiable threshold, or one counting the requester (E0508). A gate satisfiable with no human refuses (E0509) unless the plan declares `allow_zero_human: true`; under `mode: :auto` it always refuses. The verdict reports satisfiability, minimum distinct humans, and the earliest instant each gate is satisfiable by wait alone.
 - **Rue supplies a request digest, not a challenge.** `request_digest = H(canonical(nonce, plan_id, instance, owner_host, params_hash, host_contract_hash, wane, requested_at, gate_hash, plan_content_hash))`, domain-separated `rue-request`, with a 32-byte nonce from the engine's CSPRNG (core stays free of randomness). A step gate uses `step_digest = H(request_digest, step_index)`; an ack uses the same with scope `ack`. The binding renders whatever human-facing challenge it likes over the digest and verifies proofs against it; rue never sees proof bytes, only `verified: true` for an authenticator id, and journals the submitting operator beside it.
 - **Binding contract.** A proof MUST be bound to the digest and its scope (`plan`, `step`, or `ack`), so a proof for one request or step verifies for no other, and a plan, parameter or host-contract change after request invalidates every accumulated proof (the engine re-derives the host contract at request, approval and apply; a change is R0301). Replay resistance is a contract rue requires and the conformance suite tests, not a mechanism rue implements.
-- **Plan entry.** Proofs accumulate across `rue approve` calls; `wait` weight accrues from `requested_at`; the reap pass opens the plan the instant the threshold is crossed; the approval window (`gate …, window:`) lapses fail-closed; `wane` is anchored at approval, never at request. The requester's own authenticators never count toward a plan-entry or step `gate:`.
+- **Plan entry.** Proofs accumulate across `rue approve` calls; `wait` weight accrues from `requested_at`; the reap pass opens the plan the instant the threshold is crossed; the approval window (`gate …, window:`) lapses fail-closed; `wane` is anchored at approval, never at request. The requester's own authenticators never count toward a plan-entry or step `gate:`. The requester is therefore an input to `check` (`rue check --as <authenticator>`, or the connected operator's identity), so E0508 is decidable offline.
 - **Step gates.** `gate:` on a step enters `Waiting{gate}`; `wait` accrues from `StepGateRequested`; `rue approve --step N` submits a proof in the `step` scope.
 - **Acknowledgements.** A knell's `ack:` is a gate in the `ack` scope (default `thresh(1, humans())`, or `:none` with a reason for a knell acknowledged by its own guard, e.g. a fence driver's verified-off). Accepting a cost is the operator's own recorded decision, so the requester exclusion does not apply to acks. `rue ack --step N --reason < token` is `rue approve --step N` in the `ack` scope plus a journaled reason. Under `mode: :auto` every knell MUST declare `ack: :none` and every step gate MUST be satisfiable without a human (E0507). A knell with both `gate:` and `ack:` is legal: distinct scopes, distinct waits; the checker warns when both name the same single authenticator.
 
 ### 5.12 Multi-host plans and cross-plan interference
 
-- A **plan instance** is keyed by `(plan_id, params_hash, owner_host)`; the owner host is the `--host` argument. Ops with `locus: host(expr)` may act on other hosts; every host touched acquires its exclusivity class for the instance's life. A multi-host plan whose owner cannot be inferred is E0409. The verdict is per owner host; `explain` lists every touched host per step.
+- A **plan instance** is keyed by `(plan_id, params_hash, owner_host)`; the owner host is the `--host` argument. Ops with `locus: host(expr)` may act on other hosts; every host touched acquires its exclusivity class for the instance's life. A multi-host plan whose owner cannot be inferred is E0409. The verdict is per owner host; `explain` lists every touched host per step. A step is **deferred** when its host is not the owner and no site transport reaches it, or when its host is bound at runtime; the verdict lists it under `deferred` and `explain` prints its `handoff_done`.
 - **Cross-plan interference is checked at request and reserved from `Pending`.** The engine keeps, per host, the union of active and pending instances' umbras; a new instance overlapping one is refused at request (R0203) *regardless of exclusivity class*, before any proof is collected. Reservation is released on cancel, lapse or close. A request dry-run reserves nothing.
 
 ### 5.13 Secrets
@@ -830,7 +835,7 @@ Types are inferred, never written: every builtin, primitive and op parameter has
 
 ### 6.7 Diagnostic codes
 
-Golden-tested text with `file:line:col`, expected/found, nearest-name suggestion. Codes grow, never renumber.
+Golden-tested text with `file:line:col`, expected/found, nearest-name suggestion. Codes grow, never renumber (renumbered once, before Phase 0, to close the table's gaps; frozen from Phase 1).
 
 | Code | Meaning |
 |---|---|
@@ -1121,7 +1126,7 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 1. Model `Fact`, `Tri`, `Kind`, `Footprint{shape, instance, anchor}`, `Op`, `Plan` with intent, `Guard`, `Refusal`, `Locus`, `Backstop{Trigger}`, `Reach`, `GateSpec`.
 2. Implement `seq`, `par`, `reverse`, `reverse_from`, `knell`, `hold`, `confirm`, `commit`, `preflight`, `observe`, `assert`, `repeat`, `when`.
 3. Implement the interference query over shapes; the refusal lattice; backstop coverage and the late-arming window; the `reach` ordering check.
-4. Implement `check :: Plan -> Verdict` producing the structured form and the prose, and `explain`.
+4. Implement `check :: Site -> Requester -> Plan -> Verdict` producing the structured form and the prose, and `explain`.
 5. Model the state machine from §5.9's five rules and generate the transition table.
 6. Encode T1–T4 as terms.
 7. Write T1–T4 as `.rue` text against §6; every construct the terms need must have a spelling and every spelling must appear in §6. Grammar gaps found here are fixed in §6 before Phase 2.
@@ -1135,7 +1140,7 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Exit criteria.** Acceptance met, or a written finding that the model is wrong in a specific way, with the fix folded into §5 and this phase re-run. Either outcome is a valid exit; silently proceeding is not.
 
-**Not proven.** Footprint honesty at runtime; `:target` undo closure (a boolean flag here, analysis in Phase 1); verdict prose stability beyond four tenants.
+**Not proven.** Footprint honesty at runtime; `:target` undo closure (a boolean flag here, analysis in Phase 1); verdict prose stability beyond four tenants; `hold_via:` (T2's resurrection gate is an ordinary `:hold` step with a footprint in the prototype; the form gets its own treatment in Phase 1).
 
 **Rediscovery rows seeded.** `revert-composition-law`, `par-not-disjoint`, `reach-late-arm`, `auto-with-force`, `knell-no-cost`, `permanent-plan-reverts-at-wane`, `commit-before-last`, `intent-ambiguous-accepted`, `foreign-region-clobbered`, `pending-no-reserve`, `proof-scope-ignored`, `held-outlives-wane`.
 
@@ -1314,7 +1319,7 @@ After every simulated event, the shadow model and the engine must agree on: (1) 
 <plan> on <host>: <intent>; <reversibility>; <hold>?; <knell>?; <gate>?; <stepgate>*; <backstop>?; <conditional>*; <controller-only>?; <hosts>*; <dispatch>; <may-conflict>?; <unresolved>?.
 intent          := ("temporary; reverts at wane <D>" | "permanent; commits at step N" [", held indefinitely at step M until an operator acts"] [", undo fires by construction"]) [", revert can be induced to defer at step K"] | "rehearsal: no reservation"
 reversibility   := "reversible through step N" | "not reversible past step 0" | "fully reversible (N steps)"
-hold            := "step N holds on refusal (human required)"
+hold            := "step N holds on refusal (human required)" | "step N holds on refusal (until resume, recant or commit)"    -- the second under mode: :auto
 knell           := "step N is a point of no return" [", guard <guard>"] [", cost C"] [", acknowledged by G"] ["; step M reversible back to step N"]
 gate            := "gate satisfiable; minimum N distinct humans" | "gate satisfiable with no human (allowed)"
 stepgate        := "step N gated by G" [", satisfiable by wait alone at +D"]
