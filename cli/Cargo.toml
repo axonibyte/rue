@@ -1,0 +1,21 @@
+[package]
+name = "rue"
+description = "rue: a language for provably reversible operations -- the operator CLI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "rue"
+path = "src/main.rs"
+
+[dependencies]
+rue-core = { path = "../core" }
+clap.workspace = true
+# The binary's error type; the library crates have their own.
+anyhow.workspace = true
+
+[dev-dependencies]
+rue-tenants = { path = "../tenants/harness" }

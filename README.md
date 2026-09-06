@@ -95,6 +95,7 @@ sh tools/lint-ecodes.sh           # the E-code guard alone
 sh tests/tier3/t_seam.sh          # a guard's self-test
 sh tools/rediscovery/run.sh --tier 1   # revert each tier-1 protection in a scratch copy; the suite must fail
 cargo build --workspace --all-targets --locked && cargo test --workspace --locked
+cargo run -q -- check tenants/t1/expected/db-01/plan.json     # the prose verdict; --json, or `explain`, or `states`
 cd proto && cabal build all && cabal test all --test-show-details=direct
 cd proto && cabal run -v0 rue-proto-check -- t3 fw-01            # a tenant's prose verdict; --json, --explain
 ```
@@ -132,6 +133,7 @@ on both registered guests. Validate the manifest with
 | `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
 | `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
 | `Cargo.toml`, `core/` | The Rust workspace and `rue-core` (Phase 1): the model and its plan-IR shape, the checker, the verdict and its prose, `explain`, the state machine, the ledger; pure, no I/O |
+| `cli/` | `rue`, the operator CLI: `check`, `explain` and `states` over a plan IR document, exit codes per the roadmap's section 6.8 |
 | `tenants/harness/` | `rue-tenants`: the case table as code and the tests that hold `rue-core` to every Phase 0 golden byte for byte |
 | `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests; `proto/README.md` has the layout and the findings. The specification the crates are held to |
 | `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |

@@ -8,13 +8,6 @@ set -euo pipefail
 
 TARGET="${1:?usage: build-target.sh <target-triple>}"
 
-# Until Phase 1 there is no Rust workspace. Say so and stop; never build
-# nothing and call it a build.
-if [[ ! -f Cargo.toml ]]; then
-    echo "skip - no Cargo.toml yet (Phase 0); the $TARGET build arms in Phase 1"
-    exit 0
-fi
-
 export CARGO_HOME="${CARGO_HOME:-$BITBUCKET_CLONE_DIR/.cargo_cache}"
 
 # Pinned: -Z build-std against a floating nightly breaks spontaneously and
@@ -23,8 +16,8 @@ export CARGO_HOME="${CARGO_HOME:-$BITBUCKET_CLONE_DIR/.cargo_cache}"
 NIGHTLY="nightly-2026-08-01"
 
 # Every binary the workspace ships, on every target (D-031: Windows is not a
-# client-only build). A name that does not exist yet is skipped; none existing
-# is a failure.
+# client-only build). A name that does not exist yet is skipped (rued and
+# rue-hook arrive in Phases 3 and 4); none existing is a failure.
 BINS="rue rued rue-hook"
 
 apt_install() {
