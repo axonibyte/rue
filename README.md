@@ -19,12 +19,15 @@ reviewable surface.
 The plan of record is [`docs/ROADMAP.md`](docs/ROADMAP.md). Every rule is
 stated once, in the section that governs it.
 
-## Status: pre-Phase 0, scaffold in place
+## Status: Phase 0 in progress
 
-Nothing that checks a plan exists yet. This commit is the repository's shape:
-the gate, the seam guard, the reaper tenancy, the pipeline, and the roadmap.
-Phase 0 -- a Haskell prototype of the core algebra fed the four acceptance
-tenants -- follows in this same unit of work.
+Nothing that checks a plan exists yet. The repository's shape is in place --
+the gate, the seam guard, the reaper tenancy, the pipeline, the roadmap -- and
+the Phase 0 prototype under `proto/` has its skeleton: the diagnostics
+enumeration (every code in the roadmap's table, guarded in both directions),
+the canonical JSON printer a later implementation must reproduce byte for
+byte, and the golden plumbing. The algebra, the checker, the tenants and
+their verdicts follow in this same unit of work.
 
 ## What rue is not
 
@@ -62,6 +65,7 @@ trying to break it, and the findings go in [`docs/prior-art.md`](docs/prior-art.
 | Claim | Status |
 |---|---|
 | Any verdict about any plan | Nothing checks a plan yet. Phase 0 is the first attempt |
+| Which diagnostics Phase 0 can emit | The enumeration carries every code; which ones the prototype raises is stated when the checker exists |
 | The gate on a Windows guest | No reaper Windows template is registered yet; it is a Phase 1 deliverable. The manifest names the two registered guests and says so |
 | The Rust pipeline steps | Present and gated: each prints a skip line until a `Cargo.toml` exists in Phase 1 |
 | Deploy | Refuses on every tag until Phase 1 produces artifacts and a workspace version |
@@ -71,8 +75,18 @@ trying to break it, and the findings go in [`docs/prior-art.md`](docs/prior-art.
 ```sh
 sh tools/check.sh                 # the gate: every phase runs, every failure is reported
 sh tools/lint-seam.sh             # the seam guard alone
-sh tests/tier3/t_seam.sh          # the guard's self-test
+sh tools/lint-ecodes.sh           # the E-code guard alone
+sh tests/tier3/t_seam.sh          # a guard's self-test
+cd proto && cabal build all && cabal test all --test-show-details=direct
 ```
+
+The prototype needs GHC 9.10.3 and cabal (`pkg install ghc hs-cabal-install`
+on FreeBSD). `proto/cabal.project` pins the Hackage index state and
+`proto/cabal.project.freeze` pins every dependency, so the same inputs give
+the same bytes on the workstation, in CI and in a reaper session.
+`RUE_UPDATE_GOLDENS=1 cabal run rue-proto-goldens` is the only thing that
+writes an expected file; the test suite is read-only and the gate fails if
+a test run changes anything under `tenants/` or `docs/`.
 
 `tools/check.sh` exits 0 only if every phase ran and passed. A phase whose
 tool is missing exits 77 and counts as a failure unless the caller named it
@@ -91,7 +105,10 @@ on both registered guests. Validate the manifest with
 | `docs/prior-art.md` | The falsification day's findings (Phase 0) |
 | `tools/check.sh` | The gate |
 | `tools/lint-seam.sh`, `tools/seam-denylist.txt` | The seam guard and its denylist |
+| `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |
 | `tools/lint-goldens.sh` | Golden hygiene (wired into the gate once goldens exist) |
+| `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests |
+| `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |
 | `tests/tier3/` | Self-tests of the guards: each plants the fault it exists to catch |
 | `ci/build-target.sh` | All per-target build knowledge for the five release triples |
 | `ci/image-digest.sh` | Resolves the GHC image digest `.reaper.toml` carries |

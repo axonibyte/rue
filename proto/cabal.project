@@ -1,0 +1,19 @@
+packages: .
+
+-- Pin the view of Hackage the solver sees. Bump deliberately, then re-run
+-- `cabal freeze` from this directory, and commit both files together. With
+-- GHC 9.10.3 (pkg on FreeBSD; the digest-pinned image in CI and reaper) this
+-- pin plus cabal.project.freeze fixes the install plan and every package
+-- source: same inputs, same verdict bytes.
+index-state: hackage.haskell.org 2026-09-05T22:14:32Z
+
+-- Load-bearing: `cabal freeze` records test-suite dependencies only when
+-- tests are enabled at freeze time.
+tests: True
+jobs: $ncpus
+optimization: 1
+
+-- -Werror lives here rather than in the .cabal file so someone probing with
+-- a newer GHC can drop it via cabal.project.local without touching the package.
+package rue-proto
+  ghc-options: -Werror

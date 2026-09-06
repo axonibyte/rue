@@ -1,0 +1,96 @@
+cabal-version: 3.0
+name:          rue-proto
+version:       0.0.1
+synopsis:      rue Phase 0 prototype checker (kept as a record, not a product)
+description:
+  The Phase 0 prototype of rue's core algebra: footprint kinds, undo loci, the
+  refusal lattice, intent, backstop triggers, three-valued guards and the
+  reach rule, composed into a checker whose verdicts are golden-tested
+  against the four acceptance tenants. See docs/ROADMAP.md, Phase 0.
+license:       BSD-2-Clause
+-- The license text is ../LICENSE at the repository root; cabal refuses a
+-- relative path outside the package, and the SPDX id above is the record.
+author:        Axonibyte Innovations, LLC
+build-type:    Simple
+tested-with:   GHC ==9.10.3
+
+common shared
+  default-language: GHC2021
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wpartial-fields -Wredundant-constraints -Wmissing-export-lists
+  build-depends:
+    base ^>=4.20,
+    bytestring,
+    containers,
+    text
+
+-- The framework: tenant-free. The seam guard scans this directory.
+library
+  import:          shared
+  hs-source-dirs:  src
+  exposed-modules:
+    Rue.Proto.Diagnostics
+    Rue.Proto.Golden
+    Rue.Proto.Json.Canonical
+  build-depends:
+    aeson,
+    directory,
+    filepath,
+    scientific
+
+-- The tenants, as terms. An internal sublibrary rooted at a directory named
+-- tenants/, which is the one directory name the seam guard exempts.
+library tenants
+  import:          shared
+  hs-source-dirs:  tenants
+  exposed-modules:
+    Rue.Proto.Tenants
+  build-depends:
+    rue-proto
+
+executable rue-proto-check
+  import:         shared
+  hs-source-dirs: app
+  main-is:        Check.hs
+  build-depends:
+    rue-proto,
+    rue-proto:tenants
+
+executable rue-proto-goldens
+  import:         shared
+  hs-source-dirs: app
+  main-is:        Goldens.hs
+  build-depends:
+    rue-proto,
+    rue-proto:tenants,
+    directory,
+    filepath
+
+executable rue-proto-states
+  import:         shared
+  hs-source-dirs: app
+  main-is:        States.hs
+  build-depends:
+    rue-proto
+
+test-suite rue-proto-test
+  import:         shared
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is:        Main.hs
+  other-modules:
+    Test.Canonical
+    Test.Diagnostics
+    Test.Golden
+  build-depends:
+    rue-proto,
+    rue-proto:tenants,
+    aeson,
+    directory,
+    filepath,
+    QuickCheck,
+    tasty,
+    tasty-hunit,
+    tasty-quickcheck,
+    vector

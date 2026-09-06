@@ -148,11 +148,58 @@ p_tier3() {
     return "$st"
 }
 
+toolchain() {
+    if ! command -v cabal > /dev/null 2>&1 || ! command -v ghc > /dev/null 2>&1; then
+        echo "ghc/cabal are not on PATH (pkg install ghc hs-cabal-install)" >&2
+        return 77
+    fi
+    v=$(ghc --numeric-version)
+    if [ "$v" != "9.10.3" ]; then
+        echo "ghc is $v; proto/cabal.project.freeze is for 9.10.3" >&2
+        return 1
+    fi
+    return 0
+}
+
+p_cabal_build() {
+    toolchain || return $?
+    if [ "${RUE_CABAL_UPDATE:-0}" = 1 ]; then
+        ( cd proto && cabal update ) || return 1
+    fi
+    ( cd proto && cabal build all --builddir "$RUE_BUILDDIR" )
+}
+
+# The suite is read-only: a checksum of everything under tenants/ and docs/
+# is taken before and after, and any change fails the phase.
+golden_sums() {
+    : > "$1"
+    for d in tenants docs; do
+        [ -d "$d" ] || continue
+        find "$d" -type f -exec cksum {} + >> "$1" || return 1
+    done
+    sort -o "$1" "$1"
+}
+
+p_cabal_test() {
+    toolchain || return $?
+    golden_sums "$tmp/g.before" || return 1
+    ( cd proto && cabal test all --builddir "$RUE_BUILDDIR" --test-show-details=direct ) || return 1
+    golden_sums "$tmp/g.after" || return 1
+    if ! cmp -s "$tmp/g.before" "$tmp/g.after"; then
+        echo "cabal test changed files under tenants/ or docs/; the suite is read-only" >&2
+        return 1
+    fi
+    return 0
+}
+
 phase sh-syntax        p_sh_syntax
 phase bash-syntax      p_bash_syntax
 phase shellcheck       p_shellcheck
 phase seam             sh tools/lint-seam.sh
+phase ecodes           sh tools/lint-ecodes.sh
 phase tier3-selftests  p_tier3
+phase cabal-build      p_cabal_build
+phase cabal-test       p_cabal_test
 
 printf '\n'
 if [ -n "$skipped" ]; then

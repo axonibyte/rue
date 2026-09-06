@@ -1,0 +1,17 @@
+module Main (main) where
+
+import Test.Tasty (defaultMain, testGroup)
+
+import qualified Test.Canonical
+import qualified Test.Diagnostics
+import qualified Test.Golden
+
+main :: IO ()
+main = do
+  golden <- Test.Golden.tests
+  defaultMain $
+    testGroup
+      "rue-proto"
+      [ testGroup "tier1" [Test.Canonical.tests, Test.Diagnostics.tests]
+      , testGroup "tier2" [golden]
+      ]

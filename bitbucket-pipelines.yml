@@ -11,11 +11,16 @@ image: rust:1.97
 
 definitions:
   caches:
-    # Path-only until the key files exist: Cargo.lock arrives in Phase 1 and
-    # proto/cabal.project.freeze in the next commit. Key both then.
+    # cargo is path-only until Cargo.lock exists (Phase 1); key it then.
     cargo:
       path: .cargo_cache
+    # The store only, keyed on the freeze: the extracted Hackage index is far
+    # too large to cache and `cabal update` under a pinned index-state changes
+    # nothing about the plan.
     cabal-store:
+      key:
+        files:
+          - proto/cabal.project.freeze
       path: .cabal_cache/store
 
   steps:
