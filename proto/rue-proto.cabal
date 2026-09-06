@@ -40,8 +40,10 @@ library
     Rue.Proto.Intent
     Rue.Proto.Interference
     Rue.Proto.Json.Canonical
+    Rue.Proto.Ledger
     Rue.Proto.Model
     Rue.Proto.Prose
+    Rue.Proto.States
     Rue.Proto.Verdict
   build-depends:
     aeson,
@@ -83,7 +85,8 @@ executable rue-proto-states
   hs-source-dirs: app
   main-is:        States.hs
   build-depends:
-    rue-proto
+    rue-proto,
+    text
 
 test-suite rue-proto-test
   import:         shared
@@ -96,6 +99,8 @@ test-suite rue-proto-test
     Test.Diagnostics
     Test.Golden
     Test.Laws
+    Test.Ledger
+    Test.States
   build-depends:
     rue-proto,
     rue-proto:tenants,

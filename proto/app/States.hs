@@ -1,11 +1,14 @@
--- | Print the runtime state transition table. Filled in once the state
--- machine exists.
+-- | Print the runtime state transition table, generated from the five class
+-- rules of docs/ROADMAP.md section 5.9. docs/state-transitions.tsv is this
+-- output, golden-tested.
 module Main (main) where
 
-import System.Exit (exitWith, ExitCode (..))
-import System.IO (hPutStrLn, stderr)
+import qualified Data.ByteString as B
+import qualified Data.Text.Encoding as TE
+import Rue.Proto.States (renderTable)
+import System.IO (hSetBinaryMode, stdout)
 
 main :: IO ()
 main = do
-  hPutStrLn stderr "rue-proto-states: the state machine is not implemented yet"
-  exitWith (ExitFailure 2)
+  hSetBinaryMode stdout True
+  B.hPut stdout (TE.encodeUtf8 renderTable)

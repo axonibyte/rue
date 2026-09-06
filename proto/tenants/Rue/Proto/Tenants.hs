@@ -7,8 +7,12 @@ module Rue.Proto.Tenants
   ( artifacts
   ) where
 
-import Rue.Proto.Golden (Artifact)
+import qualified Data.Text.Encoding as TE
+import Rue.Proto.Golden (Artifact (..))
+import Rue.Proto.States (renderTable)
 
 -- | Every golden artifact, with its path relative to the repository root.
 artifacts :: [Artifact]
-artifacts = []
+artifacts =
+  [ Artifact "docs/state-transitions.tsv" (Right (TE.encodeUtf8 renderTable))
+  ]

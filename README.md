@@ -106,7 +106,7 @@ on both registered guests. Validate the manifest with
 | `tools/check.sh` | The gate |
 | `tools/lint-seam.sh`, `tools/seam-denylist.txt` | The seam guard and its denylist |
 | `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |
-| `tools/lint-goldens.sh` | Golden hygiene (wired into the gate once goldens exist) |
+| `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
 | `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests |
 | `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |
 | `tests/tier3/` | Self-tests of the guards: each plants the fault it exists to catch |
