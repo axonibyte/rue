@@ -1,0 +1,13 @@
+# Reverts: the composition law: reversing a sequence reverses its order (section 5.5)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/Algebra.hs
++++ b/proto/src/Rue/Proto/Algebra.hs
+@@ -61,7 +61,7 @@
+ 
+ -- | Reverse a sequence: last-in-first-out, each item reversed.
+ reverseItems :: [Item] -> Either Refused [Item]
+-reverseItems items = traverse reverseItem (reverse items)
++reverseItems items = traverse reverseItem items
+ 
+ -- | Undo the applied prefix of a plan: the first @k@ leaves, in reverse.
+ reverseFrom :: Int -> [Item] -> Either Refused [Item]

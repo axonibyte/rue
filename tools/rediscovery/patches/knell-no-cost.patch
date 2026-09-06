@@ -1,0 +1,12 @@
+# Reverts: the verdict states a knell's cost (Appendix A)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/Prose.hs
++++ b/proto/src/Rue/Proto/Prose.hs
+@@ -76,7 +76,6 @@
+     knell p =
+       "step " <> num (ponrStep p) <> " is a point of no return"
+         <> maybe "" (", guard " <>) (ponrGuard p)
+-        <> ", cost " <> ponrCost p
+         <> ", acknowledged by " <> ponrAck p
+         <> maybe "" (\(f, t) -> "; step " <> num f <> " reversible back to step " <> num t) (vReversibleBackTo v)
+     gateClause g

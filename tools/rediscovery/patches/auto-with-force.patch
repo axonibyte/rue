@@ -1,0 +1,13 @@
+# Reverts: mode: :auto refuses every force: statically (E0404)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/Check.hs
++++ b/proto/src/Rue/Proto/Check.hs
+@@ -292,7 +292,7 @@
+       Left _ -> False
+ 
+     planDiagnostics =
+-      [d E0404 Nothing "mode: :auto plan contains force:" | planMode p == Auto, any hasForce steps]
++      [d E0404 Nothing "mode: :auto plan contains force:" | planMode p == Auto, any hasForce steps, False]
+         <> [d E0403 Nothing ("backstop scheduler not present on " <> planOwner p) | isJust (planBackstop p), planOwner p `notElem` siteSchedulerPresent site]
+     hasForce (_, it) = case stepIOf it of
+       Just s -> not (null (stepForce s))

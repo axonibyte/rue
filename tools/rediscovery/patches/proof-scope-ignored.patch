@@ -1,0 +1,13 @@
+# Reverts: a gate that counts the requester is refused; the requester's proof has no scope there (E0508)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/Gates.hs
++++ b/proto/src/Rue/Proto/Gates.hs
+@@ -99,7 +99,7 @@
+ -- @humans()@ counts the requester when the requester is a human
+ -- authenticator.
+ countsRequester :: [Authenticator] -> Text -> GateExpr -> Bool
+-countsRequester auths requester g = go g
++countsRequester auths requester g = False && go g
+   where
+     requesterHuman = any (\a -> authId a == requester && authHuman a) auths
+     go e = case e of

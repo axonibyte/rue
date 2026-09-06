@@ -81,6 +81,7 @@ sh tools/check.sh                 # the gate: every phase runs, every failure is
 sh tools/lint-seam.sh             # the seam guard alone
 sh tools/lint-ecodes.sh           # the E-code guard alone
 sh tests/tier3/t_seam.sh          # a guard's self-test
+sh tools/rediscovery/run.sh --tier 1   # revert each tier-1 protection in a scratch copy; the suite must fail
 cd proto && cabal build all && cabal test all --test-show-details=direct
 cd proto && cabal run -v0 rue-proto-check -- t3 fw-01            # a tenant's prose verdict; --json, --explain
 ```
@@ -114,6 +115,7 @@ on both registered guests. Validate the manifest with
 | `tools/lint-seam.sh`, `tools/seam-denylist.txt` | The seam guard and its denylist |
 | `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |
 | `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
+| `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
 | `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests |
 | `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |
 | `tests/tier3/` | Self-tests of the guards: each plants the fault it exists to catch |

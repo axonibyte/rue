@@ -1,0 +1,13 @@
+# Reverts: par_ok: children of a par must have pairwise disjoint umbras (E0303)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/Interference.hs
++++ b/proto/src/Rue/Proto/Interference.hs
+@@ -242,7 +242,7 @@
+         , cb <- rest
+         , (a, oa) <- ca
+         , (b, ob) <- cb
+-        , not (disjointUmbra owner oa ob)
++        , False && not (disjointUmbra owner oa ob)
+         ]
+     reachy = nub [n | grp <- parGroups, child <- grp, (n, o) <- child, not (null (opReach o))]
+ 

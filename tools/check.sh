@@ -198,6 +198,7 @@ phase shellcheck       p_shellcheck
 phase seam             sh tools/lint-seam.sh
 phase ecodes           sh tools/lint-ecodes.sh
 phase golden-hygiene   sh tools/lint-goldens.sh
+phase rediscovery-patches sh tools/rediscovery/check-patches.sh
 phase tier3-selftests  p_tier3
 phase cabal-build      p_cabal_build
 phase cabal-test       p_cabal_test

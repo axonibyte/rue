@@ -1,0 +1,12 @@
+# Reverts: a permanent plan is never reverted by time (section 5.9 rule 2)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/States.hs
++++ b/proto/src/Rue/Proto/States.hs
+@@ -176,7 +176,6 @@
+     -- (bounded by its approval window instead). A permanent plan has no
+     -- wane, so the event cannot occur.
+     wane
+-      | permanent = NotApplicable
+       | s == DriftHeld || s == Stuck = Stay
+       | s == Pending || s == Unchecked || s == Checked || s == ApprovalExpired = NotApplicable
+       | s == Expired = Stay

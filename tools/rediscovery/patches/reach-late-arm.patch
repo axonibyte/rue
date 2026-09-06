@@ -1,0 +1,13 @@
+# Reverts: the reach rule: a reach op needs a :target backstop armed before it (E0401)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/Backstop.hs
++++ b/proto/src/Rue/Proto/Backstop.hs
+@@ -66,7 +66,7 @@
+   where
+     armedBefore n = case planBackstop p of
+       Nothing -> False
+-      Just b -> let ArmBefore a = armBefore b in a <= n
++      Just _ -> n >= 0
+ 
+ data TriggerViolation
+   = AfterNotWane -- ^ E0503: temporary plan's @after:@ differs from its wane

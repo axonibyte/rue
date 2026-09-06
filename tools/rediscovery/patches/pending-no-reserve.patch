@@ -1,0 +1,13 @@
+# Reverts: a request reserves its umbra at Pending (section 5.12)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/proto/src/Rue/Proto/Ledger.hs
++++ b/proto/src/Rue/Proto/Ledger.hs
+@@ -47,7 +47,7 @@
+       h : _ -> Left (R0101, "exclusivity class held by " <> instId h)
+       [] -> case [h | h <- sameHost, any (\f -> any (touches f) (instUmbra h)) (instUmbra inst)] of
+         h : _ -> Left (R0203, "umbra overlaps " <> instId h)
+-        [] -> Right (Ledger (inst : held))
++        [] -> Right l
+   where
+     sameHost = [h | h <- held, instHost h == instHost inst]
+     sameClass h = case (instExclusivity h, instExclusivity inst) of
