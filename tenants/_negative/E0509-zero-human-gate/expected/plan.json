@@ -1,0 +1,251 @@
+{
+  "ir_version": 1,
+  "plan": {
+    "backstop": {
+      "arm_before": 3,
+      "triggers": [
+        {
+          "after": 14400
+        },
+        {
+          "unless_heartbeat": {
+            "deadline_s": 60,
+            "interval_s": 20
+          }
+        }
+      ]
+    },
+    "body": [
+      {
+        "alias": null,
+        "args": [],
+        "direction": "forward",
+        "force": [],
+        "gate": null,
+        "item": "step",
+        "on_lapse": "revert",
+        "op": {
+          "drift": null,
+          "exclusivity": null,
+          "footprint": [
+            {
+              "anchor": null,
+              "instance": null,
+              "kind": "owned",
+              "shape": "file:/etc/ssh/sshd_config.d/rue-breakglass.conf"
+            },
+            {
+              "anchor": null,
+              "instance": null,
+              "kind": "derived",
+              "shape": "probe:sshd_posture"
+            }
+          ],
+          "handoff_done": null,
+          "has_suspend": false,
+          "id": "service_posture",
+          "locus": "target",
+          "outputs": [],
+          "post": [
+            {
+              "force_never": false,
+              "name": "sshd_posture_applied",
+              "value": "yes"
+            }
+          ],
+          "pre": [],
+          "reach": [],
+          "refusal": "revert",
+          "undo": "restore",
+          "undo_closed": true,
+          "undo_idempotent": true,
+          "undo_locus": "target",
+          "undo_one_line": "remove /etc/ssh/sshd_config.d/rue-breakglass.conf; reload sshd"
+        },
+        "window_s": null
+      },
+      {
+        "alias": null,
+        "args": [],
+        "direction": "forward",
+        "force": [],
+        "gate": null,
+        "item": "step",
+        "on_lapse": "revert",
+        "op": {
+          "drift": null,
+          "exclusivity": null,
+          "footprint": [
+            {
+              "anchor": "rue-breakglass",
+              "instance": null,
+              "kind": "region",
+              "shape": "file:/root/.ssh/authorized_keys"
+            }
+          ],
+          "handoff_done": null,
+          "has_suspend": false,
+          "id": "authorized_keys_block",
+          "locus": "target",
+          "outputs": [],
+          "post": [],
+          "pre": [],
+          "reach": [],
+          "refusal": "revert",
+          "undo": "restore",
+          "undo_closed": true,
+          "undo_idempotent": true,
+          "undo_locus": "target",
+          "undo_one_line": "strip the rue-breakglass block from /root/.ssh/authorized_keys"
+        },
+        "window_s": null
+      },
+      {
+        "alias": "bmc",
+        "args": [],
+        "direction": "forward",
+        "force": [],
+        "gate": null,
+        "item": "step",
+        "on_lapse": "revert",
+        "op": {
+          "drift": null,
+          "exclusivity": null,
+          "footprint": [
+            {
+              "anchor": null,
+              "instance": null,
+              "kind": "modified",
+              "shape": "bmc:account:breakglass"
+            }
+          ],
+          "handoff_done": null,
+          "has_suspend": false,
+          "id": "bmc_account_enable",
+          "locus": {
+            "host": {
+              "static": "bmc-01"
+            }
+          },
+          "outputs": [
+            {
+              "name": "bmc_password",
+              "secret": true
+            }
+          ],
+          "post": [],
+          "pre": [],
+          "reach": [],
+          "refusal": "revert",
+          "undo": "restore",
+          "undo_closed": true,
+          "undo_idempotent": true,
+          "undo_locus": "controller",
+          "undo_one_line": "disable the breakglass account and clear bmc_password"
+        },
+        "window_s": null
+      },
+      {
+        "alias": null,
+        "args": [],
+        "direction": "forward",
+        "force": [],
+        "gate": null,
+        "item": "step",
+        "on_lapse": "revert",
+        "op": {
+          "drift": null,
+          "exclusivity": null,
+          "footprint": [
+            {
+              "anchor": null,
+              "instance": null,
+              "kind": "held",
+              "shape": "proc:vnc-tunnel"
+            }
+          ],
+          "handoff_done": null,
+          "has_suspend": true,
+          "id": "console_tunnel",
+          "locus": "controller",
+          "outputs": [
+            {
+              "name": "console_secret",
+              "secret": true
+            }
+          ],
+          "post": [],
+          "pre": [],
+          "reach": [],
+          "refusal": "revert",
+          "undo": "restore",
+          "undo_closed": true,
+          "undo_idempotent": true,
+          "undo_locus": "controller",
+          "undo_one_line": "release the tunnel and rotate console_secret"
+        },
+        "window_s": null
+      }
+    ],
+    "exclusivity": "breakglass",
+    "fires_by_construction": false,
+    "gate": {
+      "allow_zero_human": false,
+      "expr": {
+        "single": {
+          "wait": {
+            "duration_s": 1800,
+            "weight": 1
+          }
+        }
+      },
+      "window_s": 3600
+    },
+    "id": "breakglass",
+    "mode": "manual",
+    "owner": "db-01",
+    "renew_within_s": 1800,
+    "require_journal": null,
+    "strictness": "strict",
+    "wane_s": 14400
+  },
+  "requester": "requester",
+  "site": {
+    "authenticators": [
+      {
+        "human": true,
+        "id": "oncall"
+      },
+      {
+        "human": true,
+        "id": "platform_a"
+      }
+    ],
+    "hosts": [
+      {
+        "filesystem": true,
+        "name": "db-01",
+        "os": "freebsd",
+        "reach": [
+          "ssh"
+        ]
+      },
+      {
+        "filesystem": false,
+        "name": "bmc-01",
+        "os": "appliance",
+        "reach": [
+          "api"
+        ]
+      }
+    ],
+    "max_wait_s": null,
+    "scheduler_present": [
+      "db-01"
+    ],
+    "transports": [
+      "ssh",
+      "api"
+    ]
+  }
+}

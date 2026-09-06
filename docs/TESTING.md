@@ -80,6 +80,30 @@ This is byte-compatible with `serde_json::to_string_pretty` followed by a
 newline. `Test.Canonical` asserts the bytes directly and, as a property,
 that `parse . encode = id` and `encode . parse . encode = encode`.
 
+## The plan IR
+
+The checker's input as data: one `plan.json` per checked case beside its
+verdict goldens (`tenants/<t>/expected/<host>/plan.json`,
+`tenants/_negative/<code>-<slug>/expected/plan.json`), holding what `check`
+consumes -- the site, the requester and one concrete per-host plan -- in
+canonical JSON. It is a golden like the others: enumerated from code, read
+only in tests, written only by `rue-proto-goldens`, covered by the hygiene
+guard and the orphan walk.
+
+The shape is `Rue.Proto.Json.PlanIr`, written field by field so no
+implementation's constructor names leak into it. `ir_version` is an integer;
+a reader refuses any version it does not know. While the prototype is the
+only emitter, any change of shape bumps the version and changes emitter and
+readers in one commit; Phase 2's front end freezes it. Durations are whole
+seconds under names ending in `_s`. A unit constructor is a bare string, a
+data-carrying one a one-key object, and every item carries an `item` tag with
+a step's fields flattened beside it. The prototype's stand-in flags
+(`undo_closed`, `undo_idempotent`, `undo_one_line`) are carried as they are
+until bodies replace them.
+
+`rue-proto-check <tenant> <host> --ir` prints a case's IR; it must equal the
+golden.
+
 ## Negative cases
 
 A negative case is a plan the checker must refuse with exactly one named

@@ -1,6 +1,7 @@
 -- | Print a tenant case's verdict: @rue-proto-check <tenant> <host>
--- [--json | --prose | --explain]@. The default is the prose verdict, which is
--- the last line printed, as every rue verb that acts on the world ends in one.
+-- [--json | --prose | --explain | --ir]@. The default is the prose verdict,
+-- which is the last line printed, as every rue verb that acts on the world
+-- ends in one. @--ir@ prints the plan IR the case was checked from.
 module Main (main) where
 
 import qualified Data.ByteString as B
@@ -9,6 +10,7 @@ import qualified Data.Text.Encoding as TE
 import Rue.Proto.Check (check, deferredSteps)
 import Rue.Proto.Explain (explain)
 import qualified Rue.Proto.Json.Canonical as Canonical
+import qualified Rue.Proto.Json.PlanIr as PlanIr
 import Rue.Proto.Prose (prose)
 import Rue.Proto.Tenants (lookupCase)
 import Rue.Proto.Verdict (Status (..), toJson, vStatus)
@@ -22,11 +24,11 @@ main = do
   args <- getArgs
   case args of
     [tenant, host] -> run tenant host "--prose"
-    [tenant, host, mode] | mode `elem` ["--json", "--prose", "--explain"] -> run tenant host mode
+    [tenant, host, mode] | mode `elem` ["--json", "--prose", "--explain", "--ir"] -> run tenant host mode
     _ -> usage
   where
     usage = do
-      hPutStrLn stderr "usage: rue-proto-check <tenant> <host> [--json | --prose | --explain]"
+      hPutStrLn stderr "usage: rue-proto-check <tenant> <host> [--json | --prose | --explain | --ir]"
       exitWith (ExitFailure 2)
     run tenant host mode = case lookupCase (T.pack tenant) (T.pack host) of
       Nothing -> do
@@ -37,5 +39,6 @@ main = do
         case mode of
           "--json" -> either (\e -> hPutStrLn stderr e >> exitWith (ExitFailure 2)) (B.hPut stdout) (Canonical.encode (toJson v))
           "--explain" -> B.hPut stdout (TE.encodeUtf8 (explain plan (deferredSteps site plan)))
+          "--ir" -> either (\e -> hPutStrLn stderr e >> exitWith (ExitFailure 2)) (B.hPut stdout) (Canonical.encode (PlanIr.toJson site requester plan))
           _ -> B.hPut stdout (TE.encodeUtf8 (prose v))
         exitWith (if vStatus v == Ok then ExitSuccess else ExitFailure 1)

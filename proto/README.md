@@ -22,13 +22,14 @@ goldens and its canonical JSON are what Phase 1 must reproduce.
 | `src/Rue/Proto/Ledger.hs` | The cross-plan ledger: reservation at Pending, exclusivity classes (5.12) |
 | `src/Rue/Proto/Diagnostics.hs` | Every code of section 6.7 as a constructor; the only place a code is text |
 | `src/Rue/Proto/Json/Canonical.hs` | The canonical encoder (docs/TESTING.md) |
+| `src/Rue/Proto/Json/PlanIr.hs` | The plan IR: the checker's input as data, one `plan.json` golden per case (docs/TESTING.md) |
 | `tenants/Rue/Proto/Tenants/` | T1 to T4 as terms, the negative cases, and the artifact list |
 | `app/` | `rue-proto-check`, `rue-proto-goldens` (the only golden writer), `rue-proto-states` |
 | `test/` | The suite; see docs/TESTING.md |
 
 ```sh
 cabal build all && cabal test all --test-show-details=direct
-cabal run -v0 rue-proto-check -- t1 db-01             # prose; --json, --explain
+cabal run -v0 rue-proto-check -- t1 db-01             # prose; --json, --explain, --ir
 RUE_UPDATE_GOLDENS=1 cabal run rue-proto-goldens       # rewrite expected files, deliberately
 ```
 

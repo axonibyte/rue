@@ -1,0 +1,111 @@
+{
+  "ir_version": 1,
+  "plan": {
+    "backstop": {
+      "arm_before": 1,
+      "triggers": [
+        {
+          "unless_confirmed": 600
+        }
+      ]
+    },
+    "body": [
+      {
+        "alias": null,
+        "args": [
+          "port: 8443"
+        ],
+        "direction": "forward",
+        "force": [],
+        "gate": null,
+        "item": "step",
+        "on_lapse": "revert",
+        "op": {
+          "drift": null,
+          "exclusivity": null,
+          "footprint": [
+            {
+              "anchor": "rue-mgmt",
+              "instance": null,
+              "kind": "region",
+              "shape": "file:/etc/pf.conf"
+            }
+          ],
+          "handoff_done": null,
+          "has_suspend": false,
+          "id": "pf_allow",
+          "locus": "target",
+          "outputs": [],
+          "post": [],
+          "pre": [],
+          "reach": [
+            "ssh"
+          ],
+          "refusal": "revert",
+          "undo": "restore",
+          "undo_closed": true,
+          "undo_idempotent": true,
+          "undo_locus": "target",
+          "undo_one_line": "strip the rue-mgmt anchor from /etc/pf.conf; pfctl reload"
+        },
+        "window_s": null
+      },
+      {
+        "alias": "reach",
+        "item": "observe",
+        "probe": "verify_reach"
+      },
+      {
+        "item": "confirm"
+      },
+      {
+        "item": "commit"
+      }
+    ],
+    "exclusivity": null,
+    "fires_by_construction": false,
+    "gate": null,
+    "id": "open_mgmt_port",
+    "mode": "manual",
+    "owner": "fw-01",
+    "renew_within_s": null,
+    "require_journal": null,
+    "strictness": "strict",
+    "wane_s": 3600
+  },
+  "requester": "requester",
+  "site": {
+    "authenticators": [
+      {
+        "human": true,
+        "id": "netops"
+      }
+    ],
+    "hosts": [
+      {
+        "filesystem": true,
+        "name": "fw-01",
+        "os": "freebsd",
+        "reach": [
+          "ssh"
+        ]
+      },
+      {
+        "filesystem": true,
+        "name": "fw-win-01",
+        "os": "windows",
+        "reach": [
+          "ssh"
+        ]
+      }
+    ],
+    "max_wait_s": null,
+    "scheduler_present": [
+      "fw-01",
+      "fw-win-01"
+    ],
+    "transports": [
+      "ssh"
+    ]
+  }
+}

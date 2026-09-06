@@ -18,6 +18,7 @@ import Rue.Proto.Diagnostics (Code, codeText)
 import Rue.Proto.Explain (explain)
 import Rue.Proto.Golden (Artifact (..))
 import qualified Rue.Proto.Json.Canonical as Canonical
+import qualified Rue.Proto.Json.PlanIr as PlanIr
 import Rue.Proto.Model (Plan, Site)
 import Rue.Proto.Prose (prose)
 import Rue.Proto.Verdict (Verdict, toJson)
@@ -53,7 +54,8 @@ tenantArtifacts t = concatMap one (tenantCases t)
     one c =
       let v = check (tenantSite t) (tenantRequester t) (casePlan c)
           dir = T.unpack ("tenants/" <> tenantName t <> "/expected/" <> caseHost c <> "/")
-       in [ Artifact (dir <> "verdict.json") (Canonical.encode (toJson v))
+       in [ Artifact (dir <> "plan.json") (Canonical.encode (PlanIr.toJson (tenantSite t) (tenantRequester t) (casePlan c)))
+          , Artifact (dir <> "verdict.json") (Canonical.encode (toJson v))
           , Artifact (dir <> "verdict.txt") (Right (TE.encodeUtf8 (prose v)))
           , Artifact (dir <> "explain.txt") (Right (TE.encodeUtf8 (explain (casePlan c) (deferredSteps (tenantSite t) (casePlan c)))))
           ]
@@ -62,6 +64,7 @@ negativeArtifacts :: NegativeCase -> [Artifact]
 negativeArtifacts n =
   let v = check (negSite n) (negRequester n) (negPlan n)
       dir = T.unpack ("tenants/_negative/" <> codeText (negCode n) <> "-" <> negSlug n <> "/expected/")
-   in [ Artifact (dir <> "verdict.json") (Canonical.encode (toJson v))
+   in [ Artifact (dir <> "plan.json") (Canonical.encode (PlanIr.toJson (negSite n) (negRequester n) (negPlan n)))
+      , Artifact (dir <> "verdict.json") (Canonical.encode (toJson v))
       , Artifact (dir <> "verdict.txt") (Right (TE.encodeUtf8 (prose v)))
       ]

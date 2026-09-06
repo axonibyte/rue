@@ -1,0 +1,104 @@
+{
+  "ir_version": 1,
+  "plan": {
+    "backstop": null,
+    "body": [
+      {
+        "alias": null,
+        "args": [],
+        "direction": "forward",
+        "force": [],
+        "gate": null,
+        "item": "step",
+        "on_lapse": "revert",
+        "op": {
+          "drift": null,
+          "exclusivity": null,
+          "footprint": [
+            {
+              "anchor": null,
+              "instance": null,
+              "kind": "owned",
+              "shape": "file:/etc/a"
+            }
+          ],
+          "handoff_done": null,
+          "has_suspend": false,
+          "id": "a",
+          "locus": "target",
+          "outputs": [],
+          "post": [],
+          "pre": [],
+          "reach": [],
+          "refusal": "revert",
+          "undo": "restore",
+          "undo_closed": true,
+          "undo_idempotent": true,
+          "undo_locus": "none",
+          "undo_one_line": "restore"
+        },
+        "window_s": null
+      }
+    ],
+    "exclusivity": null,
+    "fires_by_construction": false,
+    "gate": null,
+    "id": "posture",
+    "mode": "manual",
+    "owner": "db-01",
+    "renew_within_s": null,
+    "require_journal": null,
+    "strictness": "strict",
+    "wane_s": 3600
+  },
+  "requester": "requester",
+  "site": {
+    "authenticators": [
+      {
+        "human": true,
+        "id": "oncall"
+      },
+      {
+        "human": true,
+        "id": "alice"
+      },
+      {
+        "human": false,
+        "id": "driver"
+      }
+    ],
+    "hosts": [
+      {
+        "filesystem": true,
+        "name": "db-01",
+        "os": "freebsd",
+        "reach": [
+          "ssh"
+        ]
+      },
+      {
+        "filesystem": false,
+        "name": "api-01",
+        "os": "appliance",
+        "reach": [
+          "api"
+        ]
+      },
+      {
+        "filesystem": true,
+        "name": "island",
+        "os": "freebsd",
+        "reach": [
+          "console"
+        ]
+      }
+    ],
+    "max_wait_s": null,
+    "scheduler_present": [
+      "db-01"
+    ],
+    "transports": [
+      "ssh"
+    ]
+  }
+}

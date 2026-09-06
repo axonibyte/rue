@@ -40,6 +40,7 @@ library
     Rue.Proto.Intent
     Rue.Proto.Interference
     Rue.Proto.Json.Canonical
+    Rue.Proto.Json.PlanIr
     Rue.Proto.Ledger
     Rue.Proto.Model
     Rue.Proto.Prose
