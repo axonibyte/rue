@@ -1,0 +1,13 @@
+# Reverts: closure (E0202) refuses a controller-side value in a :target undo (section 5.3) -- a target-side artifact cannot carry it.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/closure.rs
++++ b/core/src/closure.rs
+@@ -62,7 +62,7 @@
+ 
+ fn check_refs(index: usize, position: &'static str, v: &Value, out: &mut Vec<Unclosed>) {
+     for r in v.refs() {
+-        if !r.target_local() && !r.is_secret() {
++        if !r.target_local() && !r.is_secret() && !matches!(r, Ref::Controller(_)) {
+             out.push(Unclosed::ControllerRef {
+                 index,
+                 position,

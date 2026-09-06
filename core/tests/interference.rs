@@ -210,7 +210,10 @@ fn needs_follows_the_undo_form() {
     assert_eq!(needs(&o), vec![Fact::new("file:/a", None)]);
     assert_eq!(
         needs(&Op {
-            undo: Undo::Compensate(vec!["x".into()]),
+            undo: Undo::Compensate {
+                body: vec![],
+                undo_pre: vec!["x".into()],
+            },
             ..o.clone()
         }),
         vec![Fact::new("x", None)]

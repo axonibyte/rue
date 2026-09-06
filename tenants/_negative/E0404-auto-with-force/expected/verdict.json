@@ -72,7 +72,7 @@
       "n": 1,
       "op": "posture",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "remove file:/etc/x",
       "undo_locus": "controller"
     }
   ],

@@ -6,7 +6,7 @@
   "diagnostics": [
     {
       "code": "E0202",
-      "message": "op a: :target undo is not closed over target-local commands and facts",
+      "message": "op a: :target undo is not closed over target-local commands and facts: controller_backup is a controller value (cmd, prim 1)",
       "step": 1
     }
   ],
@@ -50,7 +50,7 @@
       "n": 1,
       "op": "a",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "restore-from #{controller_backup}",
       "undo_locus": "target"
     }
   ],

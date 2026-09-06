@@ -73,7 +73,7 @@
       "n": 1,
       "op": "pf_allow",
       "refusal": "revert",
-      "undo": "strip the rue-mgmt anchor from /etc/pf.conf; pfctl reload",
+      "undo": "restore file:/etc/pf.conf from snapshot",
       "undo_locus": "target"
     },
     {

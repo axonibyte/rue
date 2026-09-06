@@ -8,7 +8,8 @@ rue 0
 # snapshot and a stranger's edits outside the anchor are lost -- unless another
 # instance holds a region on the file, in which case the revert is deferred.
 #
-# Phase 0 carries this text unparsed; see proto/tenants/Rue/Proto/Tenants/T3.hs.
+# Phase 1 carries this text unparsed; the checked form is the Rust term in
+# tenants/harness/src/tenants/t3.rs, and expected/ holds its verdicts.
 
 site do
   inventory from: file("inventory.toml")

@@ -1,4 +1,4 @@
- 1. service_posture   locus=target   refusal=revert   drift=clobber   undo=remove /etc/ssh/sshd_config.d/rue-breakglass.conf; reload sshd   undo_locus=target
- 2. authorized_keys_block   locus=target   refusal=revert   drift=clobber   undo=strip the rue-breakglass block from /root/.ssh/authorized_keys   undo_locus=target   damaged-marker cost: the whole fact is restored from the do-time snapshot and a stranger's edits outside the region are lost, unless another instance holds a region on it
- 3. bmc_account_enable   locus=host(bmc-01)   refusal=revert   drift=defer   undo=disable the breakglass account and clear <secret:bmc_password>   undo_locus=controller
- 4. console_tunnel   locus=controller   refusal=revert   drift=n/a   undo=release the tunnel and rotate <secret:console_secret>   undo_locus=controller
+ 1. service_posture   locus=target   refusal=revert   drift=clobber   undo=remove file:/etc/ssh/sshd_config.d/rue-breakglass.conf   undo_locus=target
+ 2. authorized_keys_block   locus=target   refusal=revert   drift=clobber   undo=strip anchor rue-breakglass from file:/root/.ssh/authorized_keys   undo_locus=target   damaged-marker cost: the whole fact is restored from the do-time snapshot and a stranger's edits outside the region are lost, unless another instance holds a region on it
+ 3. bmc_account_enable   locus=host(bmc-01)   refusal=revert   drift=defer   undo=hook :bmc_disable(account: breakglass)   undo_locus=controller
+ 4. console_tunnel   locus=controller   refusal=revert   drift=n/a   undo=vnc-tunnel down   undo_locus=controller

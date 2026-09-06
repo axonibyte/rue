@@ -10,8 +10,10 @@
 
 pub mod algebra;
 pub mod backstop;
+pub mod body;
 pub mod canon;
 pub mod check;
+pub mod closure;
 pub mod diagnostics;
 pub mod explain;
 pub mod gates;

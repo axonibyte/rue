@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": null,
     "body": [
@@ -42,17 +42,34 @@
         "item": "knell",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "hook": {
+                "args": [
+                  {
+                    "name": "node",
+                    "value": {
+                      "ref": {
+                        "param": "corpse"
+                      }
+                    }
+                  }
+                ],
+                "name": "fence"
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "fence_corpse",
           "locus": "controller",
           "outputs": [],
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": {
             "knell": {
               "ack": {
@@ -74,11 +91,10 @@
               }
             }
           },
+          "suspend": null,
           "undo": "none",
-          "undo_closed": true,
           "undo_idempotent": true,
-          "undo_locus": "none",
-          "undo_one_line": ""
+          "undo_locus": "none"
         },
         "window_s": null
       },
@@ -101,17 +117,38 @@
             "item": "knell",
             "on_lapse": "revert",
             "op": {
+              "do": [
+                {
+                  "run": {
+                    "cmd": [
+                      {
+                        "lit": "zfs rollback -r "
+                      },
+                      {
+                        "ref": {
+                          "param": "dataset"
+                        }
+                      },
+                      {
+                        "lit": "@split"
+                      }
+                    ],
+                    "env": [],
+                    "stdin": null
+                  }
+                }
+              ],
               "drift": null,
               "exclusivity": null,
               "footprint": [],
               "handoff_done": null,
-              "has_suspend": false,
               "id": "rollback_ahead_datasets",
               "locus": "target",
               "outputs": [],
               "post": [],
               "pre": [],
               "reach": [],
+              "reestablish": null,
               "refusal": {
                 "knell": {
                   "ack": {
@@ -133,11 +170,10 @@
                   }
                 }
               },
+              "suspend": null,
               "undo": "none",
-              "undo_closed": true,
               "undo_idempotent": true,
-              "undo_locus": "none",
-              "undo_one_line": ""
+              "undo_locus": "none"
             },
             "window_s": null
           }
@@ -153,6 +189,27 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "hook": {
+                "args": [
+                  {
+                    "name": "set",
+                    "value": {
+                      "lit": ":slave"
+                    }
+                  },
+                  {
+                    "name": "node",
+                    "value": {
+                      "lit": "node-a"
+                    }
+                  }
+                ],
+                "name": "platform"
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -164,23 +221,49 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "resurrection_gate",
           "locus": "controller",
           "outputs": [],
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": {
             "hold": {
               "via": "slave_mode"
             }
           },
-          "undo": "restore",
-          "undo_closed": true,
+          "suspend": null,
+          "undo": {
+            "computed": {
+              "body": [
+                {
+                  "hook": {
+                    "args": [
+                      {
+                        "name": "set",
+                        "value": {
+                          "lit": ":master"
+                        }
+                      },
+                      {
+                        "name": "node",
+                        "value": {
+                          "lit": "node-a"
+                        }
+                      }
+                    ],
+                    "name": "platform"
+                  }
+                }
+              ],
+              "undo_pre": [
+                "platform:node-a:mode"
+              ]
+            }
+          },
           "undo_idempotent": true,
-          "undo_locus": "controller",
-          "undo_one_line": "release the slave-mode gate on node-a"
+          "undo_locus": "controller"
         },
         "window_s": null
       },
@@ -195,6 +278,24 @@
             "item": "step",
             "on_lapse": "revert",
             "op": {
+              "do": [
+                {
+                  "run": {
+                    "cmd": [
+                      {
+                        "lit": "cbsd bstart "
+                      },
+                      {
+                        "ref": {
+                          "controller": "g"
+                        }
+                      }
+                    ],
+                    "env": [],
+                    "stdin": null
+                  }
+                }
+              ],
               "drift": null,
               "exclusivity": null,
               "footprint": [
@@ -206,23 +307,46 @@
                 }
               ],
               "handoff_done": null,
-              "has_suspend": false,
               "id": "start_guest",
               "locus": "target",
               "outputs": [],
               "post": [],
               "pre": [],
               "reach": [],
+              "reestablish": null,
               "refusal": {
                 "hold": {
                   "via": null
                 }
               },
-              "undo": "restore",
-              "undo_closed": true,
+              "suspend": null,
+              "undo": {
+                "computed": {
+                  "body": [
+                    {
+                      "run": {
+                        "cmd": [
+                          {
+                            "lit": "cbsd bstop "
+                          },
+                          {
+                            "ref": {
+                              "controller": "g"
+                            }
+                          }
+                        ],
+                        "env": [],
+                        "stdin": null
+                      }
+                    }
+                  ],
+                  "undo_pre": [
+                    "guest:{g}:state"
+                  ]
+                }
+              },
               "undo_idempotent": true,
-              "undo_locus": "controller",
-              "undo_one_line": "stop guest {g} on node-b"
+              "undo_locus": "controller"
             },
             "window_s": null
           }
@@ -246,6 +370,36 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "append": {
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/var/db/succession.log"
+                },
+                "line": {
+                  "ref": {
+                    "param": "entry"
+                  }
+                }
+              }
+            },
+            {
+              "hook": {
+                "args": [
+                  {
+                    "name": "set",
+                    "value": {
+                      "ref": {
+                        "param": "entry"
+                      }
+                    }
+                  }
+                ],
+                "name": "placement"
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -263,24 +417,55 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "record_succession",
           "locus": "controller",
           "outputs": [],
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": "revert",
+          "suspend": null,
           "undo": {
-            "compensate": [
-              "file:/var/db/succession.log",
-              "record:placement"
-            ]
+            "compensate": {
+              "body": [
+                {
+                  "append": {
+                    "fact": {
+                      "anchor": null,
+                      "shape": "file:/var/db/succession.log"
+                    },
+                    "line": {
+                      "ref": {
+                        "param": "reversal"
+                      }
+                    }
+                  }
+                },
+                {
+                  "hook": {
+                    "args": [
+                      {
+                        "name": "set",
+                        "value": {
+                          "ref": {
+                            "param": "reversal"
+                          }
+                        }
+                      }
+                    ],
+                    "name": "placement"
+                  }
+                }
+              ],
+              "undo_pre": [
+                "file:/var/db/succession.log",
+                "record:placement"
+              ]
+            }
           },
-          "undo_closed": true,
           "undo_idempotent": true,
-          "undo_locus": "controller",
-          "undo_one_line": "append a reversal record (undone by record, not erasure)"
+          "undo_locus": "controller"
         },
         "window_s": null
       },
@@ -293,6 +478,19 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "cbsd bstart heir"
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -304,7 +502,6 @@
             }
           ],
           "handoff_done": "heir_running_on_c",
-          "has_suspend": false,
           "id": "start_heir",
           "locus": {
             "host": {
@@ -315,16 +512,35 @@
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": {
             "hold": {
               "via": null
             }
           },
-          "undo": "restore",
-          "undo_closed": true,
+          "suspend": null,
+          "undo": {
+            "computed": {
+              "body": [
+                {
+                  "run": {
+                    "cmd": [
+                      {
+                        "lit": "cbsd bstop heir"
+                      }
+                    ],
+                    "env": [],
+                    "stdin": null
+                  }
+                }
+              ],
+              "undo_pre": [
+                "guest:heir:state"
+              ]
+            }
+          },
           "undo_idempotent": true,
-          "undo_locus": "controller",
-          "undo_one_line": "stop the heir on node-c"
+          "undo_locus": "controller"
         },
         "window_s": null
       },
@@ -366,7 +582,8 @@
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       },
       {
         "filesystem": true,
@@ -374,7 +591,8 @@
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       },
       {
         "filesystem": true,
@@ -382,13 +600,15 @@
         "os": "freebsd",
         "reach": [
           "console"
-        ]
+        ],
+        "stdin_preamble": true
       }
     ],
     "max_wait_s": 1800,
     "scheduler_present": [
       "node-b"
     ],
+    "secrets_deliver_to": [],
     "transports": [
       "ssh"
     ]

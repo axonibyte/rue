@@ -1,8 +1,8 @@
 rue 0
 # T1 -- break-glass access (docs/ROADMAP.md section 8.1). Temporary.
 #
-# Phase 0 carries this text unparsed; the checked form is the Haskell term in
-# proto/tenants/Rue/Proto/Tenants/T1.hs, and expected/ holds its verdicts.
+# Phase 1 carries this text unparsed; the checked form is the Rust term in
+# tenants/harness/src/tenants/t1.rs, and expected/ holds its verdicts.
 # Phase 2's front end must accept this file and produce the same verdict.
 
 site do
@@ -61,6 +61,9 @@ defop :console_tunnel, _ do
   footprint held: proc.vnc_tunnel
   do: run("vnc-tunnel up --to #{host.address}")
   undo: run("vnc-tunnel down")
+  # A computed undo names the facts it needs unchanged (E0207); the held
+  # process is the only one. Phase 0's text omitted this line.
+  undo_pre proc.vnc_tunnel
   undo_locus: :controller
   outputs console_secret, secret: true
   locus: :controller

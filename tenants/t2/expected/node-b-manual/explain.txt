@@ -3,8 +3,8 @@
  3. assert probes_agree   :no refuses; :unknown waits
  4. fence_corpse   locus=controller   refusal=knell   drift=n/a   undo=NO UNDO — knell, cost fence_verdict   undo_locus=none   ack=humans()
  5. rollback_ahead_datasets   locus=target   refusal=knell   drift=n/a   undo=NO UNDO — knell, cost destroyed_snapshots   undo_locus=none   ack=humans()
- 6. resurrection_gate   locus=controller   refusal=hold via slave_mode   drift=defer   undo=release the slave-mode gate on node-a   undo_locus=controller
- 7. start_guest   locus=target   refusal=hold   drift=defer   undo=stop guest {g} on node-b   undo_locus=controller
- 8. record_succession   locus=controller   refusal=revert   drift=n/a   undo=append a reversal record (undone by record, not erasure)   undo_locus=controller
- 9. start_heir   locus=host(node-c)   refusal=hold   drift=defer   undo=stop the heir on node-c   undo_locus=controller   deferred → handoff_done: heir_running_on_c
+ 6. resurrection_gate   locus=controller   refusal=hold via slave_mode   drift=defer   undo=hook :platform(set: :master, node: node-a)   undo_locus=controller
+ 7. start_guest   locus=target   refusal=hold   drift=defer   undo=cbsd bstop #{g}   undo_locus=controller
+ 8. record_succession   locus=controller   refusal=revert   drift=n/a   undo=compensate: append to file:/var/db/succession.log; hook :placement(set: #{reversal}) (undone by record, not erasure)   undo_locus=controller
+ 9. start_heir   locus=host(node-c)   refusal=hold   drift=defer   undo=cbsd bstop heir   undo_locus=controller   deferred → handoff_done: heir_running_on_c
 10. commit()   ends the plan: undo discarded, umbras released, backstops disarmed

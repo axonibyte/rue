@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0403: backstop on a host with no scheduler
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0403.
 
 site do

@@ -4,7 +4,8 @@ rue 0
 # host registers. Two variants: drift :clobber (the host's model is convergent)
 # and drift :defer (a hand-flipped actuator leaves the instance DriftHeld).
 #
-# Phase 0 carries this text unparsed; see proto/tenants/Rue/Proto/Tenants/T4.hs.
+# Phase 1 carries this text unparsed; the checked form is the Rust term in
+# tenants/harness/src/tenants/t4.rs, and expected/ holds its verdicts.
 
 site do
   inventory from: hook(:host_world)

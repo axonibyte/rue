@@ -6,6 +6,7 @@
 mod common;
 
 use common::*;
+use rue_core::body::*;
 use rue_core::check::check;
 use rue_core::explain::explain;
 use rue_core::model::*;
@@ -18,6 +19,7 @@ fn site() -> Site {
             os: "freebsd".into(),
             reach: vec!["ssh".into()],
             filesystem: true,
+            stdin_preamble: true,
         }],
         transports: vec!["ssh".into()],
         authenticators: vec![Authenticator {
@@ -26,6 +28,7 @@ fn site() -> Site {
         }],
         max_wait: None,
         scheduler_present: vec!["db-01".into()],
+        secrets_deliver_to: vec![],
     }
 }
 
@@ -72,7 +75,7 @@ fn a_backstop_range_uses_an_en_dash_and_late_arming_is_stated() {
 }
 
 #[test]
-fn explain_numbers_leaves_joins_fields_with_three_spaces_and_redacts_every_secret() {
+fn explain_numbers_leaves_joins_fields_with_three_spaces_and_marks_every_secret_ref() {
     let mut o = owned("a");
     o.outputs = vec![
         Output {
@@ -88,7 +91,17 @@ fn explain_numbers_leaves_joins_fields_with_three_spaces_and_redacts_every_secre
             secret: true,
         },
     ];
-    o.undo_one_line = "revoke key, clear pw, keep port".into();
+    o.undo = computed(
+        vec![run(vec![
+            text("revoke "),
+            interp(output("a", "key", true)),
+            text(", clear "),
+            interp(output("a", "pw", true)),
+            text(", keep "),
+            interp(output("a", "port", false)),
+        ])],
+        &["file:/a"],
+    );
     let p = Plan::new(
         "p",
         "db-01",
@@ -100,11 +113,9 @@ fn explain_numbers_leaves_joins_fields_with_three_spaces_and_redacts_every_secre
             Item::Commit,
         ],
     );
-    // Redaction is a textual replace of each secret output's name, applied
-    // last-declared first as the prototype folds; an output whose name is a
-    // substring of another's would be garbled either way, a Phase 0 quirk the
-    // goldens never reach and the surface's name rules will make moot.
-    let expected = " 1. a(x: 1)   locus=target   refusal=revert   drift=clobber   undo=revoke <secret:key>, clear <secret:pw>, keep port   undo_locus=controller\n 2. commit()   ends the plan: undo discarded, umbras released, backstops disarmed\n";
+    // Redaction is structural: a secret reference prints as its label inside
+    // `<secret:...>`, a plain reference as `#{...}`, and no text is searched.
+    let expected = " 1. a(x: 1)   locus=target   refusal=revert   drift=clobber   undo=revoke <secret:a.key>, clear <secret:a.pw>, keep #{a.port}   undo_locus=controller\n 2. commit()   ends the plan: undo discarded, umbras released, backstops disarmed\n";
     assert_eq!(explain(&p, &[]), expected);
 }
 
@@ -118,6 +129,87 @@ fn explain_marks_knells_deferred_steps_and_the_region_cost() {
         )
     };
     let p = temp(vec![Item::Knell(StepI::new(knell_op())), s(region)]);
-    let expected = " 1. fence   locus=target   refusal=knell   drift=n/a   undo=NO UNDO \u{2014} knell, cost fence_verdict   undo_locus=controller   ack=none (driver verified off)\n 2. pf   locus=target   refusal=revert   drift=clobber   undo=restore   undo_locus=target   damaged-marker cost: the whole fact is restored from the do-time snapshot and a stranger's edits outside the region are lost, unless another instance holds a region on it   deferred \u{2192} (handoff command printed at apply)\n";
+    let expected = " 1. fence   locus=target   refusal=knell   drift=n/a   undo=NO UNDO \u{2014} knell, cost fence_verdict   undo_locus=controller   ack=none (driver verified off)\n 2. pf   locus=target   refusal=revert   drift=clobber   undo=strip anchor rue from file:/etc/pf.conf   undo_locus=target   damaged-marker cost: the whole fact is restored from the do-time snapshot and a stranger's edits outside the region are lost, unless another instance holds a region on it   deferred \u{2192} (handoff command printed at apply)\n";
     assert_eq!(explain(&p, &[2]), expected);
+}
+
+/// The undo line is derived from the undo, per footprint entry for `Restore`
+/// and per primitive for a body, and claims no more than the body does.
+#[test]
+fn the_undo_line_is_derived_from_the_undo() {
+    use rue_core::explain::undo_line;
+    let restore = Op::new(
+        "r",
+        vec![
+            FootprintEntry::entry(Kind::Owned, "file:/a"),
+            FootprintEntry::anchored("file:/b", "blk"),
+            FootprintEntry::entry(Kind::Region, "file:/c"),
+            FootprintEntry::entry(Kind::Modified, "svc:x"),
+            FootprintEntry::entry(Kind::Held, "proc:t"),
+            FootprintEntry::entry(Kind::Derived, "probe:p"),
+        ],
+    );
+    assert_eq!(
+        undo_line(&restore),
+        "remove file:/a; strip anchor blk from file:/b; strip the region from file:/c; restore svc:x from snapshot; release proc:t"
+    );
+    assert_eq!(
+        undo_line(&Op::new(
+            "d",
+            vec![FootprintEntry::entry(Kind::Derived, "probe:p")]
+        )),
+        "nothing to restore"
+    );
+    let body = vec![
+        run(vec![text("svc stop "), interp(param("name"))]),
+        write(fact_ref("file:/a"), lit("x")),
+        remove(fact_ref("file:/a")),
+        append(fact_ref("file:/log"), Value::Ref(param("line"))),
+        region_set(anchored_ref("file:/b", "blk"), lit("x")),
+        region_clear(anchored_ref("file:/b", "blk")),
+        stage("script", lit("x"), 0o755),
+        hook(
+            "bmc_disable",
+            vec![("account", lit("bg")), ("hard", Value::Ref(secret("tok")))],
+        ),
+        install("backstop"),
+        release("backstop"),
+        Prim::Call(Call {
+            prim: "svc".into(),
+            run: vec![text("service restart sshd")],
+            args: vec![ClassedArg {
+                name: "n".into(),
+                class: ArgClass::TargetLocal,
+                value: lit("sshd"),
+            }],
+        }),
+    ];
+    let computed_op = Op {
+        undo: computed(body.clone(), &["file:/a"]),
+        ..owned("a")
+    };
+    assert_eq!(
+        undo_line(&computed_op),
+        "svc stop #{name}; write file:/a; remove file:/a; append to file:/log; set anchor blk in file:/b; clear anchor blk in file:/b; stage script; hook :bmc_disable(account: bg, hard: <secret:tok>); install :backstop; release :backstop; svc(n: sshd)"
+    );
+    let compensating = Op {
+        undo: compensate(
+            vec![append(fact_ref("file:/log"), lit("undone"))],
+            &["file:/log"],
+        ),
+        ..Op::new(
+            "c",
+            vec![FootprintEntry::entry(Kind::AppendOnly, "file:/log")],
+        )
+    };
+    assert_eq!(
+        undo_line(&compensating),
+        "compensate: append to file:/log (undone by record, not erasure)"
+    );
+    let compensating_plain = Op {
+        undo: compensate(vec![run_lit("undo")], &["file:/a"]),
+        ..owned("a")
+    };
+    assert_eq!(undo_line(&compensating_plain), "compensate: undo");
+    assert_eq!(undo_line(&knell_op()), "");
 }

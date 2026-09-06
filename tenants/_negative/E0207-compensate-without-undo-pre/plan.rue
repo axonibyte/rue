@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0207: compensating undo without undo_pre
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0207.
 
 site do

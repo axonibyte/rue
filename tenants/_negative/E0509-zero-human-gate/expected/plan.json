@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": {
       "arm_before": 3,
@@ -25,6 +25,32 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "write": {
+                "content": {
+                  "ref": {
+                    "param": "posture"
+                  }
+                },
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/etc/ssh/sshd_config.d/rue-breakglass.conf"
+                }
+              }
+            },
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "service sshd reload"
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -42,7 +68,6 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "service_posture",
           "locus": "target",
           "outputs": [],
@@ -55,12 +80,12 @@
           ],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": "revert",
+          "suspend": null,
           "undo": "restore",
-          "undo_closed": true,
           "undo_idempotent": true,
-          "undo_locus": "target",
-          "undo_one_line": "remove /etc/ssh/sshd_config.d/rue-breakglass.conf; reload sshd"
+          "undo_locus": "target"
         },
         "window_s": null
       },
@@ -73,6 +98,21 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "region_set": {
+                "content": {
+                  "ref": {
+                    "param": "keys"
+                  }
+                },
+                "fact": {
+                  "anchor": "rue-breakglass",
+                  "shape": "file:/root/.ssh/authorized_keys"
+                }
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -84,19 +124,18 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "authorized_keys_block",
           "locus": "target",
           "outputs": [],
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": "revert",
+          "suspend": null,
           "undo": "restore",
-          "undo_closed": true,
           "undo_idempotent": true,
-          "undo_locus": "target",
-          "undo_one_line": "strip the rue-breakglass block from /root/.ssh/authorized_keys"
+          "undo_locus": "target"
         },
         "window_s": null
       },
@@ -109,6 +148,21 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "hook": {
+                "args": [
+                  {
+                    "name": "account",
+                    "value": {
+                      "lit": "breakglass"
+                    }
+                  }
+                ],
+                "name": "bmc_enable"
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -120,7 +174,6 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "bmc_account_enable",
           "locus": {
             "host": {
@@ -136,12 +189,33 @@
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": "revert",
-          "undo": "restore",
-          "undo_closed": true,
+          "suspend": null,
+          "undo": {
+            "computed": {
+              "body": [
+                {
+                  "hook": {
+                    "args": [
+                      {
+                        "name": "account",
+                        "value": {
+                          "lit": "breakglass"
+                        }
+                      }
+                    ],
+                    "name": "bmc_disable"
+                  }
+                }
+              ],
+              "undo_pre": [
+                "bmc:account:breakglass"
+              ]
+            }
+          },
           "undo_idempotent": true,
-          "undo_locus": "controller",
-          "undo_one_line": "disable the breakglass account and clear bmc_password"
+          "undo_locus": "controller"
         },
         "window_s": null
       },
@@ -154,6 +228,24 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "vnc-tunnel up --to "
+                  },
+                  {
+                    "ref": {
+                      "host": "address"
+                    }
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -165,7 +257,6 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": true,
           "id": "console_tunnel",
           "locus": "controller",
           "outputs": [
@@ -177,12 +268,55 @@
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": [
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "vnc-tunnel resume --rotate"
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
+          ],
           "refusal": "revert",
-          "undo": "restore",
-          "undo_closed": true,
+          "suspend": [
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "vnc-tunnel suspend"
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
+          ],
+          "undo": {
+            "computed": {
+              "body": [
+                {
+                  "run": {
+                    "cmd": [
+                      {
+                        "lit": "vnc-tunnel down"
+                      }
+                    ],
+                    "env": [],
+                    "stdin": null
+                  }
+                }
+              ],
+              "undo_pre": [
+                "proc:vnc-tunnel"
+              ]
+            }
+          },
           "undo_idempotent": true,
-          "undo_locus": "controller",
-          "undo_one_line": "release the tunnel and rotate console_secret"
+          "undo_locus": "controller"
         },
         "window_s": null
       }
@@ -228,7 +362,8 @@
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       },
       {
         "filesystem": false,
@@ -236,12 +371,17 @@
         "os": "appliance",
         "reach": [
           "api"
-        ]
+        ],
+        "stdin_preamble": false
       }
     ],
     "max_wait_s": null,
     "scheduler_present": [
       "db-01"
+    ],
+    "secrets_deliver_to": [
+      "requester",
+      "hook:escrow"
     ],
     "transports": [
       "ssh",

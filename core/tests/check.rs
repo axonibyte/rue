@@ -6,6 +6,7 @@
 mod common;
 
 use common::*;
+use rue_core::body::*;
 use rue_core::check::check;
 use rue_core::diagnostics::Code;
 use rue_core::model::*;
@@ -19,18 +20,21 @@ fn site0() -> Site {
                 os: "freebsd".into(),
                 reach: vec!["ssh".into()],
                 filesystem: true,
+                stdin_preamble: true,
             },
             HostRecord {
                 name: "api-01".into(),
                 os: "appliance".into(),
                 reach: vec!["api".into()],
                 filesystem: false,
+                stdin_preamble: false,
             },
             HostRecord {
                 name: "island".into(),
                 os: "freebsd".into(),
                 reach: vec!["console".into()],
                 filesystem: true,
+                stdin_preamble: true,
             },
         ],
         transports: vec!["ssh".into()],
@@ -54,6 +58,7 @@ fn site0() -> Site {
         ],
         max_wait: None,
         scheduler_present: vec!["db-01".into()],
+        secrets_deliver_to: vec![],
     }
 }
 
@@ -98,7 +103,6 @@ fn target(o: Op) -> Op {
 fn reach_op() -> Op {
     Op {
         reach: vec!["ssh".into()],
-        undo_closed: true,
         ..target(owned("pf"))
     }
 }
@@ -148,7 +152,10 @@ fn op_rules() {
     pair(
         Code::E0202,
         &temp(vec![s(Op {
-            undo_closed: false,
+            undo: computed(
+                vec![run(vec![text("restore "), interp(controller("backup"))])],
+                &["file:/a"],
+            ),
             ..target(owned("a"))
         })]),
         &temp(vec![s(target(owned("a")))]),
@@ -169,18 +176,27 @@ fn op_rules() {
         Code::E0205,
         &temp(vec![s(tunnel.clone())]),
         &temp(vec![s(Op {
-            has_suspend: true,
-            ..tunnel
+            suspend: Some(vec![run_lit("tunnel suspend")]),
+            reestablish: Some(vec![run_lit("tunnel resume")]),
+            ..tunnel.clone()
         })]),
     );
+    // Suspend without reestablish is half a pair and still E0205.
+    assert!(raises(
+        Code::E0205,
+        &temp(vec![s(Op {
+            suspend: Some(vec![run_lit("tunnel suspend")]),
+            ..tunnel
+        })])
+    ));
     pair(
         Code::E0207,
         &temp(vec![s(Op {
-            undo: Undo::Computed(vec![]),
+            undo: computed(vec![run_lit("restore")], &[]),
             ..owned("a")
         })]),
         &temp(vec![s(Op {
-            undo: Undo::Computed(vec!["file:/a".into()]),
+            undo: computed(vec![run_lit("restore")], &["file:/a"]),
             ..owned("a")
         })]),
     );
@@ -823,5 +839,157 @@ fn diagnostics_are_sorted_by_code_and_stable_within_a_code() {
             (Code::E0201, Some(2)),
             (Code::E0501, None)
         ]
+    );
+}
+
+/// E0202 is computed from the undo body (docs/ROADMAP.md 5.3): a `:target`
+/// undo is closed iff a target-side artifact could carry it out alone.
+#[test]
+fn closure_of_a_target_undo_follows_the_body() {
+    let closed = |undo: Undo| -> bool {
+        !raises(
+            Code::E0202,
+            &temp(vec![s(Op {
+                undo,
+                ..target(owned("a"))
+            })]),
+        )
+    };
+    // Target-local references: a fact, a plan parameter, a host field.
+    assert!(closed(computed(
+        vec![
+            run(vec![text("restore "), interp(fact("snapshot"))]),
+            write(fact_ref("file:/a"), Value::Ref(param("posture"))),
+            run(vec![text("ping "), interp(host_field("address"))]),
+        ],
+        &["file:/a"],
+    )));
+    // A controller value in any target-local position.
+    assert!(!closed(computed(
+        vec![write(fact_ref("file:/a"), Value::Ref(controller("c")))],
+        &["file:/a"],
+    )));
+    assert!(!closed(computed(
+        vec![Prim::Run(Run {
+            cmd: vec![text("restore")],
+            env: vec![EnvVar {
+                name: "FROM".into(),
+                value: Value::Ref(controller("c")),
+            }],
+            stdin: None,
+        })],
+        &["file:/a"],
+    )));
+    assert!(!closed(computed(
+        vec![Prim::Run(Run {
+            cmd: vec![text("restore")],
+            env: vec![],
+            stdin: Some(Value::Ref(output("bmc", "token", false))),
+        })],
+        &["file:/a"],
+    )));
+    // An earlier step's output is never persisted to the target.
+    assert!(!closed(computed(
+        vec![run(vec![
+            text("use "),
+            interp(output("bmc", "port", false))
+        ])],
+        &["file:/a"],
+    )));
+    // Controller primitives.
+    for prim in [hook("h", vec![]), install("x"), release("x")] {
+        assert!(!closed(computed(vec![prim], &["file:/a"])));
+    }
+    // A call follows its declared classes.
+    let call = |class: ArgClass| {
+        Prim::Call(Call {
+            prim: "svc".into(),
+            run: vec![text("service restart")],
+            args: vec![ClassedArg {
+                name: "n".into(),
+                class,
+                value: lit("sshd"),
+            }],
+        })
+    };
+    assert!(closed(computed(
+        vec![call(ArgClass::TargetLocal)],
+        &["file:/a"]
+    )));
+    assert!(!closed(computed(
+        vec![call(ArgClass::Controller)],
+        &["file:/a"]
+    )));
+    // A runtime-bound fact shape.
+    assert!(!closed(computed(
+        vec![remove(fact_ref("file:/{n}"))],
+        &["file:/a"],
+    )));
+    // A compensating body is judged the same way.
+    assert!(!closed(compensate(vec![hook("h", vec![])], &["file:/a"])));
+    // A secret is E0210's finding, not E0202's.
+    assert!(closed(computed(
+        vec![run(vec![text("login "), interp(secret("pw"))])],
+        &["file:/a"],
+    )));
+    // Restore: closed over static shapes; not over a runtime shape or a hold.
+    assert!(!raises(
+        Code::E0202,
+        &temp(vec![s(target(Op::new(
+            "r",
+            vec![
+                FootprintEntry::entry(Kind::Owned, "file:/a"),
+                FootprintEntry::anchored("file:/b", "x"),
+                FootprintEntry::entry(Kind::Modified, "file:/c"),
+            ],
+        )))]),
+    ));
+    assert!(raises(
+        Code::E0202,
+        &temp(vec![s(target(Op::new(
+            "r",
+            vec![FootprintEntry::entry(Kind::Owned, "file:/{n}")],
+        )))]),
+    ));
+    assert!(raises(
+        Code::E0202,
+        &temp(vec![s(Op {
+            suspend: Some(vec![]),
+            reestablish: Some(vec![]),
+            ..target(Op::new(
+                "h",
+                vec![FootprintEntry::entry(Kind::Held, "proc:t")],
+            ))
+        })]),
+    ));
+    // The same bodies are closed enough for a :controller undo locus.
+    assert!(!raises(
+        Code::E0202,
+        &temp(vec![s(Op {
+            undo: computed(vec![hook("h", vec![])], &["file:/a"]),
+            ..owned("a")
+        })]),
+    ));
+    // The message names what was found.
+    let v = check(
+        &site0(),
+        "requester",
+        &temp(vec![s(Op {
+            undo: computed(
+                vec![run_lit("ok"), hook("bmc_disable", vec![])],
+                &["file:/a"],
+            ),
+            ..target(owned("a"))
+        })]),
+    );
+    let m = &v
+        .diagnostics
+        .iter()
+        .find(|d| d.code == Code::E0202)
+        .unwrap()
+        .message;
+    assert!(
+        m.ends_with("hook is a controller primitive (prim 2)"),
+        "{m}"
     );
 }

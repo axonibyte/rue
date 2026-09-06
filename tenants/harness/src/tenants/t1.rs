@@ -9,6 +9,7 @@
 //! [after: 4h, unless_heartbeat: 60s] covering the ssh-borne ops, armed after
 //! them (reach empty, late arming); scheduler presence as a precondition.
 
+use rue_core::body::*;
 use rue_core::model::*;
 
 use super::common::*;
@@ -26,13 +27,20 @@ pub fn site() -> Site {
         ],
         max_wait: None,
         scheduler_present: strings(&["db-01"]),
+        secrets_deliver_to: strings(&["requester", "hook:escrow"]),
     }
 }
 
 fn sshd_posture() -> Op {
     Op {
         undo_locus: UndoLocus::Target,
-        undo_one_line: "remove /etc/ssh/sshd_config.d/rue-breakglass.conf; reload sshd".into(),
+        do_: vec![
+            write(
+                fact_ref("file:/etc/ssh/sshd_config.d/rue-breakglass.conf"),
+                Value::Ref(param("posture")),
+            ),
+            run_lit("service sshd reload"),
+        ],
         post: vec![Guard::new("sshd_posture_applied", Tri::Yes)],
         ..Op::new(
             "service_posture",
@@ -50,7 +58,10 @@ fn sshd_posture() -> Op {
 fn authorized_keys_block() -> Op {
     Op {
         undo_locus: UndoLocus::Target,
-        undo_one_line: "strip the rue-breakglass block from /root/.ssh/authorized_keys".into(),
+        do_: vec![region_set(
+            anchored_ref("file:/root/.ssh/authorized_keys", "rue-breakglass"),
+            Value::Ref(param("keys")),
+        )],
         ..Op::new(
             "authorized_keys_block",
             vec![FootprintEntry::anchored(
@@ -69,7 +80,11 @@ fn bmc_account() -> Op {
             name: "bmc_password".into(),
             secret: true,
         }],
-        undo_one_line: "disable the breakglass account and clear bmc_password".into(),
+        do_: vec![hook("bmc_enable", vec![("account", lit("breakglass"))])],
+        undo: computed(
+            vec![hook("bmc_disable", vec![("account", lit("breakglass"))])],
+            &["bmc:account:breakglass"],
+        ),
         ..Op::new(
             "bmc_account_enable",
             vec![FootprintEntry::entry(
@@ -84,12 +99,19 @@ fn vnc_console() -> Op {
     Op {
         undo_locus: UndoLocus::Controller,
         locus: Locus::Controller,
-        has_suspend: true,
+        // F1: the text's `undo: run(...)` carries no undo_pre; the term names
+        // the held fact, and the text gains the line (docs/TESTING.md).
+        do_: vec![run(vec![
+            text("vnc-tunnel up --to "),
+            interp(host_field("address")),
+        ])],
+        undo: computed(vec![run_lit("vnc-tunnel down")], &["proc:vnc-tunnel"]),
+        suspend: Some(vec![run_lit("vnc-tunnel suspend")]),
+        reestablish: Some(vec![run_lit("vnc-tunnel resume --rotate")]),
         outputs: vec![Output {
             name: "console_secret".into(),
             secret: true,
         }],
-        undo_one_line: "release the tunnel and rotate console_secret".into(),
         ..Op::new(
             "console_tunnel",
             vec![FootprintEntry::entry(Kind::Held, "proc:vnc-tunnel")],

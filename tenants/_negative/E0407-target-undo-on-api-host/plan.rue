@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0407: :target undo on a host with no run-capable executor
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0407.
 
 site do

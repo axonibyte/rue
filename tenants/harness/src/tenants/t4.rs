@@ -2,6 +2,7 @@
 //! Temporary, embedded. One op over a group of actuator facts with a
 //! restorative undo, a controller undo locus, and drift :clobber or :defer.
 
+use rue_core::body::*;
 use rue_core::model::*;
 
 use super::common::*;
@@ -13,6 +14,7 @@ pub fn site() -> Site {
         authenticators: vec![authenticator("site_operator", true)],
         max_wait: None,
         scheduler_present: vec![],
+        secrets_deliver_to: vec![],
     }
 }
 
@@ -20,7 +22,13 @@ fn shed_load_op(drift: Drift) -> Op {
     Op {
         undo_locus: UndoLocus::Controller,
         drift: Some(drift),
-        undo_one_line: "restore the three actuators to their reported pre-shed state".into(),
+        do_: vec![hook(
+            "host_actuate",
+            vec![(
+                "set",
+                lit(r#"%{"hvac-1": :off, "hvac-2": :off, "pump-1": :low}"#),
+            )],
+        )],
         ..Op::new(
             "shed_load",
             vec![

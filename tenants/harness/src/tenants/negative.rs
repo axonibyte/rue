@@ -4,6 +4,7 @@
 //! each; the rest cover every other code the checker emits, in the case
 //! table's order.
 
+use rue_core::body::*;
 use rue_core::diagnostics::Code;
 use rue_core::model::*;
 
@@ -38,6 +39,7 @@ pub fn lab() -> Site {
         ],
         max_wait: None,
         scheduler_present: strings(&["db-01"]),
+        secrets_deliver_to: vec![],
     }
 }
 
@@ -50,13 +52,11 @@ fn temp(name: &str, items: Vec<Item>) -> Plan {
 }
 
 fn owned(f: &str) -> Op {
-    Op::new(
-        f,
-        vec![FootprintEntry::entry(
-            Kind::Owned,
-            &format!("file:/etc/{f}"),
-        )],
-    )
+    let shape = format!("file:/etc/{f}");
+    Op {
+        do_: vec![write(fact_ref(&shape), lit("x"))],
+        ..Op::new(f, vec![FootprintEntry::entry(Kind::Owned, &shape)])
+    }
 }
 
 fn target_undo(o: Op) -> Op {
@@ -289,7 +289,14 @@ pub fn cases() -> Vec<Negative> {
             temp(
                 "posture",
                 vec![s(Op {
-                    undo_closed: false,
+                    // A controller-side value in a :target undo: not bakeable.
+                    undo: computed(
+                        vec![run(vec![
+                            text("restore-from "),
+                            interp(controller("controller_backup")),
+                        ])],
+                        &["file:/etc/a"],
+                    ),
                     ..target_undo(owned("a"))
                 })],
             ),
@@ -312,10 +319,14 @@ pub fn cases() -> Vec<Negative> {
             lab(),
             temp(
                 "tunnel",
-                vec![s(Op::new(
-                    "tunnel",
-                    vec![FootprintEntry::entry(Kind::Held, "proc:tunnel")],
-                ))],
+                vec![s(Op {
+                    do_: vec![run_lit("tunnel up")],
+                    undo: computed(vec![run_lit("tunnel down")], &["proc:tunnel"]),
+                    ..Op::new(
+                        "tunnel",
+                        vec![FootprintEntry::entry(Kind::Held, "proc:tunnel")],
+                    )
+                })],
             ),
         ),
         neg(
@@ -325,7 +336,7 @@ pub fn cases() -> Vec<Negative> {
             temp(
                 "posture",
                 vec![s(Op {
-                    undo: Undo::Compensate(vec![]),
+                    undo: compensate(vec![remove(fact_ref("file:/etc/a"))], &[]),
                     ..owned("a")
                 })],
             ),
@@ -337,6 +348,7 @@ pub fn cases() -> Vec<Negative> {
             temp(
                 "posture",
                 vec![s(Op {
+                    undo: computed(vec![run_lit("counter-decrement /etc/a")], &["file:/etc/a"]),
                     undo_idempotent: false,
                     ..owned("a")
                 })],

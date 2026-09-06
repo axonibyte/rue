@@ -8,6 +8,7 @@
 //! prints its damaged-marker cost.
 
 use crate::algebra::numbered;
+use crate::body::{Body, Part, Prim, Ref, Value};
 use crate::gates::render_gate;
 use crate::model::*;
 
@@ -123,21 +124,125 @@ fn drift_text(o: &Op) -> &'static str {
 fn undo_text(o: &Op) -> String {
     match &o.undo {
         Undo::NoUndo => format!("NO UNDO \u{2014} knell, cost {}", cost_text(&o.refusal)),
-        _ => redact(&o.undo_one_line, o),
+        _ => undo_line(o),
     }
 }
 
-/// Secret outputs are redacted in the undo line. The prototype folds from
-/// the right, so the last declared output is replaced first; the order
-/// matters only when one output's name contains another's.
-fn redact(t: &str, o: &Op) -> String {
-    let mut acc = t.to_string();
-    for out in o.outputs.iter().rev() {
-        if out.secret && !out.name.is_empty() {
-            acc = acc.replace(&out.name, &format!("<secret:{}>", out.name));
+/// The one-line undo of an op, derived from its undo: per footprint entry for
+/// `Restore`, per primitive for a computed or compensating body. What
+/// `explain` prints, `apply` shows and the `Applying` journal entry carries;
+/// it can claim no more than the body does.
+pub fn undo_line(o: &Op) -> String {
+    match &o.undo {
+        Undo::NoUndo => String::new(),
+        Undo::Restore => {
+            let parts: Vec<String> = o
+                .footprint
+                .iter()
+                .filter_map(|e| match e.kind {
+                    Kind::Owned => Some(format!("remove {}", e.shape)),
+                    Kind::Region => Some(match &e.anchor {
+                        Some(a) => format!("strip anchor {a} from {}", e.shape),
+                        None => format!("strip the region from {}", e.shape),
+                    }),
+                    Kind::Modified => Some(format!("restore {} from snapshot", e.shape)),
+                    Kind::Held => Some(format!("release {}", e.shape)),
+                    Kind::Derived | Kind::AppendOnly => None,
+                })
+                .collect();
+            if parts.is_empty() {
+                "nothing to restore".to_string()
+            } else {
+                parts.join("; ")
+            }
+        }
+        Undo::Computed { body, .. } => body_line(body),
+        Undo::Compensate { body, .. } => {
+            let record = if o.footprint.iter().any(|e| e.kind == Kind::AppendOnly) {
+                " (undone by record, not erasure)"
+            } else {
+                ""
+            };
+            format!("compensate: {}{record}", body_line(body))
         }
     }
-    acc
+}
+
+/// A body as one line, primitives joined by `; `.
+pub fn body_line(body: &Body) -> String {
+    body.iter().map(prim_line).collect::<Vec<_>>().join("; ")
+}
+
+fn kwargs(args: impl Iterator<Item = (String, String)>) -> String {
+    args.map(|(n, v)| format!("{n}: {v}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn prim_line(p: &Prim) -> String {
+    match p {
+        Prim::Run(r) => template_text(&r.cmd),
+        Prim::Write(w) => format!("write {}", w.fact.shape),
+        Prim::Remove(r) => format!("remove {}", r.fact.shape),
+        Prim::Append(a) => format!("append to {}", a.fact.shape),
+        Prim::RegionSet(r) => match &r.fact.anchor {
+            Some(a) => format!("set anchor {a} in {}", r.fact.shape),
+            None => format!("set the region in {}", r.fact.shape),
+        },
+        Prim::RegionClear(r) => match &r.fact.anchor {
+            Some(a) => format!("clear anchor {a} in {}", r.fact.shape),
+            None => format!("clear the region in {}", r.fact.shape),
+        },
+        Prim::Stage(s) => format!("stage {}", s.name),
+        Prim::Hook(h) => format!(
+            "hook :{}({})",
+            h.name,
+            kwargs(
+                h.args
+                    .iter()
+                    .map(|a| (a.name.clone(), value_text(&a.value)))
+            )
+        ),
+        Prim::Install(i) => format!("install :{}", i.name),
+        Prim::Release(r) => format!("release :{}", r.name),
+        Prim::Call(c) => format!(
+            "{}({})",
+            c.prim,
+            kwargs(
+                c.args
+                    .iter()
+                    .map(|a| (a.name.clone(), value_text(&a.value)))
+            )
+        ),
+    }
+}
+
+/// A value as `explain` prints it: literals verbatim, references as
+/// `#{name}`, secrets as `<secret:name>`.
+pub fn value_text(v: &Value) -> String {
+    match v {
+        Value::Lit(s) => s.clone(),
+        Value::Ref(r) => ref_text(r),
+        Value::Template(parts) => template_text(parts),
+    }
+}
+
+fn template_text(parts: &[Part]) -> String {
+    parts
+        .iter()
+        .map(|p| match p {
+            Part::Lit(s) => s.clone(),
+            Part::Ref(r) => ref_text(r),
+        })
+        .collect()
+}
+
+fn ref_text(r: &Ref) -> String {
+    if r.is_secret() {
+        format!("<secret:{}>", r.label())
+    } else {
+        format!("#{{{}}}", r.label())
+    }
 }
 
 fn cost_text(r: &Refusal) -> String {

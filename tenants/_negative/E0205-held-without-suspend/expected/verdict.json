@@ -52,7 +52,7 @@
       "n": 1,
       "op": "tunnel",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "tunnel down",
       "undo_locus": "controller"
     }
   ],

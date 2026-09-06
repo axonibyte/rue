@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0503: temporary plan whose backstop after: differs from its wane
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0503.
 
 site do

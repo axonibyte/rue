@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": null,
     "body": [
@@ -14,6 +14,19 @@
             "item": "step",
             "on_lapse": "revert",
             "op": {
+              "do": [
+                {
+                  "write": {
+                    "content": {
+                      "lit": "x"
+                    },
+                    "fact": {
+                      "anchor": null,
+                      "shape": "file:/etc/a"
+                    }
+                  }
+                }
+              ],
               "drift": null,
               "exclusivity": null,
               "footprint": [
@@ -25,19 +38,18 @@
                 }
               ],
               "handoff_done": null,
-              "has_suspend": false,
               "id": "a",
               "locus": "target",
               "outputs": [],
               "post": [],
               "pre": [],
               "reach": [],
+              "reestablish": null,
               "refusal": "revert",
+              "suspend": null,
               "undo": "restore",
-              "undo_closed": true,
               "undo_idempotent": true,
-              "undo_locus": "controller",
-              "undo_one_line": "restore"
+              "undo_locus": "controller"
             },
             "window_s": null
           },
@@ -50,6 +62,19 @@
             "item": "step",
             "on_lapse": "revert",
             "op": {
+              "do": [
+                {
+                  "write": {
+                    "content": {
+                      "lit": "x"
+                    },
+                    "fact": {
+                      "anchor": null,
+                      "shape": "file:/etc/a"
+                    }
+                  }
+                }
+              ],
               "drift": null,
               "exclusivity": null,
               "footprint": [
@@ -61,19 +86,18 @@
                 }
               ],
               "handoff_done": null,
-              "has_suspend": false,
               "id": "a",
               "locus": "target",
               "outputs": [],
               "post": [],
               "pre": [],
               "reach": [],
+              "reestablish": null,
               "refusal": "revert",
+              "suspend": null,
               "undo": "restore",
-              "undo_closed": true,
               "undo_idempotent": true,
-              "undo_locus": "controller",
-              "undo_one_line": "restore"
+              "undo_locus": "controller"
             },
             "window_s": null
           }
@@ -115,7 +139,8 @@
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       },
       {
         "filesystem": false,
@@ -123,7 +148,8 @@
         "os": "appliance",
         "reach": [
           "api"
-        ]
+        ],
+        "stdin_preamble": false
       },
       {
         "filesystem": true,
@@ -131,13 +157,15 @@
         "os": "freebsd",
         "reach": [
           "console"
-        ]
+        ],
+        "stdin_preamble": true
       }
     ],
     "max_wait_s": null,
     "scheduler_present": [
       "db-01"
     ],
+    "secrets_deliver_to": [],
     "transports": [
       "ssh"
     ]

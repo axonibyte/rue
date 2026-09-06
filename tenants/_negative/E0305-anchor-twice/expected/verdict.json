@@ -59,7 +59,7 @@
       "n": 1,
       "op": "r1",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "strip anchor rue from file:/etc/keys",
       "undo_locus": "controller"
     },
     {
@@ -74,7 +74,7 @@
       "n": 2,
       "op": "r2",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "strip anchor rue from file:/etc/keys",
       "undo_locus": "controller"
     }
   ],

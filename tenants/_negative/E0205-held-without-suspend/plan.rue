@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0205: held footprint without suspend/reestablish
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0205.
 
 site do
@@ -16,6 +16,7 @@ defop :tunnel, _ do
   footprint held: proc.tunnel
   do: run("tunnel up")
   undo: run("tunnel down")
+  undo_pre proc.tunnel   # so that E0207 does not fire first; Phase 0's text omitted it
   undo_locus: :controller
 end
 

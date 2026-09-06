@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0208: undo not provably idempotent
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0208.
 
 site do
@@ -16,6 +16,7 @@ defop :posture, _ do
   footprint owned: file("/etc/a")
   do: write(file("/etc/a"), content: "x")
   undo: run("counter-decrement /etc/a")   # a second run changes the fact again
+  undo_pre file("/etc/a")   # so that E0207 does not fire first; Phase 0's text omitted it
 end
 
 defplan :posture, %{name: "db-01"} do

@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": {
       "arm_before": 2,
@@ -21,6 +21,39 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "region_set": {
+                "content": {
+                  "template": [
+                    {
+                      "lit": "pass in proto tcp to port "
+                    },
+                    {
+                      "ref": {
+                        "param": "port"
+                      }
+                    }
+                  ]
+                },
+                "fact": {
+                  "anchor": "rue-mgmt",
+                  "shape": "file:/etc/pf.conf"
+                }
+              }
+            },
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "pfctl -f /etc/pf.conf"
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -32,7 +65,6 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "pf_allow",
           "locus": "target",
           "outputs": [],
@@ -41,12 +73,12 @@
           "reach": [
             "ssh"
           ],
+          "reestablish": null,
           "refusal": "revert",
+          "suspend": null,
           "undo": "restore",
-          "undo_closed": true,
           "undo_idempotent": true,
-          "undo_locus": "target",
-          "undo_one_line": "strip the rue-mgmt anchor from /etc/pf.conf; pfctl reload"
+          "undo_locus": "target"
         },
         "window_s": null
       },
@@ -88,7 +120,8 @@
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       },
       {
         "filesystem": true,
@@ -96,7 +129,8 @@
         "os": "windows",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       }
     ],
     "max_wait_s": null,
@@ -104,6 +138,7 @@
       "fw-01",
       "fw-win-01"
     ],
+    "secrets_deliver_to": [],
     "transports": [
       "ssh"
     ]

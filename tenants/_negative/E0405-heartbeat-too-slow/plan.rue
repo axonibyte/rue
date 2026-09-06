@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0405: heartbeat interval not at most a third of its deadline
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0405.
 
 site do

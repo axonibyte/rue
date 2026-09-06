@@ -1,6 +1,6 @@
 rue 0
 # Negative case E0301: two steps write one fact and the first's undo needs it
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0301.
 
 site do

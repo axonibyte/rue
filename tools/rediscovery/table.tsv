@@ -46,3 +46,5 @@ knell-no-cost-core.patch	2	-	cargo	every_artifact_matches	-
 foreign-region-clobbered-core.patch	2	-	cargo	section_8	-
 chain-skips-prev-hash-core.patch	1	-	cargo	a_chain_verifies	-
 expiry-at-boundary-open-core.patch	4	-	cargo	expiry_is_observed	-
+closure-uses-controller-fact-core.patch	1	-	cargo	closure_of_a_target_undo	-
+secret-in-explain-core.patch	1	-	cargo	marks_every_secret_ref	-

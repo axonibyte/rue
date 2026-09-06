@@ -9,7 +9,7 @@ use rue_core::model::*;
 // A small plan in canonical form: one step with a knell ack gate, a wait
 // factor, a bound-host locus, a heartbeat backstop, and every item kind.
 const DOC: &str = r#"{
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -75,6 +75,154 @@ const DOC: &str = r#"{
         "item": "knell",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "fence "
+                  },
+                  {
+                    "ref": {
+                      "param": "node"
+                    }
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "TOKEN",
+                    "value": {
+                      "ref": {
+                        "output": {
+                          "name": "tok",
+                          "secret": true,
+                          "step": "k"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "stdin": {
+                  "ref": {
+                    "secret": "fence_key"
+                  }
+                }
+              }
+            },
+            {
+              "write": {
+                "content": {
+                  "template": [
+                    {
+                      "lit": "fenced by "
+                    },
+                    {
+                      "ref": {
+                        "host": "name"
+                      }
+                    }
+                  ]
+                },
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/x"
+                }
+              }
+            },
+            {
+              "hook": {
+                "args": [
+                  {
+                    "name": "node",
+                    "value": {
+                      "ref": {
+                        "controller": "g"
+                      }
+                    }
+                  }
+                ],
+                "name": "fence"
+              }
+            },
+            {
+              "call": {
+                "args": [
+                  {
+                    "class": "target_local",
+                    "name": "n",
+                    "value": {
+                      "lit": "sshd"
+                    }
+                  }
+                ],
+                "prim": "svc",
+                "run": [
+                  {
+                    "lit": "service restart sshd"
+                  }
+                ]
+              }
+            },
+            {
+              "stage": {
+                "content": {
+                  "ref": {
+                    "fact": "snapshot"
+                  }
+                },
+                "mode": 493,
+                "name": "restore.sh"
+              }
+            },
+            {
+              "region_set": {
+                "content": {
+                  "lit": "x"
+                },
+                "fact": {
+                  "anchor": "a",
+                  "shape": "file:/x"
+                }
+              }
+            },
+            {
+              "region_clear": {
+                "fact": {
+                  "anchor": "a",
+                  "shape": "file:/x"
+                }
+              }
+            },
+            {
+              "append": {
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/log"
+                },
+                "line": {
+                  "lit": "done"
+                }
+              }
+            },
+            {
+              "remove": {
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/x"
+                }
+              }
+            },
+            {
+              "install": {
+                "name": "backstop"
+              }
+            },
+            {
+              "release": {
+                "name": "backstop"
+              }
+            }
+          ],
           "drift": "defer",
           "exclusivity": "cls",
           "footprint": [
@@ -86,7 +234,6 @@ const DOC: &str = r#"{
             }
           ],
           "handoff_done": "done",
-          "has_suspend": true,
           "id": "fence",
           "locus": {
             "host": {
@@ -103,6 +250,19 @@ const DOC: &str = r#"{
           "pre": [],
           "reach": [
             "ssh"
+          ],
+          "reestablish": [
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "tunnel resume"
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
           ],
           "refusal": {
             "knell": {
@@ -144,11 +304,10 @@ const DOC: &str = r#"{
               "guard": null
             }
           },
+          "suspend": [],
           "undo": "none",
-          "undo_closed": false,
           "undo_idempotent": true,
-          "undo_locus": "none",
-          "undo_one_line": ""
+          "undo_locus": "none"
         },
         "window_s": null
       },
@@ -192,6 +351,75 @@ const DOC: &str = r#"{
           }
         ],
         "window_s": null
+      },
+      {
+        "alias": null,
+        "args": [],
+        "direction": "forward",
+        "force": [],
+        "gate": null,
+        "item": "step",
+        "on_lapse": "revert",
+        "op": {
+          "do": [
+            {
+              "write": {
+                "content": {
+                  "ref": {
+                    "param": "posture"
+                  }
+                },
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/y"
+                }
+              }
+            }
+          ],
+          "drift": null,
+          "exclusivity": null,
+          "footprint": [
+            {
+              "anchor": null,
+              "instance": null,
+              "kind": "owned",
+              "shape": "file:/y"
+            }
+          ],
+          "handoff_done": null,
+          "id": "posture",
+          "locus": "target",
+          "outputs": [],
+          "post": [],
+          "pre": [],
+          "reach": [],
+          "reestablish": null,
+          "refusal": "revert",
+          "suspend": null,
+          "undo": {
+            "computed": {
+              "body": [
+                {
+                  "run": {
+                    "cmd": [
+                      {
+                        "lit": "restore-posture"
+                      }
+                    ],
+                    "env": [],
+                    "stdin": null
+                  }
+                }
+              ],
+              "undo_pre": [
+                "file:/y"
+              ]
+            }
+          },
+          "undo_idempotent": true,
+          "undo_locus": "target"
+        },
+        "window_s": null
       }
     ],
     "exclusivity": null,
@@ -231,12 +459,16 @@ const DOC: &str = r#"{
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       }
     ],
     "max_wait_s": null,
     "scheduler_present": [
       "db-01"
+    ],
+    "secrets_deliver_to": [
+      "requester"
     ],
     "transports": [
       "ssh"
@@ -277,6 +509,19 @@ fn the_documented_spelling_parses_and_writes_back_identically() {
         }
         other => panic!("{other:?}"),
     }
+    match &ir.plan.body[7] {
+        Item::Step(s) => {
+            assert_eq!(s.op.do_.len(), 1);
+            assert_eq!(
+                s.op.undo,
+                Undo::Computed {
+                    body: vec![rue_core::body::run_lit("restore-posture")],
+                    undo_pre: vec!["file:/y".into()],
+                }
+            );
+        }
+        other => panic!("{other:?}"),
+    }
     let back = encode(&serde_json::to_value(&ir).unwrap()).unwrap();
     assert_eq!(String::from_utf8(back).unwrap(), DOC);
 }
@@ -297,12 +542,12 @@ fn an_unknown_field_is_refused() {
 #[test]
 fn another_version_is_refused_before_the_shape_is_read() {
     let doc = DOC.replacen(
-        "\"ir_version\": 1,",
-        "\"ir_version\": 2,\n  \"future\": true,",
+        "\"ir_version\": 2,",
+        "\"ir_version\": 3,\n  \"future\": true,",
         1,
     );
     match parse(doc.as_bytes()) {
-        Err(IrError::Version { found: 2 }) => {}
+        Err(IrError::Version { found: 3 }) => {}
         other => panic!("{other:?}"),
     }
 }

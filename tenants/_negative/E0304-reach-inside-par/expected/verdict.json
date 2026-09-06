@@ -81,7 +81,7 @@
       "n": 1,
       "op": "pf",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "remove file:/etc/pf",
       "undo_locus": "target"
     },
     {
@@ -96,7 +96,7 @@
       "n": 2,
       "op": "b",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "remove file:/etc/b",
       "undo_locus": "controller"
     }
   ],

@@ -1,1 +1,1 @@
- 1. shed_load   locus=target   refusal=revert   drift=clobber   undo=restore the three actuators to their reported pre-shed state   undo_locus=controller
+ 1. shed_load   locus=target   refusal=revert   drift=clobber   undo=restore actuator:hvac-1:state from snapshot; restore actuator:hvac-2:state from snapshot; restore actuator:pump-1:state from snapshot   undo_locus=controller

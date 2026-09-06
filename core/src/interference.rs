@@ -110,7 +110,7 @@ pub fn needs(o: &Op) -> Vec<Fact> {
             v.extend(maywrite(o));
             v
         }
-        Undo::Computed(pre) | Undo::Compensate(pre) => {
+        Undo::Computed { undo_pre: pre, .. } | Undo::Compensate { undo_pre: pre, .. } => {
             pre.iter().map(|s| Fact::new(s, None)).collect()
         }
         Undo::NoUndo => Vec::new(),

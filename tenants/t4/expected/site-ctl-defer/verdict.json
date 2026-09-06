@@ -48,7 +48,7 @@
       "n": 1,
       "op": "shed_load",
       "refusal": "revert",
-      "undo": "restore the three actuators to their reported pre-shed state",
+      "undo": "restore actuator:hvac-1:state from snapshot; restore actuator:hvac-2:state from snapshot; restore actuator:pump-1:state from snapshot",
       "undo_locus": "controller"
     }
   ],

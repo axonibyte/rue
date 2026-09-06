@@ -150,7 +150,7 @@
       "n": 5,
       "op": "resurrection_gate",
       "refusal": "hold",
-      "undo": "release the slave-mode gate on node-a",
+      "undo": "hook :platform(set: :master, node: node-a)",
       "undo_locus": "controller"
     },
     {
@@ -165,7 +165,7 @@
       "n": 6,
       "op": "start_guest",
       "refusal": "hold",
-      "undo": "stop guest {g} on node-b",
+      "undo": "cbsd bstop #{g}",
       "undo_locus": "controller"
     },
     {
@@ -181,7 +181,7 @@
       "n": 7,
       "op": "record_succession",
       "refusal": "revert",
-      "undo": "append a reversal record (undone by record, not erasure)",
+      "undo": "compensate: append to file:/var/db/succession.log; hook :placement(set: #{reversal}) (undone by record, not erasure)",
       "undo_locus": "controller"
     },
     {
@@ -196,7 +196,7 @@
       "n": 8,
       "op": "start_heir",
       "refusal": "hold",
-      "undo": "stop the heir on node-c",
+      "undo": "cbsd bstop heir",
       "undo_locus": "controller"
     },
     {

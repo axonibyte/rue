@@ -1,7 +1,7 @@
 rue 0
 # Negative case E0509: a windowed step gate on a knell that waiting alone
 # satisfies, without allow_zero_human.
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0509.
 
 site do

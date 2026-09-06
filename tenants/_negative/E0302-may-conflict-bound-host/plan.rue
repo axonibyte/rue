@@ -1,7 +1,7 @@
 rue 0
 # Negative case E0302: the same shape on a host bound at runtime may overlap
 # an earlier fact -- penumbral by host rather than by shape -- under strict.
-# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# A minimal plan on the lab site (tenants/harness/src/tenants/negative.rs,
 # `lab`). The checker must refuse with exactly E0302.
 
 site do

@@ -1,6 +1,7 @@
 //! Shared shapes and builders for the tenant terms, kept as close to the
 //! prototype's as Rust allows so the two can be read side by side.
 
+use rue_core::body::Prim;
 use rue_core::diagnostics::Code;
 use rue_core::model::*;
 
@@ -31,12 +32,31 @@ pub struct Negative {
     pub plan: Plan,
 }
 
+/// A host record; the executor honours the stdin preamble iff it has a
+/// filesystem and a shell, which every ssh host does and no appliance does.
 pub fn host(name: &str, os: &str, reach: &[&str], filesystem: bool) -> HostRecord {
     HostRecord {
         name: name.into(),
         os: os.into(),
         reach: reach.iter().map(|r| r.to_string()).collect(),
         filesystem,
+        stdin_preamble: filesystem,
+    }
+}
+
+/// A computed undo body with the facts it needs unchanged.
+pub fn computed(body: Vec<Prim>, undo_pre: &[&str]) -> Undo {
+    Undo::Computed {
+        body,
+        undo_pre: strings(undo_pre),
+    }
+}
+
+/// A compensating undo body with the facts it needs unchanged.
+pub fn compensate(body: Vec<Prim>, undo_pre: &[&str]) -> Undo {
+    Undo::Compensate {
+        body,
+        undo_pre: strings(undo_pre),
     }
 }
 

@@ -2,6 +2,7 @@
 //! helpers, and a seeded generator of knell-free plans for the laws.
 #![allow(dead_code)]
 
+use rue_core::body::*;
 use rue_core::model::*;
 
 /// xorshift32: deterministic across platforms, replayable from the seed.
@@ -25,10 +26,27 @@ impl Rng {
 }
 
 pub fn owned(f: &str) -> Op {
-    Op::new(
-        f,
-        vec![FootprintEntry::entry(Kind::Owned, &format!("file:/{f}"))],
-    )
+    let shape = format!("file:/{f}");
+    Op {
+        do_: vec![write(fact_ref(&shape), lit("x"))],
+        ..Op::new(f, vec![FootprintEntry::entry(Kind::Owned, &shape)])
+    }
+}
+
+/// A computed undo body with the facts it needs unchanged.
+pub fn computed(body: Vec<Prim>, undo_pre: &[&str]) -> Undo {
+    Undo::Computed {
+        body,
+        undo_pre: undo_pre.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+/// A compensating undo body with the facts it needs unchanged.
+pub fn compensate(body: Vec<Prim>, undo_pre: &[&str]) -> Undo {
+    Undo::Compensate {
+        body,
+        undo_pre: undo_pre.iter().map(|s| s.to_string()).collect(),
+    }
 }
 
 pub fn modified(f: &str) -> Op {

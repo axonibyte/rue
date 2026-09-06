@@ -111,15 +111,27 @@ term by `rue-goldens`, read only in tests (which also parse it back and
 require the term), covered by the hygiene guard and the orphan walk.
 
 The shape is `rue_core::model`'s serde form, spelled deliberately field by
-field so no implementation's constructor names leak into it. `ir_version` is an integer;
-a reader refuses any version it does not know. While the prototype is the
-only emitter, any change of shape bumps the version and changes emitter and
-readers in one commit; Phase 2's front end freezes it. Durations are whole
-seconds under names ending in `_s`. A unit constructor is a bare string, a
-data-carrying one a one-key object, and every item carries an `item` tag with
-a step's fields flattened beside it. The prototype's stand-in flags
-(`undo_closed`, `undo_idempotent`, `undo_one_line`) are carried as they are
-until bodies replace them.
+field so no implementation's constructor names leak into it. `ir_version` is
+an integer, currently 2; a reader refuses any version it does not know. While
+the terms are the only emitter, any change of shape bumps the version and
+changes emitter and readers in one commit; Phase 2's front end freezes it.
+Durations are whole seconds under names ending in `_s`. A unit constructor is
+a bare string, a data-carrying one a one-key object, and every item carries
+an `item` tag with a step's fields flattened beside it.
+
+Version 2 carries bodies (`rue_core::body`). An op has `do`, an `undo` that
+is `"restore"`, `"none"`, or `{"computed": {"body", "undo_pre"}}` /
+`{"compensate": {...}}`, and `suspend` and `reestablish` bodies or `null`. A
+body is a list of one-key primitive objects (`run`, `write`, `remove`,
+`append`, `region_set`, `region_clear`, `stage`, `hook`, `install`,
+`release`, `call`); a value is `{"lit"}`, `{"ref"}` or `{"template": [parts]}`,
+and a reference names its origin (`fact`, `param`, `host`, `output`,
+`controller`, `secret`), which is what closure (E0202) and secret placement
+read. Nothing in the IR says "closed" or "secret" as a flag: both are
+computed from the structure. A host record carries `stdin_preamble` and the
+site `secrets_deliver_to`. `undo_idempotent` remains a stand-in until E0208's
+analysis exists. `core/tests/ir.rs` holds a document exercising every
+primitive and asserts it reads and writes back byte for byte.
 
 `rue check <plan.json>` reads one.
 

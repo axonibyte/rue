@@ -106,7 +106,7 @@
       "n": 1,
       "op": "service_posture",
       "refusal": "revert",
-      "undo": "remove /etc/ssh/sshd_config.d/rue-breakglass.conf; reload sshd",
+      "undo": "remove file:/etc/ssh/sshd_config.d/rue-breakglass.conf",
       "undo_locus": "target"
     },
     {
@@ -121,7 +121,7 @@
       "n": 2,
       "op": "authorized_keys_block",
       "refusal": "revert",
-      "undo": "strip the rue-breakglass block from /root/.ssh/authorized_keys",
+      "undo": "strip anchor rue-breakglass from file:/root/.ssh/authorized_keys",
       "undo_locus": "target"
     },
     {
@@ -136,7 +136,7 @@
       "n": 3,
       "op": "bmc_account_enable",
       "refusal": "revert",
-      "undo": "disable the breakglass account and clear bmc_password",
+      "undo": "hook :bmc_disable(account: breakglass)",
       "undo_locus": "controller"
     },
     {
@@ -151,7 +151,7 @@
       "n": 4,
       "op": "console_tunnel",
       "refusal": "revert",
-      "undo": "release the tunnel and rotate console_secret",
+      "undo": "vnc-tunnel down",
       "undo_locus": "controller"
     }
   ],

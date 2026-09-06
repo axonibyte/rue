@@ -67,7 +67,7 @@
       "n": 1,
       "op": "winfw_allow",
       "refusal": "revert",
-      "undo": "remove the rue-mgmt firewall rule",
+      "undo": "Remove-NetFirewallRule -Name rue-mgmt",
       "undo_locus": "target"
     },
     {

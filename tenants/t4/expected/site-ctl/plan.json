@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": null,
     "body": [
@@ -12,6 +12,21 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "hook": {
+                "args": [
+                  {
+                    "name": "set",
+                    "value": {
+                      "lit": "%{\"hvac-1\": :off, \"hvac-2\": :off, \"pump-1\": :low}"
+                    }
+                  }
+                ],
+                "name": "host_actuate"
+              }
+            }
+          ],
           "drift": "clobber",
           "exclusivity": null,
           "footprint": [
@@ -35,19 +50,18 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "shed_load",
           "locus": "target",
           "outputs": [],
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": "revert",
+          "suspend": null,
           "undo": "restore",
-          "undo_closed": true,
           "undo_idempotent": true,
-          "undo_locus": "controller",
-          "undo_one_line": "restore the three actuators to their reported pre-shed state"
+          "undo_locus": "controller"
         },
         "window_s": null
       }
@@ -78,11 +92,13 @@
         "os": "reactive-host",
         "reach": [
           "actuate"
-        ]
+        ],
+        "stdin_preamble": false
       }
     ],
     "max_wait_s": null,
     "scheduler_present": [],
+    "secrets_deliver_to": [],
     "transports": [
       "actuate"
     ]

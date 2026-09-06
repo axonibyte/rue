@@ -66,7 +66,7 @@
       "n": 1,
       "op": "x",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "remove file:/etc/x",
       "undo_locus": "controller"
     },
     {
@@ -81,7 +81,7 @@
       "n": 2,
       "op": "any",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "remove file:/etc/{name}",
       "undo_locus": "controller"
     }
   ],

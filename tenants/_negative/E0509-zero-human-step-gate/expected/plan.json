@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": null,
     "body": [
@@ -19,17 +19,18 @@
         "item": "knell",
         "on_lapse": "revert",
         "op": {
+          "do": [],
           "drift": null,
           "exclusivity": null,
           "footprint": [],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "fence",
           "locus": "target",
           "outputs": [],
           "post": [],
           "pre": [],
           "reach": [],
+          "reestablish": null,
           "refusal": {
             "knell": {
               "ack": {
@@ -45,11 +46,10 @@
               }
             }
           },
+          "suspend": null,
           "undo": "none",
-          "undo_closed": true,
           "undo_idempotent": true,
-          "undo_locus": "none",
-          "undo_one_line": "restore"
+          "undo_locus": "none"
         },
         "window_s": 3600
       }
@@ -88,7 +88,8 @@
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       },
       {
         "filesystem": false,
@@ -96,7 +97,8 @@
         "os": "appliance",
         "reach": [
           "api"
-        ]
+        ],
+        "stdin_preamble": false
       },
       {
         "filesystem": true,
@@ -104,13 +106,15 @@
         "os": "freebsd",
         "reach": [
           "console"
-        ]
+        ],
+        "stdin_preamble": true
       }
     ],
     "max_wait_s": null,
     "scheduler_present": [
       "db-01"
     ],
+    "secrets_deliver_to": [],
     "transports": [
       "ssh"
     ]

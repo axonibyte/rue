@@ -50,7 +50,7 @@
       "n": 1,
       "op": "a",
       "refusal": "revert",
-      "undo": "restore",
+      "undo": "remove file:/etc/a",
       "undo_locus": "none"
     }
   ],

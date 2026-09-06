@@ -1,5 +1,5 @@
-# The lab site the generic negative cases run on (proto/tenants/Rue/Proto/
-# Tenants/Negative.hs, `lab`): a filesystem host with ssh and a scheduler, an
+# The lab site the generic negative cases run on
+# (tenants/harness/src/tenants/negative.rs, `lab`): a filesystem host with ssh and a scheduler, an
 # API appliance with no filesystem, and a host reachable only by console.
 [[host]]
 name = "db-01"

@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -21,6 +21,27 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
+          "do": [
+            {
+              "run": {
+                "cmd": [
+                  {
+                    "lit": "New-NetFirewallRule -Name rue-mgmt -Direction Inbound -Protocol TCP -LocalPort "
+                  },
+                  {
+                    "ref": {
+                      "param": "port"
+                    }
+                  },
+                  {
+                    "lit": " -Action Allow"
+                  }
+                ],
+                "env": [],
+                "stdin": null
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -32,7 +53,6 @@
             }
           ],
           "handoff_done": null,
-          "has_suspend": false,
           "id": "winfw_allow",
           "locus": "target",
           "outputs": [],
@@ -41,12 +61,31 @@
           "reach": [
             "ssh"
           ],
+          "reestablish": null,
           "refusal": "revert",
-          "undo": "restore",
-          "undo_closed": true,
+          "suspend": null,
+          "undo": {
+            "computed": {
+              "body": [
+                {
+                  "run": {
+                    "cmd": [
+                      {
+                        "lit": "Remove-NetFirewallRule -Name rue-mgmt"
+                      }
+                    ],
+                    "env": [],
+                    "stdin": null
+                  }
+                }
+              ],
+              "undo_pre": [
+                "winfw:rule:rue-mgmt"
+              ]
+            }
+          },
           "undo_idempotent": true,
-          "undo_locus": "target",
-          "undo_one_line": "remove the rue-mgmt firewall rule"
+          "undo_locus": "target"
         },
         "window_s": null
       },
@@ -88,7 +127,8 @@
         "os": "freebsd",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       },
       {
         "filesystem": true,
@@ -96,7 +136,8 @@
         "os": "windows",
         "reach": [
           "ssh"
-        ]
+        ],
+        "stdin_preamble": true
       }
     ],
     "max_wait_s": null,
@@ -104,6 +145,7 @@
       "fw-01",
       "fw-win-01"
     ],
+    "secrets_deliver_to": [],
     "transports": [
       "ssh"
     ]

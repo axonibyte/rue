@@ -3,6 +3,7 @@
 //! backstop [unless_confirmed: 10m] installed and armed before the change, a
 //! reachability probe, confirm(), commit() last; and a Windows variant.
 
+use rue_core::body::*;
 use rue_core::model::*;
 
 use super::common::*;
@@ -17,6 +18,7 @@ pub fn site() -> Site {
         authenticators: vec![authenticator("netops", true)],
         max_wait: None,
         scheduler_present: strings(&["fw-01", "fw-win-01"]),
+        secrets_deliver_to: vec![],
     }
 }
 
@@ -24,7 +26,16 @@ pub fn pf_allow() -> Op {
     Op {
         undo_locus: UndoLocus::Target,
         reach: strings(&["ssh"]),
-        undo_one_line: "strip the rue-mgmt anchor from /etc/pf.conf; pfctl reload".into(),
+        do_: vec![
+            region_set(
+                anchored_ref("file:/etc/pf.conf", "rue-mgmt"),
+                Value::Template(vec![
+                    text("pass in proto tcp to port "),
+                    interp(param("port")),
+                ]),
+            ),
+            run_lit("pfctl -f /etc/pf.conf"),
+        ],
         ..Op::new(
             "pf_allow",
             vec![FootprintEntry::anchored("file:/etc/pf.conf", "rue-mgmt")],
@@ -36,7 +47,15 @@ fn winfw_allow() -> Op {
     Op {
         undo_locus: UndoLocus::Target,
         reach: strings(&["ssh"]),
-        undo_one_line: "remove the rue-mgmt firewall rule".into(),
+        do_: vec![run(vec![
+            text("New-NetFirewallRule -Name rue-mgmt -Direction Inbound -Protocol TCP -LocalPort "),
+            interp(param("port")),
+            text(" -Action Allow"),
+        ])],
+        undo: computed(
+            vec![run_lit("Remove-NetFirewallRule -Name rue-mgmt")],
+            &["winfw:rule:rue-mgmt"],
+        ),
         ..Op::new(
             "winfw_allow",
             vec![FootprintEntry::entry(Kind::Owned, "winfw:rule:rue-mgmt")],

@@ -1,11 +1,10 @@
 //! The core model, docs/ROADMAP.md sections 5.1 to 5.4, and its serde shape,
 //! which is the plan IR (docs/TESTING.md, "The plan IR").
 //!
-//! Names are the roadmap's; the simplifications are the prototype's and are
-//! named: bodies are opaque here (`undo_closed` and `undo_idempotent` stand
-//! in for the analyses of the second Phase 1 unit), facts are named by shape
-//! strings, and guards carry a fixed [`Tri`] so a plan's verdict can be
-//! computed without a world.
+//! Names are the roadmap's; the simplifications are named: facts are named by
+//! shape strings, guards carry a fixed [`Tri`] so a plan's verdict can be
+//! computed without a world, and `undo_idempotent` stands in for an analysis
+//! that is not Phase 1's. Bodies are [`crate::body`]'s primitives.
 //!
 //! The IR spelling: durations are whole seconds under names ending in `_s`;
 //! a unit variant is a bare string, a data-carrying variant a one-key object;
@@ -14,6 +13,8 @@
 //! without bumping `ir_version` fails loudly here.
 
 use serde::{Deserialize, Serialize};
+
+use crate::body::Body;
 
 /// A host name.
 pub type Host = String;
@@ -186,15 +187,21 @@ pub enum UndoLocus {
     NoLocus,
 }
 
-/// The undo. `Computed` and `Compensate` carry their declared `undo_pre` as
-/// the shapes the undo needs unchanged; `Restore` derives it from the
-/// footprint.
+/// The undo. `Computed` and `Compensate` carry a body and their declared
+/// `undo_pre`, the shapes the undo needs unchanged; `Restore` derives both
+/// from the footprint.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Undo {
     Restore,
-    Computed(Vec<String>),
-    Compensate(Vec<String>),
+    Computed {
+        body: Body,
+        undo_pre: Vec<String>,
+    },
+    Compensate {
+        body: Body,
+        undo_pre: Vec<String>,
+    },
     #[serde(rename = "none")]
     NoUndo,
 }
@@ -252,6 +259,8 @@ pub struct Op {
     pub id: String,
     pub footprint: Footprint,
     pub pre: Vec<Guard>,
+    #[serde(rename = "do")]
+    pub do_: Body,
     pub undo: Undo,
     pub post: Vec<Guard>,
     pub undo_locus: UndoLocus,
@@ -263,16 +272,13 @@ pub struct Op {
     pub outputs: Vec<Output>,
     pub exclusivity: Option<String>,
     pub locus: Locus,
-    /// `suspend:` and `reestablish:` defined.
-    pub has_suspend: bool,
+    /// Required together iff a `Held` footprint (E0205).
+    pub suspend: Option<Body>,
+    pub reestablish: Option<Body>,
     /// The probe that continues a deferred step.
     pub handoff_done: Option<String>,
-    /// Phase 0 stand-in for the closure analysis.
-    pub undo_closed: bool,
-    /// Phase 0 stand-in for the idempotency analysis.
+    /// Stand-in for the idempotency analysis, which is not Phase 1's (E0208).
     pub undo_idempotent: bool,
-    /// The undo line `explain` prints.
-    pub undo_one_line: String,
 }
 
 impl Op {
@@ -282,6 +288,7 @@ impl Op {
             id: id.to_string(),
             footprint,
             pre: Vec::new(),
+            do_: Vec::new(),
             undo: Undo::Restore,
             post: Vec::new(),
             undo_locus: UndoLocus::Controller,
@@ -291,11 +298,10 @@ impl Op {
             outputs: Vec::new(),
             exclusivity: None,
             locus: Locus::Target,
-            has_suspend: false,
+            suspend: None,
+            reestablish: None,
             handoff_done: None,
-            undo_closed: true,
             undo_idempotent: true,
-            undo_one_line: "restore".to_string(),
         }
     }
 
@@ -564,6 +570,9 @@ pub struct HostRecord {
     pub os: String,
     pub reach: Vec<String>,
     pub filesystem: bool,
+    /// The executor honours the stdin preamble that carries `env:` and
+    /// `stdin:` secrets (section 7.4); false for an API appliance.
+    pub stdin_preamble: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -577,6 +586,9 @@ pub struct Site {
     pub max_wait: Option<Duration>,
     /// Hosts whose scheduler binding reports presence.
     pub scheduler_present: Vec<Host>,
+    /// The `secrets deliver_to:` acceptors, in order (E0606 when empty and a
+    /// plan has a secret output).
+    pub secrets_deliver_to: Vec<String>,
 }
 
 #[cfg(test)]

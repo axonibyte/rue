@@ -10,7 +10,9 @@ use crate::algebra::{numbered, op_of, step_of};
 use crate::backstop::{
     coverage, heartbeat_violations, reach_violations, trigger_violations, TriggerViolation,
 };
+use crate::closure;
 use crate::diagnostics::Code;
+use crate::explain::undo_line;
 use crate::gates;
 use crate::intent::{
     commit_not_last, commit_step, effective_wane, infer_intent, paths_without_commit, Intent,
@@ -380,15 +382,19 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
                 format!("op {}: undo and knell disagree", o.id),
             ));
         }
-        if o.undo_locus == UndoLocus::Target && !o.undo_closed {
-            diagnostics.push(d(
-                Code::E0202,
-                n,
-                format!(
-                    "op {}: :target undo is not closed over target-local commands and facts",
-                    o.id
-                ),
-            ));
+        if o.undo_locus == UndoLocus::Target {
+            let unclosed = closure::unclosed_undo(o);
+            if let Some(first) = unclosed.first() {
+                diagnostics.push(d(
+                    Code::E0202,
+                    n,
+                    format!(
+                        "op {}: :target undo is not closed over target-local commands and facts: {}",
+                        o.id,
+                        closure::describe(first)
+                    ),
+                ));
+            }
         }
         if o.undo_locus == UndoLocus::NoLocus && o.undo != Undo::NoUndo {
             diagnostics.push(d(
@@ -397,14 +403,17 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
                 format!("op {}: undo_locus :none with an undo body", o.id),
             ));
         }
-        if o.footprint.iter().any(|e| e.kind == Kind::Held) && !o.has_suspend {
+        if o.footprint.iter().any(|e| e.kind == Kind::Held)
+            && (o.suspend.is_none() || o.reestablish.is_none())
+        {
             diagnostics.push(d(
                 Code::E0205,
                 n,
                 format!("op {}: held footprint without suspend/reestablish", o.id),
             ));
         }
-        if matches!(&o.undo, Undo::Computed(pre) | Undo::Compensate(pre) if pre.is_empty()) {
+        if matches!(&o.undo, Undo::Computed { undo_pre, .. } | Undo::Compensate { undo_pre, .. } if undo_pre.is_empty())
+        {
             diagnostics.push(d(
                 Code::E0207,
                 n,
@@ -740,7 +749,7 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
                 },
                 undo: match o.undo {
                     Undo::NoUndo => None,
-                    _ => Some(o.undo_one_line.clone()),
+                    _ => Some(undo_line(o)),
                 },
                 undo_locus: match o.undo_locus {
                     UndoLocus::Target => "target",

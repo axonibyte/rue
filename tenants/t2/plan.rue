@@ -3,7 +3,8 @@ rue 0
 # commit(). Two variants: mode :auto (ack :none) and mode :manual (one human),
 # the manual path alone reaching the destructive rollback knell.
 #
-# Phase 0 carries this text unparsed; see proto/tenants/Rue/Proto/Tenants/T2.hs.
+# Phase 1 carries this text unparsed; the checked form is the Rust term in
+# tenants/harness/src/tenants/t2.rs, and expected/ holds its verdicts.
 
 site do
   inventory from: file("inventory.toml")

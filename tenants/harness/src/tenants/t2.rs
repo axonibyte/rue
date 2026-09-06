@@ -2,6 +2,7 @@
 //! commit(). Two variants: mode :auto (ack :none) and mode :manual (one
 //! human), the manual path alone reaching the destructive rollback knell.
 
+use rue_core::body::*;
 use rue_core::model::*;
 
 use super::common::*;
@@ -21,6 +22,7 @@ pub fn site() -> Site {
         ],
         max_wait: Some(dur(1800)),
         scheduler_present: strings(&["node-b"]),
+        secrets_deliver_to: vec![],
     }
 }
 
@@ -34,7 +36,7 @@ fn fence(ack: Ack) -> Op {
             ack,
         },
         locus: Locus::Controller,
-        undo_one_line: String::new(),
+        do_: vec![hook("fence", vec![("node", Value::Ref(param("corpse")))])],
         ..Op::new("fence_corpse", vec![])
     }
 }
@@ -46,7 +48,17 @@ fn resurrection_gate() -> Op {
         },
         undo_locus: UndoLocus::Controller,
         locus: Locus::Controller,
-        undo_one_line: "release the slave-mode gate on node-a".into(),
+        do_: vec![hook(
+            "platform",
+            vec![("set", lit(":slave")), ("node", lit("node-a"))],
+        )],
+        undo: computed(
+            vec![hook(
+                "platform",
+                vec![("set", lit(":master")), ("node", lit("node-a"))],
+            )],
+            &["platform:node-a:mode"],
+        ),
         ..Op::new(
             "resurrection_gate",
             vec![FootprintEntry::entry(
@@ -61,7 +73,11 @@ fn start_guest() -> Op {
     Op {
         refusal: Refusal::Hold { via: None },
         undo_locus: UndoLocus::Controller,
-        undo_one_line: "stop guest {g} on node-b".into(),
+        do_: vec![run(vec![text("cbsd bstart "), interp(controller("g"))])],
+        undo: computed(
+            vec![run(vec![text("cbsd bstop "), interp(controller("g"))])],
+            &["guest:{g}:state"],
+        ),
         ..Op::new(
             "start_guest",
             vec![FootprintEntry::entry(Kind::Modified, "guest:{g}:state")],
@@ -78,20 +94,36 @@ fn zfs_rollback() -> Op {
             cost: Cost::Probe("destroyed_snapshots".into()),
             ack: Ack::Gate(humans()),
         },
-        undo_one_line: String::new(),
+        do_: vec![run(vec![
+            text("zfs rollback -r "),
+            interp(param("dataset")),
+            text("@split"),
+        ])],
         ..Op::new("rollback_ahead_datasets", vec![])
     }
 }
 
 fn succession_log() -> Op {
     Op {
-        undo: Undo::Compensate(strings(&[
-            "file:/var/db/succession.log",
-            "record:placement",
-        ])),
+        do_: vec![
+            append(
+                fact_ref("file:/var/db/succession.log"),
+                Value::Ref(param("entry")),
+            ),
+            hook("placement", vec![("set", Value::Ref(param("entry")))]),
+        ],
+        undo: compensate(
+            vec![
+                append(
+                    fact_ref("file:/var/db/succession.log"),
+                    Value::Ref(param("reversal")),
+                ),
+                hook("placement", vec![("set", Value::Ref(param("reversal")))]),
+            ],
+            &["file:/var/db/succession.log", "record:placement"],
+        ),
         undo_locus: UndoLocus::Controller,
         locus: Locus::Controller,
-        undo_one_line: "append a reversal record (undone by record, not erasure)".into(),
         ..Op::new(
             "record_succession",
             vec![
@@ -108,7 +140,8 @@ fn heir_on_other_node() -> Op {
         undo_locus: UndoLocus::Controller,
         locus: Locus::Host(HostRef::Static("node-c".into())),
         handoff_done: Some("heir_running_on_c".into()),
-        undo_one_line: "stop the heir on node-c".into(),
+        do_: vec![run_lit("cbsd bstart heir")],
+        undo: computed(vec![run_lit("cbsd bstop heir")], &["guest:heir:state"]),
         ..Op::new(
             "start_heir",
             vec![FootprintEntry::entry(Kind::Modified, "guest:heir:state")],
