@@ -1,9 +1,12 @@
 #!/bin/sh
 # The seam guard (ROADMAP.md section 4.4).
 #
-# Greps framework code -- proto/ (minus its tenants/ sublibrary), tools/, ci/
-# and tests/ -- for the words in tools/seam-denylist.txt and fails on any hit.
-# tenants/ and docs/ are not scanned: that is where tenant vocabulary belongs.
+# Greps framework code -- the Rust crates of ROADMAP.md section 4.2 (core/,
+# render/, surface/, engine/, bindings/, cli/, daemon/), proto/ (minus its
+# tenants/ sublibrary), tools/, ci/ and tests/ -- for the words in
+# tools/seam-denylist.txt and fails on any hit. tenants/ and docs/ are not
+# scanned: that is where tenant vocabulary belongs. Directories that do not
+# exist yet are skipped; the crates arrive by phase.
 #
 # Deliberately dumb: it greps source as data, because a clever guard is one
 # that can be reasoned around. Tier 3 of the testing methodology.
@@ -44,11 +47,11 @@ if [ ! -s "$tmp/words" ]; then
 fi
 
 dirs=''
-for d in proto tools ci tests; do
+for d in core render surface engine bindings cli daemon proto tools ci tests; do
     [ -d "$root/$d" ] && dirs="$dirs $d"
 done
 if [ -z "$dirs" ]; then
-    echo "lint-seam: none of proto/ tools/ ci/ tests/ exist under $root; nothing scanned" >&2
+    echo "lint-seam: no framework directory exists under $root; nothing scanned" >&2
     exit 2
 fi
 
@@ -57,7 +60,7 @@ cd "$root" || exit 2
 #   Deliberate word splitting: $dirs is a space-separated list of directory
 #   names being turned into one argument each.
 grep -rnIiwF -f "$tmp/words" \
-    --exclude-dir=tenants --exclude-dir=dist-newstyle --exclude-dir=.git \
+    --exclude-dir=tenants --exclude-dir=dist-newstyle --exclude-dir=target --exclude-dir=.git \
     --exclude=seam-denylist.txt \
     $dirs > "$tmp/hits" 2> "$tmp/err"
 st=$?

@@ -12,9 +12,12 @@
 #                            cabal anywhere else is a failure and never a quiet
 #                            pass.
 #
-# The third guest -- Windows -- is a Phase 1 deliverable (docs/ROADMAP.md,
-# Phase 1). It cannot be named until the sysadmin registers its template;
-# naming an unregistered guest is refused before any machine is created.
+# There is no Windows guest, and not because a template is unregistered:
+# reaper's runner is POSIX sh over ZFS with a closed Linux/FreeBSD switch, so
+# hosting Windows is a port of reaper, tracked as a dependency on that project
+# (docs/ROADMAP.md, Phase 1 and section 12). Until it lands, Windows is
+# proven by the pipeline: a cross-build of every binary and the test suite run
+# under wine (bitbucket-pipelines.yml, doTestWindows).
 #
 # Every cmd runs under /bin/sh and dash has no pipefail, so no cmd below pipes;
 # tools/check.sh owns its own exit status the same way.
@@ -42,21 +45,35 @@ image = "docker.io/library/haskell@sha256:f5400211315c07ff6bc47c1f14333b75d02960
 
 # The cache paths come from the environment rather than being written out.
 # The command is a shell command, so these expand; a manifest env value would
-# not, deliberately. The build is `cabal build all`; the run below tests.
+# not, deliberately. The image carries GHC and no Rust, so Rust 1.97.1 is
+# installed by rustup into the rustup and cargo caches the first time and
+# found there afterwards (rustup-init is fetched to a file, never piped into
+# a shell). The build is the cabal build and the cargo build; the run below
+# tests both.
 cmd = """
 cd proto && \
 CABAL_DIR=$REAPER_CACHE_CABAL cabal update && \
-CABAL_DIR=$REAPER_CACHE_CABAL cabal build all --builddir $REAPER_CACHE_BUILD_DIR"""
+CABAL_DIR=$REAPER_CACHE_CABAL cabal build all --builddir $REAPER_CACHE_BUILD_DIR && \
+cd .. && \
+export RUSTUP_HOME=$REAPER_CACHE_RUSTUP CARGO_HOME=$REAPER_CACHE_CARGO && \
+{ test -x $REAPER_CACHE_CARGO/bin/cargo || { \
+    curl -sSf https://sh.rustup.rs -o $REAPER_CACHE_RUSTUP/rustup-init.sh && \
+    sh $REAPER_CACHE_RUSTUP/rustup-init.sh -y --no-modify-path --profile minimal \
+        --default-toolchain 1.97.1 -c rustfmt -c clippy; }; } && \
+PATH=$REAPER_CACHE_CARGO/bin:$PATH CARGO_TARGET_DIR=$REAPER_CACHE_TARGET \
+cargo build --workspace --all-targets --release --locked"""
 
 # Named by us and meaningless to the framework. Everything large lives here
 # and not on the guest's small root disk.
-cache = ["cabal", "build-dir"]
+cache = ["cabal", "build-dir", "rustup", "cargo", "target"]
 
 [[guests]]
 name = "freebsd-15.1"
 exec = "host"
-# Base system only: shellcheck and cabal are absent by design, and declared so.
-run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test sh tools/check.sh" }
+# Base system only: shellcheck, cabal and cargo are absent by design, and
+# declared so. FreeBSD-native Rust coverage is the workstation's pkg rust,
+# which the gate runs there with nothing skipped.
+run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test,cargo-fmt,cargo-clippy,cargo-build,cargo-test sh tools/check.sh" }
 
 [run]
 # The Ubuntu run, in build.image (a container run with no image of its own
@@ -67,13 +84,15 @@ run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test s
 cmd = """
 apt-get -qq update && apt-get -qq install -y --no-install-recommends shellcheck patch && \
 mkdir -p $REAPER_CACHE_BUILD_DIR/tmp && \
+PATH=$REAPER_CACHE_CARGO/bin:$PATH RUSTUP_HOME=$REAPER_CACHE_RUSTUP CARGO_HOME=$REAPER_CACHE_CARGO \
+CARGO_TARGET_DIR=$REAPER_CACHE_TARGET \
 CABAL_DIR=$REAPER_CACHE_CABAL RUE_BUILDDIR=$REAPER_CACHE_BUILD_DIR \
 TMPDIR=$REAPER_CACHE_BUILD_DIR/tmp sh tools/check.sh"""
 
 [sync]
 # Workstation build output is for a different operating system and is rebuilt
 # in the session's own cache anyway; out/ is always excluded regardless.
-exclude = ["/proto/dist-newstyle/", "/.cabal_cache/", "/out/"]
+exclude = ["/proto/dist-newstyle/", "/.cabal_cache/", "/target/", "/.cargo_cache/", "/out/"]
 
 [reset]
 # Nothing of rue's state accumulates in a session yet. Declared so the tenant

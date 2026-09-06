@@ -23,13 +23,24 @@ failure, and exits 0 only if every phase ran and passed:
 | `golden-hygiene` | Every expected file has no CR, no trailing whitespace, exactly one trailing LF; JSON begins with `{` |
 | `rediscovery-patches` | Every row of the rediscovery table names a patch that still applies to the tree, and every patch is listed |
 | `tier3-selftests` | Each shell guard catches the fault it exists to catch, in a temporary tree |
+| `cargo-fmt` | The workspace is rustfmt-clean |
+| `cargo-clippy` | `cargo clippy --workspace --all-targets --locked -- -D warnings` is clean |
+| `cargo-build` | The workspace builds, every target, release, against the lockfile, under Rust 1.97 |
+| `cargo-test` | The Rust suite passes, and changed nothing under `tenants/` or `docs/` |
 | `cabal-build` | The prototype builds under GHC 9.10.3 with `-Wall -Werror` |
-| `cabal-test` | The suite passes, and changed nothing under `tenants/` or `docs/` |
+| `cabal-test` | The Haskell suite passes, and changed nothing under `tenants/` or `docs/` |
 
 A phase whose tool is absent exits 77. That is a failure unless the caller
 named the phase in `RUE_CHECK_SKIP_OK`. The FreeBSD reaper guest, which has
-only the base system, declares `bash-syntax,shellcheck,cabal-build,cabal-test`
-in `.reaper.toml`; nowhere else is anything skipped.
+only the base system, declares the bash, shellcheck, cabal and cargo phases in
+`.reaper.toml`; nowhere else is anything skipped. A Rust toolchain that is
+present but not 1.97 is a failure, not a skip: the workspace's `rust-version`,
+the CI image and the gate say one minor so fmt and clippy output is
+comparable everywhere.
+
+Two implementations, one set of goldens: the Haskell prototype writes them
+and its suite compares them; the Rust crates compare the same files. Both run
+in one gate, so the two cannot disagree while the gate is green.
 
 ## Tiers in Phase 0
 

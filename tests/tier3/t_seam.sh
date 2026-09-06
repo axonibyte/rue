@@ -54,6 +54,25 @@ else
     bad "word under tenants/ is exempt (exit $?)"; cat "$tmp/out" >&2
 fi
 
+# 3b. A planted word in a Rust crate fails; the same word under tenants/ (the
+#     harness crate's home) is exempt.
+mkdir -p "$tmp/tree/core/src" "$tmp/tree/tenants/harness/src" || exit 2
+printf '// planted: %s\n' "$word" > "$tmp/tree/core/src/planted.rs"
+sh "$guard" --root "$tmp/tree" --denylist "$list" > "$tmp/out" 2>&1
+st=$?
+if [ "$st" -eq 1 ]; then
+    ok "planted word in core/ fails with exit 1"
+else
+    bad "planted word in core/ fails with exit 1 (got $st)"; cat "$tmp/out" >&2
+fi
+rm -f "$tmp/tree/core/src/planted.rs"
+printf '// planted: %s\n' "$word" > "$tmp/tree/tenants/harness/src/lib.rs"
+if sh "$guard" --root "$tmp/tree" --denylist "$list" > "$tmp/out" 2>&1; then
+    ok "word under tenants/harness/ is exempt"
+else
+    bad "word under tenants/harness/ is exempt (exit $?)"; cat "$tmp/out" >&2
+fi
+
 # 4. Case-insensitive, whole-word: the upper-cased word is still a hit.
 upper=$(printf '%s' "$word" | tr '[:lower:]' '[:upper:]')
 printf '# %s\n' "$upper" > "$tmp/tree/ci/planted.sh"

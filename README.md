@@ -94,12 +94,14 @@ sh tools/lint-seam.sh             # the seam guard alone
 sh tools/lint-ecodes.sh           # the E-code guard alone
 sh tests/tier3/t_seam.sh          # a guard's self-test
 sh tools/rediscovery/run.sh --tier 1   # revert each tier-1 protection in a scratch copy; the suite must fail
+cargo build --workspace --all-targets --locked && cargo test --workspace --locked
 cd proto && cabal build all && cabal test all --test-show-details=direct
 cd proto && cabal run -v0 rue-proto-check -- t3 fw-01            # a tenant's prose verdict; --json, --explain
 ```
 
-The prototype needs GHC 9.10.3 and cabal (`pkg install ghc hs-cabal-install`
-on FreeBSD). `proto/cabal.project` pins the Hackage index state and
+The crates need Rust 1.97 (`pkg install rust` on FreeBSD; the gate refuses
+another minor). The prototype needs GHC 9.10.3 and cabal (`pkg install ghc
+hs-cabal-install`). `proto/cabal.project` pins the Hackage index state and
 `proto/cabal.project.freeze` pins every dependency, so the same inputs give
 the same bytes on the workstation, in CI and in a reaper session.
 `RUE_UPDATE_GOLDENS=1 cabal run rue-proto-goldens` is the only thing that
@@ -129,7 +131,8 @@ on both registered guests. Validate the manifest with
 | `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |
 | `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
 | `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
-| `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests; `proto/README.md` has the layout and the findings |
+| `Cargo.toml`, `core/` | The Rust workspace and `rue-core` (Phase 1): the model and its plan-IR shape, the code enumeration, the canonical encoder; the checker follows |
+| `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests; `proto/README.md` has the layout and the findings. The specification the crates are held to |
 | `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |
 | `tests/tier3/` | Self-tests of the guards: each plants the fault it exists to catch |
 | `ci/build-target.sh` | All per-target build knowledge for the five release triples |

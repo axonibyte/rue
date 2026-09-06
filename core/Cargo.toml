@@ -1,0 +1,18 @@
+[package]
+name = "rue-core"
+description = "rue's core: the model, the checker, the verdict, the state machine (pure, no I/O)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "rue_core"
+path = "src/lib.rs"
+
+# Pure by construction: serde for the data shapes, serde_json for the
+# canonical form. Nothing that reads a file, opens a socket or tells the time.
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

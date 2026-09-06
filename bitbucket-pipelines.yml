@@ -1,18 +1,22 @@
 # Pinned rather than :latest so a tag build today and a rebuild next year use
-# the same compiler. Bump deliberately, together with rust-version in the
-# workspace Cargo.toml (Phase 1), the nightly pin in ci/build-target.sh, and
-# the GHC image below (whose digest .reaper.toml carries).
+# the same compiler, and pinned to a Debian codename so the apt packages the
+# steps install (mingw, wine64, python3-pip) come from one release. Bump
+# deliberately, together with rust-version in Cargo.toml, the toolchain check
+# in tools/check.sh, the nightly pin in ci/build-target.sh, and the GHC image
+# below (whose digest .reaper.toml carries).
 #
-# The Rust image is the default because the house pipeline shape is Rust;
-# until a Cargo.toml exists (Phase 1), every Rust step prints a skip line and
-# exits 0 -- a stated skip, never an empty pass. The gate step runs in the GHC
-# image because the Phase 0 prototype is Haskell.
-image: rust:1.97
+# The Rust image is the default because the house pipeline shape is Rust; the
+# gate step runs in the GHC image because the Phase 0 prototype is Haskell
+# and stays the specification the crates are held to.
+image: rust:1.97-trixie
 
 definitions:
   caches:
-    # cargo is path-only until Cargo.lock exists (Phase 1); key it then.
+    # Keyed on the lockfile: a dependency change is a new cache.
     cargo:
+      key:
+        files:
+          - Cargo.lock
       path: .cargo_cache
     # The store only, keyed on the freeze: the extracted Hackage index is far
     # too large to cache and `cabal update` under a pinned index-state changes
@@ -52,7 +56,6 @@ definitions:
         caches:
           - cargo
         script:
-          - test -f Cargo.toml || { echo "skip - no Cargo.toml yet (Phase 0); the Rust gate arms in Phase 1"; exit 0; }
           - export CARGO_HOME="$BITBUCKET_CLONE_DIR/.cargo_cache"
           - rustup component add rustfmt clippy
           - cargo fetch --locked

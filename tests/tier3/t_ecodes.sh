@@ -26,8 +26,9 @@ expect() { # expect <status> <label>
 
 reset_tree() {
     rm -rf "$tmp/tree"
-    mkdir -p "$tmp/tree/proto/src/Rue/Proto" "$tmp/tree/docs" || exit 2
+    mkdir -p "$tmp/tree/proto/src/Rue/Proto" "$tmp/tree/core/src" "$tmp/tree/docs" || exit 2
     cp "$root/proto/src/Rue/Proto/Diagnostics.hs" "$tmp/tree/proto/src/Rue/Proto/Diagnostics.hs"
+    cp "$root/core/src/diagnostics.rs" "$tmp/tree/core/src/diagnostics.rs"
     cp "$root/docs/ROADMAP.md" "$tmp/tree/docs/ROADMAP.md"
 }
 
@@ -50,6 +51,21 @@ reset_tree
 mkdir -p "$tmp/tree/proto/app"
 printf 'main = putStrLn "E0401"\n' > "$tmp/tree/proto/app/Planted.hs"
 expect 1 "raw literal outside the enum is caught"
+
+# 3b. The Rust enumeration is held to the table the same way.
+reset_tree
+printf '    E9999 => "planted",\n' >> "$tmp/tree/core/src/diagnostics.rs"
+expect 1 "Rust-only code is caught"
+reset_tree
+sed '/^[[:space:]]*E0401[[:space:]]*=>/d' "$root/core/src/diagnostics.rs" > "$tmp/tree/core/src/diagnostics.rs"
+expect 1 "table code missing from the Rust enumeration is caught"
+reset_tree
+mkdir -p "$tmp/tree/core/src"
+printf 'fn planted() -> &%sstatic str { "E0401" }\n' "'" > "$tmp/tree/core/src/planted.rs"
+expect 1 "raw literal in a Rust crate is caught"
+reset_tree
+: > "$tmp/tree/core/src/diagnostics.rs"
+expect 2 "empty Rust enumeration refuses with exit 2"
 
 # 4. A table with no codes is a refusal to check.
 reset_tree

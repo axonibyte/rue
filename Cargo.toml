@@ -1,0 +1,24 @@
+# The rue workspace (docs/ROADMAP.md section 4.2). Members are added as their
+# phase lands; dependency direction is downward only, and rue-core depends on
+# nothing in the workspace and on no I/O crate.
+[workspace]
+resolver = "2"
+members = ["core"]
+
+[workspace.package]
+# Read by ci/build-target.sh and the deploy step: the tag must be v<version>.
+version = "0.0.1"
+edition = "2021"
+# The pipeline image (rust:1.97-trixie), the workstation's pkg rust and the
+# gate's toolchain check all say 1.97; bump the four together.
+rust-version = "1.97"
+license = "BSD-2-Clause"
+repository = "https://bitbucket.org/axonibyte/rue"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+# Default features only: preserve_order would make object keys insertion-
+# ordered and break the canonical form (docs/TESTING.md).
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"

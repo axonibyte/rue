@@ -16,6 +16,8 @@
 #   RUE_CHECK_SKIP_OK   phases allowed to skip when their tool is absent
 #   RUE_BUILDDIR        cabal --builddir (default proto/dist-newstyle)
 #   RUE_CABAL_UPDATE=1  run `cabal update` before building (CI and reaper)
+#   CARGO_HOME, CARGO_TARGET_DIR   honored as cargo does (reaper and CI set
+#                       them to caches); nothing here overrides them
 #
 # shellcheck disable=SC2329,SC2317
 #   Every p_* function is invoked indirectly, through `phase <name> <cmd>`,
@@ -152,6 +154,59 @@ p_tier3() {
     return "$st"
 }
 
+# The Rust toolchain: the workspace's rust-version, the CI image and the
+# workstation's pkg rust all say 1.97, and fmt and clippy output is only
+# comparable across machines on one minor, so the minor is asserted (fail,
+# not skip) and a missing cargo is the loud 77.
+rust_toolchain() {
+    if ! command -v cargo > /dev/null 2>&1 || ! command -v rustc > /dev/null 2>&1; then
+        echo "cargo/rustc are not on PATH (pkg install rust; or rustup toolchain install 1.97.1)" >&2
+        return 77
+    fi
+    case $(rustc --version) in
+        "rustc 1.97."*) return 0 ;;
+    esac
+    echo "rustc is '$(rustc --version)'; Cargo.toml, the CI image and this gate expect 1.97.x" >&2
+    return 1
+}
+
+p_cargo_fmt() {
+    rust_toolchain || return $?
+    if ! cargo fmt --version > /dev/null 2>&1; then
+        echo "rustfmt is not installed (rustup component add rustfmt)" >&2
+        return 77
+    fi
+    cargo fmt --all --check
+}
+
+p_cargo_clippy() {
+    rust_toolchain || return $?
+    if ! cargo clippy --version > /dev/null 2>&1; then
+        echo "clippy is not installed (rustup component add clippy)" >&2
+        return 77
+    fi
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+}
+
+p_cargo_build() {
+    rust_toolchain || return $?
+    cargo build --workspace --all-targets --release --locked
+}
+
+# Read-only like the cabal suite: the same checksum guard over tenants/ and
+# docs/ brackets the run.
+p_cargo_test() {
+    rust_toolchain || return $?
+    golden_sums "$tmp/r.before" || return 1
+    cargo test --workspace --release --locked || return 1
+    golden_sums "$tmp/r.after" || return 1
+    if ! cmp -s "$tmp/r.before" "$tmp/r.after"; then
+        echo "cargo test changed files under tenants/ or docs/; the suite is read-only" >&2
+        return 1
+    fi
+    return 0
+}
+
 toolchain() {
     if ! command -v cabal > /dev/null 2>&1 || ! command -v ghc > /dev/null 2>&1; then
         echo "ghc/cabal are not on PATH (pkg install ghc hs-cabal-install)" >&2
@@ -204,6 +259,10 @@ phase ecodes           sh tools/lint-ecodes.sh
 phase golden-hygiene   sh tools/lint-goldens.sh
 phase rediscovery-patches sh tools/rediscovery/check-patches.sh
 phase tier3-selftests  p_tier3
+phase cargo-fmt        p_cargo_fmt
+phase cargo-clippy     p_cargo_clippy
+phase cargo-build      p_cargo_build
+phase cargo-test       p_cargo_test
 phase cabal-build      p_cabal_build
 phase cabal-test       p_cabal_test
 
