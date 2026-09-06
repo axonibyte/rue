@@ -1,0 +1,34 @@
+rue 0
+# Negative case E0302: the same shape on a host bound at runtime may overlap
+# an earlier fact -- penumbral by host rather than by shape -- under strict.
+# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# `lab`). The checker must refuse with exactly E0302.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: :restore
+end
+
+defop :posture_elsewhere, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: :restore
+  undo_locus: :controller
+  locus: host(pick)   # bound when `pick` flows in; until then it may be db-01
+end
+
+defplan :any, %{name: "db-01"} do
+  wane 1h
+  posture()
+  posture_elsewhere(pick: chosen_host)
+end

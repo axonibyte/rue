@@ -67,7 +67,12 @@ prose v = case vStatus v of
       | vReversibleThrough v == 0 = "not reversible past step 0"
       | vReversibleThrough v >= total && vPointOfNoReturn v == Nothing = "fully reversible (" <> num total <> " steps)"
       | otherwise = "reversible through step " <> num (vReversibleThrough v)
-    holdClause n = "step " <> num n <> " holds on refusal (human required)"
+    -- Phase 0 finding: Appendix A has one hold clause, "(human required)";
+    -- section 8.2 says a hold under mode: :auto holds "until resume, recant
+    -- or commit", with no human in the loop, and the two cannot both be true.
+    holdClause n
+      | vMode v == "auto" = "step " <> num n <> " holds on refusal (until resume, recant or commit)"
+      | otherwise = "step " <> num n <> " holds on refusal (human required)"
     knell p =
       "step " <> num (ponrStep p) <> " is a point of no return"
         <> maybe "" (", guard " <>) (ponrGuard p)
@@ -120,6 +125,7 @@ prose v = case vStatus v of
       catMaybes
         [ case hs of
             [HostTouched h d] | h == vHost v && d == "target" -> Nothing
+            [HostTouched "controller" _] -> Nothing
             _ -> Just ("step " <> num n <> " touches " <> T.intercalate ", " (map hostText hs))
         | (n, hs) <- vHostsTouched v
         ]

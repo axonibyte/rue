@@ -1,0 +1,11 @@
+rue 0
+# Negative case E0507: mode :auto plan whose knell wants a human acknowledgement
+# On T2's site (max_wait 30m bounds the ack wait, so only E0507 remains).
+
+import "../../t2/plan.rue" as t2
+
+defplan :promote, %{name: "node-b"} do
+  mode: :auto
+  knell t2.fence_corpse(ack: humans(1))
+  commit()
+end

@@ -1,0 +1,14 @@
+rue 0
+# Negative case E0502: commit() not last on its path
+# Derived from T3 (tenants/t3/plan.rue) by one change. The checker must refuse
+# with exactly E0502; expected/ holds the refusing verdict.
+
+import "../../t3/plan.rue" as t3
+
+defplan :open_mgmt_port, %{os: :freebsd} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  t3.pf_allow(port: 8443)
+  commit()
+  observe t3.verify_reach() as reach
+  confirm()
+end

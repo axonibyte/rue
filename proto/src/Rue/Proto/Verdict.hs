@@ -123,6 +123,7 @@ data Verdict = Verdict
   , vStatus :: Status
   , vIntent :: Maybe Intent
   , vRehearsal :: Bool
+  , vMode :: Text -- ^ @manual@ or @auto@: which hold and ack rules applied
   , vCommitStep :: Maybe Int
   , vFiresByConstruction :: Bool
   , vWane :: Maybe Duration
@@ -169,6 +170,7 @@ toJson v =
     , "status" .= (case vStatus v of Ok -> "ok" :: Text; RefusedStatus -> "refused")
     , "intent" .= maybe Null (\i -> String (case i of Temporary -> "temporary"; Permanent -> "permanent")) (vIntent v)
     , "rehearsal" .= vRehearsal v
+    , "mode" .= vMode v
     , "commit_step" .= maybe Null (Number . fromIntegral) (vCommitStep v)
     , "fires_by_construction" .= vFiresByConstruction v
     , "wane_s" .= dur (vWane v)

@@ -1,0 +1,1 @@
+tunnel on db-01: refused; E0205 at step 1: op tunnel: held footprint without suspend/reestablish.

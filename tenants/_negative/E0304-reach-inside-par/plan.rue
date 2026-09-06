@@ -1,0 +1,36 @@
+rue 0
+# Negative case E0304: reach op inside par
+# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# `lab`). The checker must refuse with exactly E0304.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :pf, _ do
+  footprint owned: file("/etc/pf")
+  reach ssh(host)
+  do: write(file("/etc/pf"), content: "x")
+  undo: :restore
+  undo_locus: :target
+end
+
+defop :other, _ do
+  footprint owned: file("/etc/b")
+  do: write(file("/etc/b"), content: "x")
+  undo: :restore
+end
+
+defplan :par, %{name: "db-01"} do
+  wane 1h
+  backstop trigger: [after: 1h], locus: :target, arm_before: 1
+  par do
+    pf()
+    other()
+  end
+end

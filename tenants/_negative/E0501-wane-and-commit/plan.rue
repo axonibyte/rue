@@ -1,0 +1,15 @@
+rue 0
+# Negative case E0501: both wane and commit()
+# Derived from T3 (tenants/t3/plan.rue) by one change. The checker must refuse
+# with exactly E0501; expected/ holds the refusing verdict.
+
+import "../../t3/plan.rue" as t3
+
+defplan :open_mgmt_port, %{os: :freebsd} do
+  wane 1h
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  t3.pf_allow(port: 8443)
+  observe t3.verify_reach() as reach
+  confirm()
+  commit()
+end

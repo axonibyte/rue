@@ -1,0 +1,21 @@
+# T3 inventory: a FreeBSD firewall host and its Windows counterpart.
+[[host]]
+name = "fw-01"
+address = "10.0.1.1"
+os = "freebsd"
+roles = ["fw"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "cron"
+
+[[host]]
+name = "fw-win-01"
+address = "10.0.1.2"
+os = "windows"
+roles = ["fw"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "task-scheduler"
+
+[authenticators]
+netops = { human = true }

@@ -1,0 +1,63 @@
+rue 0
+# T3 -- commit-confirmed firewall change (docs/ROADMAP.md section 8.3).
+# Permanent. Two hosts: a FreeBSD pf anchor (region) and a Windows Firewall rule
+# (owned), dispatched by clause on the host's os.
+#
+# Damaged-marker cost (the region step's fallback): if the rue-mgmt anchor's
+# markers are damaged, the whole of /etc/pf.conf is restored from the do-time
+# snapshot and a stranger's edits outside the anchor are lost -- unless another
+# instance holds a region on the file, in which case the revert is deferred.
+#
+# Phase 0 carries this text unparsed; see proto/tenants/Rue/Proto/Tenants/T3.hs.
+
+site do
+  inventory from: file("inventory.toml")
+  journal to: local()
+  approval via: hook(:authority)
+  backstop scheduler: cron()
+  operators do
+    identity :netops_requester, user: "netops", operator_for: :all, admin: true
+  end
+  hooks do
+    registrar :authority, user: "approvald", may_register: [:authority]
+  end
+end
+
+defprobe :verify_reach do
+  run "true"
+  locus :controller
+  produces reach
+end
+
+defop :pf_allow, %{os: :freebsd} do
+  footprint region: file("/etc/pf.conf", anchor: "rue-mgmt")
+  reach ssh(host)
+  do: [region_set(file("/etc/pf.conf", anchor: "rue-mgmt"), content: "pass in proto tcp to port #{port}"), run("pfctl -f /etc/pf.conf")]
+  undo: :restore
+  undo_locus: :target
+end
+
+defop :winfw_allow, %{os: :windows} do
+  footprint owned: winfw.rule("rue-mgmt")
+  reach ssh(host)
+  do: run("New-NetFirewallRule -Name rue-mgmt -Direction Inbound -Protocol TCP -LocalPort #{port} -Action Allow")
+  undo: run("Remove-NetFirewallRule -Name rue-mgmt")
+  undo_pre winfw.rule("rue-mgmt")
+  undo_locus: :target
+end
+
+defplan :open_mgmt_port, %{os: :freebsd} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  pf_allow(port: 8443)
+  observe verify_reach() as reach
+  confirm()
+  commit()
+end
+
+defplan :open_mgmt_port, %{os: :windows} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  winfw_allow(port: 8443)
+  observe verify_reach() as reach
+  confirm()
+  commit()
+end

@@ -1,0 +1,81 @@
+rue 0
+# T1 -- break-glass access (docs/ROADMAP.md section 8.1). Temporary.
+#
+# Phase 0 carries this text unparsed; the checked form is the Haskell term in
+# proto/tenants/Rue/Proto/Tenants/T1.hs, and expected/ holds its verdicts.
+# Phase 2's front end must accept this file and produce the same verdict.
+
+site do
+  inventory from: file("inventory.toml")
+  journal to: local()
+  approval via: hook(:authority)
+  secrets deliver_to: [requester(), hook(:escrow)]
+  backstop scheduler: cron()
+  operators do
+    identity :ops_requester, user: "ops", operator_for: :all, admin: true
+  end
+  hooks do
+    registrar :authority, user: "approvald", may_register: [:authority, :escrow]
+  end
+end
+
+defprobe :sshd_posture do
+  run "sshd -T"
+  locus :target
+  produces sshd_posture
+end
+
+# A service-posture drop-in: owned, with a derived verify.
+defop :service_posture, %{os: :freebsd} do
+  footprint owned: file("/etc/ssh/sshd_config.d/rue-breakglass.conf"), derived: sshd_posture
+  do: [write(file("/etc/ssh/sshd_config.d/rue-breakglass.conf"), content: posture), run("service sshd reload")]
+  undo: :restore
+  post sshd_posture_applied
+  undo_locus: :target
+end
+
+# A fenced block in a shared file: region, anchored. Damaged-marker cost: the
+# whole file is restored from the do-time snapshot and a stranger's edits
+# outside the block are lost, unless another instance holds a region on it.
+defop :authorized_keys_block, %{os: :freebsd} do
+  footprint region: file("/root/.ssh/authorized_keys", anchor: "rue-breakglass")
+  do: region_set(file("/root/.ssh/authorized_keys", anchor: "rue-breakglass"), content: keys)
+  undo: :restore
+  undo_locus: :target
+end
+
+# A management-controller account: modified, on an API host with no instance
+# directory; the secret is an output; the undo runs from the controller.
+defop :bmc_account_enable, %{os: :appliance} do
+  footprint modified: bmc.account("breakglass")
+  do: hook(:bmc_enable, account: "breakglass")
+  undo: hook(:bmc_disable, account: "breakglass")
+  undo_pre bmc.account("breakglass")
+  undo_locus: :controller
+  outputs bmc_password, secret: true
+  locus: host("bmc-01")
+end
+
+# A console tunnel: held, with suspend/reestablish and a rotated secret.
+defop :console_tunnel, _ do
+  footprint held: proc.vnc_tunnel
+  do: run("vnc-tunnel up --to #{host.address}")
+  undo: run("vnc-tunnel down")
+  undo_locus: :controller
+  outputs console_secret, secret: true
+  locus: :controller
+  suspend: run("vnc-tunnel suspend")
+  reestablish: run("vnc-tunnel resume --rotate")
+end
+
+defplan :breakglass, %{name: "db-01"} do
+  gate auth(:oncall), window: 30m
+  wane 4h, renew_within: 30m
+  # Covers the ssh-borne ops (1-2); reach is empty, so late arming is allowed.
+  backstop trigger: [after: 4h, unless_heartbeat: 60s, interval: 20s], locus: :target, arm_before: 3
+  exclusivity: :breakglass
+  service_posture(posture: "PermitRootLogin yes")
+  authorized_keys_block(keys: requester_key)
+  bmc_account_enable() as bmc
+  console_tunnel()
+end

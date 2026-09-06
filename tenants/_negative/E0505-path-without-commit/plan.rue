@@ -1,0 +1,16 @@
+rue 0
+# Negative case E0505: a non-refusing path that never commits
+# Derived from T3 (tenants/t3/plan.rue) by one change. The checker must refuse
+# with exactly E0505; expected/ holds the refusing verdict.
+
+import "../../t3/plan.rue" as t3
+
+defplan :open_mgmt_port, %{os: :freebsd} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  t3.pf_allow(port: 8443)
+  observe t3.verify_reach() as reach
+  confirm()
+  when healthy do
+    commit()
+  end   # the else arm ends the plan without commit()
+end

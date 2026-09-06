@@ -4,7 +4,7 @@
 -- stated as a list so the not-proven table is a fact, not a guess.
 module Test.Check (tests, emittedCodes) where
 
-import Data.List (sort)
+import Data.List (nub, sort)
 import Data.Text (Text)
 import Rue.Proto.Check
 import Rue.Proto.Diagnostics (Code (..))
@@ -99,13 +99,25 @@ tests =
             length (vMayConflicts v) @?= 1
             vStatus v @?= Ok
         , pair E0303 (temp [Par [s (owned "a"), s (owned "a")]]) (temp [Par [s (owned "a"), s (owned "b")]])
+        , testCase "par siblings are judged by E0303, never by E0301 (no order between them)" $
+            assertBool (show E0301 <> " on par siblings") (not (raises E0301 (temp [Par [s (owned "a"), s (owned "a")]])))
+        , testCase "a step after a par conflicts with a par child in order" $
+            assertBool "no conflict" (raises E0301 (temp [Par [s (owned "a"), s (owned "b")], s (owned "a")]))
         , pair E0304 ((temp [Par [s reachOp, s (owned "b")]]) {planBackstop = Just backstopAfter1h}) ((temp [Par [s (owned "a"), s (owned "b")]]))
         , pair
             E0305
             (temp [s (op "r1" [anchored "file:/etc/keys" "rue"]), s (op "r2" [anchored "file:/etc/keys" "rue"])])
             (temp [s (op "r1" [anchored "file:/etc/keys" "rue-a"]), s (op "r2" [anchored "file:/etc/keys" "rue-b"])])
+        , testCase "a repeated anchor is E0305 alone, not also E0301" $
+            codesOf (temp [s (op "r1" [anchored "file:/etc/keys" "rue"]), s (op "r2" [anchored "file:/etc/keys" "rue"])]) @?= [E0305]
         , testCase "distinct anchors on one fact are disjoint (no E0301)" $
             assertBool "unexpected conflict" (not (raises E0301 (temp [s (op "r1" [anchored "file:/etc/keys" "a"]), s (op "r2" [anchored "file:/etc/keys" "b"])])))
+        , testCase "the same shape on two static hosts is two facts (no E0301)" $
+            assertBool "cross-host conflict" (not (raises E0301 (temp [s (owned "a"), s (owned "a") {opLocus = HostLocus (StaticHost "api-01"), opUndoLocus = UndoController}])))
+        , testCase "the same shape on a host bound at runtime may conflict (E0302 under strict)" $
+            assertBool "no may-conflict" (raises E0302 (temp [s (owned "a"), s (owned "a") {opLocus = HostLocus (BoundHost "pick"), opUndoLocus = UndoController}]))
+        , testCase "par children on distinct static hosts are umbra-disjoint" $
+            assertBool "cross-host par refused" (not (raises E0303 (temp [Par [s (owned "a"), s (owned "a") {opLocus = HostLocus (StaticHost "api-01"), opUndoLocus = UndoController}]])))
         , testCase "a repeat over: loop is disjoint with itself" $
             assertBool "loop self-conflict" (clean (temp [Repeat (Over "guests" 8 True) "g" [s (op "stop" [entry Modified "guest:{g}:state"])]]))
         ]
@@ -189,10 +201,16 @@ tests =
             fmap ponrStep (vPointOfNoReturn v) @?= Just 2
             vReversibleBackTo v @?= Just (3, 2)
             vHoldsAt v @?= [3]
+        , testCase "a host bound at runtime is an unresolved binding and an unresolved touch" $ do
+            let v = check site0 "requester" (temp [s (owned "a") {opLocus = HostLocus (BoundHost "pick"), opUndoLocus = UndoController}])
+            vUnresolvedBindings v @?= ["pick"]
+            vHostsTouched v @?= [(1, [HostUnresolved "bound from pick"])]
         , testCase "a step on an unreachable host is deferred" $
             vDeferred (check site0 "requester" (temp [s (owned "a") {opLocus = HostLocus (StaticHost "island")}])) @?= [1]
-        , testCase "the emitted-code list is exactly what the suite raises somewhere" $
-            sort emittedCodes @?= emittedCodes
+        , testCase "a :controller step touches the controller, not the owner host" $
+            vHostsTouched (check site0 "requester" (temp [s (owned "a") {opLocus = Controller}])) @?= [(1, [HostTouched "controller" "controller"])]
+        , testCase "the emitted-code list is sorted and duplicate-free (Test.Tenants binds it to the negative goldens)" $
+            sort (nub emittedCodes) @?= emittedCodes
         ]
     ]
   where

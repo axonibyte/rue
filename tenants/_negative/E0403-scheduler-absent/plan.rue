@@ -1,0 +1,26 @@
+rue 0
+# Negative case E0403: backstop on a host with no scheduler
+# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# `lab`). The checker must refuse with exactly E0403.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: :restore
+  undo_locus: :target
+end
+
+defplan :posture, %{name: "island"} do
+  wane 1h
+  backstop trigger: [after: 1h], locus: :target, arm_before: 1
+  posture()
+end

@@ -1,0 +1,17 @@
+rue 0
+# Negative case E0509: gate satisfiable by waiting alone, without allow_zero_human
+# Derived from T1 (tenants/t1/plan.rue) by one change. The checker must refuse
+# with exactly E0509; expected/ holds the refusing verdict.
+
+import "../../t1/plan.rue" as t1
+
+defplan :breakglass, %{name: "db-01"} do
+  gate wait(30m), window: 1h
+  wane 4h, renew_within: 30m
+  backstop trigger: [after: 4h, unless_heartbeat: 60s, interval: 20s], locus: :target, arm_before: 3
+  exclusivity: :breakglass
+  t1.service_posture(posture: "PermitRootLogin yes")
+  t1.authorized_keys_block(keys: requester_key)
+  t1.bmc_account_enable() as bmc
+  t1.console_tunnel()
+end

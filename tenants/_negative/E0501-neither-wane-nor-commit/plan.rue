@@ -1,0 +1,14 @@
+rue 0
+# Negative case E0501: neither wane nor commit()
+# Derived from T1 (tenants/t1/plan.rue) by one change. The checker must refuse
+# with exactly E0501; expected/ holds the refusing verdict.
+
+import "../../t1/plan.rue" as t1
+
+defplan :breakglass, %{name: "db-01"} do
+  exclusivity: :breakglass
+  t1.service_posture(posture: "PermitRootLogin yes")
+  t1.authorized_keys_block(keys: requester_key)
+  t1.bmc_account_enable() as bmc
+  t1.console_tunnel()
+end

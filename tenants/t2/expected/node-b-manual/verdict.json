@@ -1,0 +1,238 @@
+{
+  "backstop": null,
+  "commit_step": 10,
+  "controller_only_undos": [
+    6,
+    7,
+    8,
+    9
+  ],
+  "deferred": [
+    9
+  ],
+  "diagnostics": [],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [
+    6,
+    7,
+    9
+  ],
+  "holds_at": [
+    6
+  ],
+  "host": "node-b",
+  "hosts_touched": {
+    "4": [
+      {
+        "directory": "controller",
+        "host": "controller"
+      }
+    ],
+    "5": [
+      {
+        "directory": "target",
+        "host": "node-b"
+      }
+    ],
+    "6": [
+      {
+        "directory": "controller",
+        "host": "controller"
+      }
+    ],
+    "7": [
+      {
+        "directory": "target",
+        "host": "node-b"
+      }
+    ],
+    "8": [
+      {
+        "directory": "controller",
+        "host": "controller"
+      }
+    ],
+    "9": [
+      {
+        "directory": "target",
+        "host": "node-c"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "permanent",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "promote",
+  "point_of_no_return": {
+    "ack": "humans()",
+    "cost": "fence_verdict",
+    "gate": null,
+    "guard": "fence_verified_off",
+    "step": 4
+  },
+  "rehearsal": false,
+  "reversible_back_to": {
+    "from": 10,
+    "to": 4
+  },
+  "reversible_through": 3,
+  "status": "ok",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 1,
+      "op": "preflight",
+      "refusal": "n/a",
+      "undo": null,
+      "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 2,
+      "op": "assert peer_dead",
+      "refusal": "n/a",
+      "undo": null,
+      "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 3,
+      "op": "assert probes_agree",
+      "refusal": "n/a",
+      "undo": null,
+      "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": {
+        "ack": "humans()",
+        "cost": "fence_verdict",
+        "guard": "fence_verified_off"
+      },
+      "locus": "controller",
+      "n": 4,
+      "op": "fence_corpse",
+      "refusal": "knell",
+      "undo": null,
+      "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": {
+        "ack": "humans()",
+        "cost": "destroyed_snapshots",
+        "guard": "datasets_ahead"
+      },
+      "locus": "target",
+      "n": 5,
+      "op": "rollback_ahead_datasets",
+      "refusal": "knell",
+      "undo": null,
+      "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": "defer",
+      "footprint": [
+        "modified: platform:node-a:mode"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 6,
+      "op": "resurrection_gate",
+      "refusal": "hold",
+      "undo": "release the slave-mode gate on node-a",
+      "undo_locus": "controller"
+    },
+    {
+      "conditional": null,
+      "drift": "defer",
+      "footprint": [
+        "modified: guest:{g}:state"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "target",
+      "n": 7,
+      "op": "start_guest",
+      "refusal": "hold",
+      "undo": "stop guest {g} on node-b",
+      "undo_locus": "controller"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [
+        "append_only: file:/var/db/succession.log",
+        "append_only: record:placement"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 8,
+      "op": "record_succession",
+      "refusal": "revert",
+      "undo": "append a reversal record (undone by record, not erasure)",
+      "undo_locus": "controller"
+    },
+    {
+      "conditional": null,
+      "drift": "defer",
+      "footprint": [
+        "modified: guest:heir:state"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "host(node-c)",
+      "n": 9,
+      "op": "start_heir",
+      "refusal": "hold",
+      "undo": "stop the heir on node-c",
+      "undo_locus": "controller"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 10,
+      "op": "commit()",
+      "refusal": "n/a",
+      "undo": null,
+      "undo_locus": "none"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": null
+}

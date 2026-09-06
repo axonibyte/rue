@@ -95,6 +95,9 @@ check site requester p =
     , vStatus = if null diagnostics then Ok else RefusedStatus
     , vIntent = intent
     , vRehearsal = False
+    , vMode = case planMode p of
+        Manual -> "manual"
+        Auto -> "auto"
     , vCommitStep = if intent == Just Permanent then commitStep body else Nothing
     , vFiresByConstruction = planFiresByConstruction p
     , vWane = effectiveWane p
@@ -111,7 +114,7 @@ check site requester p =
     , vDeferred = deferred
     , vDispatch = Dispatch "inventory" "-"
     , vMayConflicts = mayConflictVerdicts
-    , vUnresolvedBindings = []
+    , vUnresolvedBindings = nub [b | (_, o) <- stepOps, HostLocus (BoundHost b) <- [opLocus o]]
     , vDiagnostics = diagnostics
     , vSteps = map stepVerdict steps
     }
@@ -126,16 +129,23 @@ check site requester p =
       [] -> Nothing
     lastStep = length steps
 
-    -- Reversibility: through the last mutating step before the first knell
-    -- when the interference query finds no conflict; otherwise refused
-    -- (E0301), and the verdict says step 0. Items that change nothing
-    -- (confirm, commit, observe, assert, preflight) do not extend it.
-    conflictList = conflicts body
+    -- Reversibility, when the interference query finds no conflict
+    -- (otherwise E0301 and the verdict says step 0): with a knell, every
+    -- step before it -- rungs that only observe are reversible trivially, so
+    -- T2 reads "through the probes rung"; without one, the last mutating
+    -- step, since confirm(), commit() and observations after it change
+    -- nothing, so T3 reads "through step 1".
+    -- A conflict whose fact is an anchor declared twice is reported as E0305,
+    -- the specific diagnosis, not also as E0301.
+    duplicateAnchors = anchorDuplicates (planOwner p) body
+    conflictList = [c | c <- conflicts (planOwner p) body, c `notElem` duplicateAnchors]
     reversibleThrough
       | not (null conflictList) = 0
-      | otherwise = case [n | (n, _) <- stepOps, maybe True (n <) firstKnell] of
-          [] -> 0
-          ns -> maximum ns
+      | otherwise = case firstKnell of
+          Just k -> k - 1
+          Nothing -> case map fst stepOps of
+            [] -> 0
+            ns -> maximum ns
     -- Holding: the first :hold step in each knell segment. Phase 0 finding:
     -- section 5.5 says "at or before the first knell"; T2 holds after it.
     segments = splitSegments (map fst steps) (sort [n | (n, KnellItem _) <- steps])
@@ -226,23 +236,30 @@ check site requester p =
       , fpKind e == Region
       ]
     controllerOnly = [n | (n, o) <- stepOps, opUndoLocus o == UndoController]
+    -- Section 8.2: "post-fence steps held indefinitely until an operator
+    -- acts" -- every :hold step of a permanent plan, and every deferred one.
     heldIndefinitely
-      | intent == Just Permanent = holdsAt <> deferred
+      | intent == Just Permanent = sort (nub ([n | (n, o) <- stepOps, isHold (opRefusal o)] <> deferred))
       | otherwise = []
     inducedDefer
       | planMode p == Auto = [n | (n, o) <- stepOps, effectiveDrift o == Just Defer]
       | otherwise = []
+    -- A :controller step's markers live on the controller; every other
+    -- step's on its host's instance directory, or on the controller when the
+    -- host has no filesystem (section 7.7).
     hostsTouched =
       [ ( n
-        , case stepHost p o of
-            Left b -> [HostUnresolved ("bound from " <> b)]
-            Right h -> [HostTouched h (if maybe False hrFilesystem (hostRecord site h) then "target" else "controller")]
+        , case opLocus o of
+            Controller -> [HostTouched "controller" "controller"]
+            _ -> case stepHost p o of
+              Left b -> [HostUnresolved ("bound from " <> b)]
+              Right h -> [HostTouched h (if maybe False hrFilesystem (hostRecord site h) then "target" else "controller")]
         )
       | (n, o) <- stepOps
       ]
 
     -- May-conflicts.
-    mays = mayConflicts body
+    mays = mayConflicts (planOwner p) body
     mayConflictVerdicts = [MayConflict a b (factText f) (planStrictness p == Strict) | Conflict a b f <- mays]
     factText (Fact s a) = s <> maybe "" (\x -> " (anchor " <> x <> ")") a
 
@@ -284,9 +301,9 @@ check site requester p =
     interferenceDiagnostics =
       [d E0301 (Just b) ("steps " <> tshow a <> " and " <> tshow b <> " both write " <> factText f <> " and step " <> tshow a <> "'s undo needs it") | Conflict a b f <- conflictList]
         <> [d E0302 (Just b) ("may-conflict between steps " <> tshow a <> " and " <> tshow b <> " on " <> factText f) | planStrictness p == Strict, Conflict a b f <- mays]
-        <> [d E0303 (Just b) ("par children at steps " <> tshow a <> " and " <> tshow b <> " are not umbra-disjoint") | (a, b) <- fst (parViolations body)]
-        <> [d E0304 (Just n) "reach op inside par" | n <- snd (parViolations body)]
-        <> [d E0305 (Just b) ("anchor declared twice on " <> factText f <> " (steps " <> tshow a <> ", " <> tshow b <> ")") | Conflict a b f <- anchorDuplicates body]
+        <> [d E0303 (Just b) ("par children at steps " <> tshow a <> " and " <> tshow b <> " are not umbra-disjoint") | (a, b) <- fst (parViolations (planOwner p) body)]
+        <> [d E0304 (Just n) "reach op inside par" | n <- snd (parViolations (planOwner p) body)]
+        <> [d E0305 (Just b) ("anchor declared twice on " <> factText f <> " (steps " <> tshow a <> ", " <> tshow b <> ")") | Conflict a b f <- duplicateAnchors]
     tshow = T.pack . show
 
     backstopDiagnostics =

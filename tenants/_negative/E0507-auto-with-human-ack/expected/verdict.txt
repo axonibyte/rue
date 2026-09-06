@@ -1,0 +1,1 @@
+promote on node-b: refused; E0507 at step 1: mode: :auto plan has a knell whose ack: is not :none.

@@ -1,0 +1,1 @@
+twice on db-01: refused; E0301 at step 2: steps 1 and 2 both write file:/etc/a and step 1's undo needs it.

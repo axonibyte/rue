@@ -1,0 +1,1 @@
+fence on db-01: refused; E0509 at step 1: gate satisfiable with zero human authenticators and no allow_zero_human.

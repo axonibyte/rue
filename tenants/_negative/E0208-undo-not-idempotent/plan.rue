@@ -1,0 +1,24 @@
+rue 0
+# Negative case E0208: undo not provably idempotent
+# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# `lab`). The checker must refuse with exactly E0208.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: run("counter-decrement /etc/a")   # a second run changes the fact again
+end
+
+defplan :posture, %{name: "db-01"} do
+  wane 1h
+  posture()
+end

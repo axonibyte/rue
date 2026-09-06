@@ -1,0 +1,15 @@
+rue 0
+# Negative case E0401: backstop armed after the reach step
+# Derived from T3 (tenants/t3/plan.rue) by one change. The checker must refuse
+# with exactly E0401; expected/ holds the refusing verdict.
+
+import "../../t3/plan.rue" as t3
+
+defplan :open_mgmt_port, %{os: :freebsd} do
+  # arm_before: 2 -- the change at step 1 runs with nothing armed to undo it.
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 2
+  t3.pf_allow(port: 8443)
+  observe t3.verify_reach() as reach
+  confirm()
+  commit()
+end

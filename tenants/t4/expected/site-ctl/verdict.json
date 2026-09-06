@@ -1,0 +1,58 @@
+{
+  "backstop": null,
+  "commit_step": null,
+  "controller_only_undos": [
+    1
+  ],
+  "deferred": [],
+  "diagnostics": [],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "site-ctl",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "controller",
+        "host": "site-ctl"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "temporary",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "shed_load",
+  "point_of_no_return": null,
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 1,
+  "status": "ok",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": "clobber",
+      "footprint": [
+        "modified: actuator:hvac-1:state",
+        "modified: actuator:hvac-2:state",
+        "modified: actuator:pump-1:state"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "target",
+      "n": 1,
+      "op": "shed_load",
+      "refusal": "revert",
+      "undo": "restore the three actuators to their reported pre-shed state",
+      "undo_locus": "controller"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": 7200
+}

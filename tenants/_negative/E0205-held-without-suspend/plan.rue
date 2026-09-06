@@ -1,0 +1,25 @@
+rue 0
+# Negative case E0205: held footprint without suspend/reestablish
+# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# `lab`). The checker must refuse with exactly E0205.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :tunnel, _ do
+  footprint held: proc.tunnel
+  do: run("tunnel up")
+  undo: run("tunnel down")
+  undo_locus: :controller
+end
+
+defplan :tunnel, %{name: "db-01"} do
+  wane 1h
+  tunnel()
+end

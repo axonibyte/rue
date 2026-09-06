@@ -21,13 +21,14 @@ stated once, in the section that governs it.
 
 ## Status: Phase 0 in progress
 
-Nothing that checks a plan exists yet. The repository's shape is in place --
-the gate, the seam guard, the reaper tenancy, the pipeline, the roadmap -- and
-the Phase 0 prototype under `proto/` has its skeleton: the diagnostics
-enumeration (every code in the roadmap's table, guarded in both directions),
-the canonical JSON printer a later implementation must reproduce byte for
-byte, and the golden plumbing. The algebra, the checker, the tenants and
-their verdicts follow in this same unit of work.
+The Phase 0 prototype under `proto/` checks plans. The four acceptance
+tenants of the roadmap's section 8 are encoded as terms and as unparsed
+`.rue` text under `tenants/`, and their verdicts -- structured JSON against
+`docs/verdict-schema.json`, the one-sentence prose, and the `explain`
+listing -- are goldens the test suite compares byte for byte. Thirty
+negative cases refuse with exactly their named code, one or more for every
+code the prototype can raise. The rediscovery table and the falsification
+day's findings follow in this same unit of work.
 
 ## What rue is not
 
@@ -64,8 +65,11 @@ trying to break it, and the findings go in [`docs/prior-art.md`](docs/prior-art.
 
 | Claim | Status |
 |---|---|
-| Any verdict about any plan | Nothing checks a plan yet. Phase 0 is the first attempt |
-| Which diagnostics Phase 0 can emit | The enumeration carries every code; which ones the prototype raises is stated when the checker exists |
+| Verdicts on plans the tenants do not exercise | The checker is exercised by four tenants (seven host cases) and thirty negatives; nothing is proven about a construct none of them uses |
+| The `.rue` text | Unparsed in Phase 0. The checked form of each tenant is its Haskell term; Phase 2's front end must accept the text and produce the same verdict |
+| 26 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205, E0207, E0208, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509 |
+| The other 30 codes | Not modeled: the surface's E01xx (parsing, names, kinds, totality), the secret rules E0206, E0209-E0211, E0411, the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0606. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
+| Where section 5 was silent | The prototype took a position and recorded it as a finding for the owner (see `proto/README.md` when it lands): the requester is an input to `check`; the verdict holds per knell segment; a step is deferred when its host is unreachable by the site's transports or bound at runtime; `Pending` is bounded by the gate window or `max_wait` (E0506 otherwise); facts are scoped by host; par siblings have no order and are judged only by disjointness; a repeated anchor is E0305 alone |
 | The gate on a Windows guest | No reaper Windows template is registered yet; it is a Phase 1 deliverable. The manifest names the two registered guests and says so |
 | The Rust pipeline steps | Present and gated: each prints a skip line until a `Cargo.toml` exists in Phase 1 |
 | Deploy | Refuses on every tag until Phase 1 produces artifacts and a workspace version |
@@ -78,6 +82,7 @@ sh tools/lint-seam.sh             # the seam guard alone
 sh tools/lint-ecodes.sh           # the E-code guard alone
 sh tests/tier3/t_seam.sh          # a guard's self-test
 cd proto && cabal build all && cabal test all --test-show-details=direct
+cd proto && cabal run -v0 rue-proto-check -- t3 fw-01            # a tenant's prose verdict; --json, --explain
 ```
 
 The prototype needs GHC 9.10.3 and cabal (`pkg install ghc hs-cabal-install`
@@ -103,6 +108,8 @@ on both registered guests. Validate the manifest with
 |---|---|
 | `docs/ROADMAP.md` | The plan of record: claim, model, surface, engine, tenants, phases, tests |
 | `docs/prior-art.md` | The falsification day's findings (Phase 0) |
+| `docs/verdict-schema.json` | The structured verdict's schema, version 1; every golden validates and every declared field is produced |
+| `docs/state-transitions.tsv` | The runtime state machine's full transition table, generated from its five rules |
 | `tools/check.sh` | The gate |
 | `tools/lint-seam.sh`, `tools/seam-denylist.txt` | The seam guard and its denylist |
 | `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |

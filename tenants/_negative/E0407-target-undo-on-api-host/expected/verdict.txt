@@ -1,0 +1,1 @@
+bmc on db-01: refused; E0407 at step 1: op a: :target undo on a host with no run-capable executor.

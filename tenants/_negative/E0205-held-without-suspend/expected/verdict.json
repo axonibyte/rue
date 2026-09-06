@@ -1,0 +1,62 @@
+{
+  "backstop": null,
+  "commit_step": null,
+  "controller_only_undos": [
+    1
+  ],
+  "deferred": [],
+  "diagnostics": [
+    {
+      "code": "E0205",
+      "message": "op tunnel: held footprint without suspend/reestablish",
+      "step": 1
+    }
+  ],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "db-01",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "target",
+        "host": "db-01"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "temporary",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "tunnel",
+  "point_of_no_return": null,
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 1,
+  "status": "refused",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [
+        "held: proc:tunnel"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "target",
+      "n": 1,
+      "op": "tunnel",
+      "refusal": "revert",
+      "undo": "restore",
+      "undo_locus": "controller"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": 3600
+}

@@ -1,0 +1,73 @@
+{
+  "backstop": null,
+  "commit_step": null,
+  "controller_only_undos": [],
+  "deferred": [],
+  "diagnostics": [
+    {
+      "code": "E0509",
+      "message": "gate satisfiable with zero human authenticators and no allow_zero_human",
+      "step": 1
+    }
+  ],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "db-01",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "target",
+        "host": "db-01"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "temporary",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "fence",
+  "point_of_no_return": {
+    "ack": "none",
+    "cost": "fence_verdict",
+    "gate": "wait(30m)",
+    "guard": "verified_off",
+    "step": 1
+  },
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 0,
+  "status": "refused",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": {
+        "expr": "wait(30m)",
+        "step_digest": true,
+        "wait_alone_at_s": 1800,
+        "window_s": 3600
+      },
+      "knell": {
+        "ack": "none",
+        "cost": "fence_verdict",
+        "guard": "verified_off"
+      },
+      "locus": "target",
+      "n": 1,
+      "op": "fence",
+      "refusal": "knell",
+      "undo": null,
+      "undo_locus": "none"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": 3600
+}

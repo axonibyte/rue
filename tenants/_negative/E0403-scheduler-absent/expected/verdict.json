@@ -1,0 +1,83 @@
+{
+  "backstop": {
+    "armed_after": null,
+    "armed_before": 1,
+    "conditional": [],
+    "covers": [
+      1
+    ],
+    "drift_policy": {
+      "1": "clobber"
+    },
+    "granularity_s": 60,
+    "installed_before": 1,
+    "late_arming_window": [],
+    "locus": "target",
+    "scheduler": "cron",
+    "self_enforced": true,
+    "snapshots": {
+      "cap_bytes": 1048576,
+      "location": "target"
+    },
+    "triggers": [
+      "after 1h"
+    ]
+  },
+  "commit_step": null,
+  "controller_only_undos": [],
+  "deferred": [],
+  "diagnostics": [
+    {
+      "code": "E0403",
+      "message": "backstop scheduler not present on island",
+      "step": null
+    }
+  ],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "island",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "target",
+        "host": "island"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "temporary",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "posture",
+  "point_of_no_return": null,
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 1,
+  "status": "refused",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": "clobber",
+      "footprint": [
+        "owned: file:/etc/a"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "target",
+      "n": 1,
+      "op": "a",
+      "refusal": "revert",
+      "undo": "restore",
+      "undo_locus": "target"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": 3600
+}

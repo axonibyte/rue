@@ -1,0 +1,40 @@
+rue 0
+# T4 -- a temporary override in a reactive host (docs/ROADMAP.md section 8.4).
+# Temporary, embedded: journal, inventory and execution all through hooks the
+# host registers. Two variants: drift :clobber (the host's model is convergent)
+# and drift :defer (a hand-flipped actuator leaves the instance DriftHeld).
+#
+# Phase 0 carries this text unparsed; see proto/tenants/Rue/Proto/Tenants/T4.hs.
+
+site do
+  inventory from: hook(:host_world)
+  journal to: hook(:host_log)
+  execute via: hook(:host_actuate)
+  operators do
+    identity :reactive_host, user: :socket_owner, operator_for: [:shed_load, :shed_load_deferring], admin: true
+  end
+  hooks do
+    registrar :reactive_host, user: :socket_owner, may_register: [:host_world, :host_log, :host_actuate]
+  end
+end
+
+# A group of actuator facts, modified; equivalence is the reported state; the
+# undo restores what was reported before the shed. No instance directory:
+# the undo runs only while the engine lives.
+defop :shed_load, _, drift: drift do
+  footprint modified: actuator.state("hvac-1"), modified: actuator.state("hvac-2"), modified: actuator.state("pump-1")
+  do: hook(:host_actuate, set: %{"hvac-1": :off, "hvac-2": :off, "pump-1": :low})
+  undo: :restore
+  undo_locus: :controller
+  drift: drift
+end
+
+defplan :shed_load, %{name: "site-ctl"} do
+  wane 2h
+  shed_load(drift: :clobber)
+end
+
+defplan :shed_load_deferring, %{name: "site-ctl"} do
+  wane 2h
+  shed_load(drift: :defer)
+end

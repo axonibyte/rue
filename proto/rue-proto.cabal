@@ -59,6 +59,12 @@ library tenants
   hs-source-dirs:  tenants
   exposed-modules:
     Rue.Proto.Tenants
+    Rue.Proto.Tenants.Common
+    Rue.Proto.Tenants.Negative
+    Rue.Proto.Tenants.T1
+    Rue.Proto.Tenants.T2
+    Rue.Proto.Tenants.T3
+    Rue.Proto.Tenants.T4
   build-depends:
     rue-proto
 
@@ -68,7 +74,8 @@ executable rue-proto-check
   main-is:        Check.hs
   build-depends:
     rue-proto,
-    rue-proto:tenants
+    rue-proto:tenants,
+    text
 
 executable rue-proto-goldens
   import:         shared
@@ -100,13 +107,16 @@ test-suite rue-proto-test
     Test.Golden
     Test.Laws
     Test.Ledger
+    Test.Schema
     Test.States
+    Test.Tenants
   build-depends:
     rue-proto,
     rue-proto:tenants,
     aeson,
     directory,
     filepath,
+    scientific,
     QuickCheck,
     tasty,
     tasty-hunit,

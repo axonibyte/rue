@@ -1,0 +1,1 @@
+posture on db-01: refused; E0405: heartbeat interval exceeds a third of its deadline: unless heartbeat within 1m every 30s.

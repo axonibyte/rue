@@ -1,0 +1,26 @@
+rue 0
+# Negative case E0407: :target undo on a host with no run-capable executor
+# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# `lab`). The checker must refuse with exactly E0407.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: hook(:api, set: "a")
+  undo: :restore
+  undo_locus: :target
+  locus: host("api-01")   # an appliance: no filesystem, no shell
+end
+
+defplan :bmc, %{name: "db-01"} do
+  wane 1h
+  posture()
+end

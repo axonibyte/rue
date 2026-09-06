@@ -1,0 +1,22 @@
+rue 0
+# Negative case E0401: reach op whose undo runs from the controller
+# Derived from T3 (tenants/t3/plan.rue) by one change. The checker must refuse
+# with exactly E0401; expected/ holds the refusing verdict.
+
+import "../../t3/plan.rue" as t3
+
+defop :pf_allow, %{os: :freebsd} do
+  footprint region: file("/etc/pf.conf", anchor: "rue-mgmt")
+  reach ssh(host)
+  do: [region_set(file("/etc/pf.conf", anchor: "rue-mgmt"), content: "pass in proto tcp to port #{port}"), run("pfctl -f /etc/pf.conf")]
+  undo: :restore
+  undo_locus: :controller   # a severed ssh session cannot carry this undo
+end
+
+defplan :open_mgmt_port, %{os: :freebsd} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  pf_allow(port: 8443)
+  observe t3.verify_reach() as reach
+  confirm()
+  commit()
+end

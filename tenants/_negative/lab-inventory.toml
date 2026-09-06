@@ -1,0 +1,32 @@
+# The lab site the generic negative cases run on (proto/tenants/Rue/Proto/
+# Tenants/Negative.hs, `lab`): a filesystem host with ssh and a scheduler, an
+# API appliance with no filesystem, and a host reachable only by console.
+[[host]]
+name = "db-01"
+address = "10.9.0.11"
+os = "freebsd"
+roles = ["lab"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "cron"
+
+[[host]]
+name = "api-01"
+address = "10.9.0.21"
+os = "appliance"
+roles = ["lab"]
+reach = ["api"]
+filesystem = false
+
+[[host]]
+name = "island"
+address = "10.9.0.31"
+os = "freebsd"
+roles = ["lab"]
+reach = ["console"]
+filesystem = true
+
+[authenticators]
+oncall = { human = true }
+alice = { human = true }
+driver = { human = false }

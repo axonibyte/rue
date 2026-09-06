@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axonibyte.com/rue/verdict-schema.json",
+  "title": "rue verdict, structured form, version 1",
+  "description": "docs/ROADMAP.md section 5.8. The prose is generated from this and may change; this may not change without a version bump. Additions are allowed without a bump; removals and renames bump.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict_version", "plan", "host", "status", "intent", "rehearsal", "mode", "commit_step", "fires_by_construction", "wane_s", "reversible_through", "holds_at", "point_of_no_return", "reversible_back_to", "gate", "backstop", "controller_only_undos", "held_indefinitely", "induced_defer", "hosts_touched", "deferred", "dispatch", "may_conflicts", "unresolved_bindings", "diagnostics", "steps"],
+  "properties": {
+    "verdict_version": { "type": "integer", "enum": [1] },
+    "plan": { "type": "string" },
+    "host": { "type": "string" },
+    "status": { "type": "string", "enum": ["ok", "refused"] },
+    "intent": { "type": ["string", "null"], "enum": ["temporary", "permanent", null] },
+    "rehearsal": { "type": "boolean" },
+    "mode": { "type": "string", "enum": ["manual", "auto"] },
+    "commit_step": { "type": ["integer", "null"] },
+    "fires_by_construction": { "type": "boolean" },
+    "wane_s": { "type": ["integer", "null"] },
+    "reversible_through": { "type": "integer" },
+    "holds_at": { "type": "array", "items": { "type": "integer" } },
+    "point_of_no_return": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["step", "guard", "cost", "ack", "gate"],
+      "properties": {
+        "step": { "type": "integer" },
+        "guard": { "type": ["string", "null"] },
+        "cost": { "type": "string" },
+        "ack": { "type": "string" },
+        "gate": { "type": ["string", "null"] }
+      }
+    },
+    "reversible_back_to": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": { "from": { "type": "integer" }, "to": { "type": "integer" } }
+    },
+    "gate": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["satisfiable", "min_distinct_humans", "zero_human_path", "window_s", "wait_alone_at_s"],
+      "properties": {
+        "satisfiable": { "type": "boolean" },
+        "min_distinct_humans": { "type": ["integer", "null"] },
+        "zero_human_path": { "type": "boolean" },
+        "window_s": { "type": ["integer", "null"] },
+        "wait_alone_at_s": { "type": ["integer", "null"] }
+      }
+    },
+    "backstop": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["triggers", "covers", "locus", "installed_before", "armed_before", "armed_after", "late_arming_window", "scheduler", "granularity_s", "self_enforced", "drift_policy", "snapshots", "conditional"],
+      "properties": {
+        "triggers": { "type": "array", "items": { "type": "string" } },
+        "covers": { "type": "array", "items": { "type": "integer" } },
+        "locus": { "type": "string", "enum": ["target"] },
+        "installed_before": { "type": ["integer", "null"] },
+        "armed_before": { "type": ["integer", "null"] },
+        "armed_after": { "type": ["integer", "null"] },
+        "late_arming_window": { "type": "array", "items": { "type": "integer" } },
+        "scheduler": { "type": "string" },
+        "granularity_s": { "type": "integer" },
+        "self_enforced": { "type": "boolean" },
+        "drift_policy": { "type": "object", "additionalProperties": { "type": "string" } },
+        "snapshots": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["location", "cap_bytes"],
+          "properties": { "location": { "type": "string" }, "cap_bytes": { "type": "integer" } }
+        },
+        "conditional": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["step", "on"],
+            "properties": { "step": { "type": "integer" }, "on": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "controller_only_undos": { "type": "array", "items": { "type": "integer" } },
+    "held_indefinitely": { "type": "array", "items": { "type": "integer" } },
+    "induced_defer": { "type": "array", "items": { "type": "integer" } },
+    "hosts_touched": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["host", "directory"],
+              "properties": { "host": { "type": "string" }, "directory": { "type": "string", "enum": ["target", "controller"] } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["unresolved"],
+              "properties": { "unresolved": { "type": "string" } }
+            }
+          ]
+        }
+      }
+    },
+    "deferred": { "type": "array", "items": { "type": "integer" } },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "host_contract_hash"],
+      "properties": { "source": { "type": "string" }, "host_contract_hash": { "type": "string" } }
+    },
+    "may_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["earlier", "later", "fact", "refused"],
+        "properties": { "earlier": { "type": "integer" }, "later": { "type": "integer" }, "fact": { "type": "string" }, "refused": { "type": "boolean" } }
+      }
+    },
+    "unresolved_bindings": { "type": "array", "items": { "type": "string" } },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "step", "message"],
+        "properties": { "code": { "type": "string" }, "step": { "type": ["integer", "null"] }, "message": { "type": "string" } }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["n", "op", "locus", "undo", "undo_locus", "refusal", "drift", "gate", "knell", "conditional", "footprint"],
+        "properties": {
+          "n": { "type": "integer" },
+          "op": { "type": "string" },
+          "locus": { "type": "string" },
+          "undo": { "type": ["string", "null"] },
+          "undo_locus": { "type": "string", "enum": ["target", "controller", "none"] },
+          "refusal": { "type": "string", "enum": ["revert", "hold", "knell", "n/a"] },
+          "drift": { "type": ["string", "null"], "enum": ["clobber", "defer", null] },
+          "gate": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["expr", "step_digest", "window_s", "wait_alone_at_s"],
+            "properties": {
+              "expr": { "type": "string" },
+              "step_digest": { "type": "boolean" },
+              "window_s": { "type": ["integer", "null"] },
+              "wait_alone_at_s": { "type": ["integer", "null"] }
+            }
+          },
+          "knell": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["guard", "cost", "ack"],
+            "properties": { "guard": { "type": ["string", "null"] }, "cost": { "type": "string" }, "ack": { "type": "string" } }
+          },
+          "conditional": { "type": ["string", "null"] },
+          "footprint": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+ 1. shed_load   locus=target   refusal=revert   drift=defer   undo=restore the three actuators to their reported pre-shed state   undo_locus=controller

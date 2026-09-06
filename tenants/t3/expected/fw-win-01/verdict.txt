@@ -1,0 +1,1 @@
+open_mgmt_port on fw-win-01: permanent; commits at step 4; reversible through step 1; expiry backstop (unless confirmed within 10m) covers step 1 on the target, installed before step 1, armed before step 1, fires within ~1m after the deadline, self-enforced on fw-win-01, drift: 1 clobber, snapshots on target (cap 1048576); clause dispatch from inventory.

@@ -1,0 +1,94 @@
+{
+  "backstop": null,
+  "commit_step": null,
+  "controller_only_undos": [
+    1,
+    2
+  ],
+  "deferred": [
+    2
+  ],
+  "diagnostics": [
+    {
+      "code": "E0302",
+      "message": "may-conflict between steps 1 and 2 on file:/etc/a",
+      "step": 2
+    }
+  ],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "db-01",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "target",
+        "host": "db-01"
+      }
+    ],
+    "2": [
+      {
+        "unresolved": "bound from pick"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "temporary",
+  "may_conflicts": [
+    {
+      "earlier": 1,
+      "fact": "file:/etc/a",
+      "later": 2,
+      "refused": true
+    }
+  ],
+  "mode": "manual",
+  "plan": "any",
+  "point_of_no_return": null,
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 2,
+  "status": "refused",
+  "steps": [
+    {
+      "conditional": null,
+      "drift": "clobber",
+      "footprint": [
+        "owned: file:/etc/a"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "target",
+      "n": 1,
+      "op": "a",
+      "refusal": "revert",
+      "undo": "restore",
+      "undo_locus": "controller"
+    },
+    {
+      "conditional": null,
+      "drift": "clobber",
+      "footprint": [
+        "owned: file:/etc/a"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "host bound from pick",
+      "n": 2,
+      "op": "a",
+      "refusal": "revert",
+      "undo": "restore",
+      "undo_locus": "controller"
+    }
+  ],
+  "unresolved_bindings": [
+    "pick"
+  ],
+  "verdict_version": 1,
+  "wane_s": 3600
+}

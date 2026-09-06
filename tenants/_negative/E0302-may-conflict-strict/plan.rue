@@ -1,0 +1,31 @@
+rue 0
+# Negative case E0302: a runtime-bound shape may overlap an earlier fact, under strict
+# A minimal plan on the lab site (proto/tenants/Rue/Proto/Tenants/Negative.hs,
+# `lab`). The checker must refuse with exactly E0302.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/x")
+  do: write(file("/etc/x"), content: "x")
+  undo: :restore
+end
+
+defop :any, _ do
+  footprint owned: file("/etc/#{name}")
+  do: write(file("/etc/#{name}"), content: "y")
+  undo: :restore
+end
+
+defplan :any, %{name: "db-01"} do
+  wane 1h
+  posture()
+  any(name: chosen)
+end
