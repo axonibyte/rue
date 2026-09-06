@@ -3,6 +3,7 @@ module Main (main) where
 import Test.Tasty (defaultMain, testGroup)
 
 import qualified Test.Canonical
+import qualified Test.Check
 import qualified Test.Diagnostics
 import qualified Test.Golden
 import qualified Test.Laws
@@ -13,6 +14,6 @@ main = do
   defaultMain $
     testGroup
       "rue-proto"
-      [ testGroup "tier1" [Test.Canonical.tests, Test.Diagnostics.tests, Test.Laws.tests]
+      [ testGroup "tier1" [Test.Canonical.tests, Test.Diagnostics.tests, Test.Laws.tests, Test.Check.tests]
       , testGroup "tier2" [golden]
       ]

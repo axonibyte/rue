@@ -31,15 +31,24 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Rue.Proto.Algebra
+    Rue.Proto.Backstop
+    Rue.Proto.Check
     Rue.Proto.Diagnostics
+    Rue.Proto.Explain
+    Rue.Proto.Gates
     Rue.Proto.Golden
+    Rue.Proto.Intent
+    Rue.Proto.Interference
     Rue.Proto.Json.Canonical
     Rue.Proto.Model
+    Rue.Proto.Prose
+    Rue.Proto.Verdict
   build-depends:
     aeson,
     directory,
     filepath,
-    scientific
+    scientific,
+    vector
 
 -- The tenants, as terms. An internal sublibrary rooted at a directory named
 -- tenants/, which is the one directory name the seam guard exempts.
@@ -83,6 +92,7 @@ test-suite rue-proto-test
   main-is:        Main.hs
   other-modules:
     Test.Canonical
+    Test.Check
     Test.Diagnostics
     Test.Golden
     Test.Laws
