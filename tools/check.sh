@@ -17,9 +17,13 @@
 #   RUE_BUILDDIR        cabal --builddir (default proto/dist-newstyle)
 #   RUE_CABAL_UPDATE=1  run `cabal update` before building (CI and reaper)
 #
-# shellcheck disable=SC2329
+# shellcheck disable=SC2329,SC2317
 #   Every p_* function is invoked indirectly, through `phase <name> <cmd>`,
-#   which shellcheck cannot follow; the functions are not dead.
+#   which shellcheck cannot follow; the functions are not dead. shellcheck
+#   0.10 and later say this as SC2329 (function never invoked); 0.9, which
+#   Debian bookworm and so the CI image and the Ubuntu reaper guest carry,
+#   says the same thing per line as SC2317 (command unreachable). Both are
+#   the one fact stated here, and nothing else in this file is silenced.
 set -u
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd) || exit 2
