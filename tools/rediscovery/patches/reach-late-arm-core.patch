@@ -1,0 +1,13 @@
+# Reverts: the reach rule: a reach op needs a :target backstop armed before it (E0401) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/backstop.rs
++++ b/core/src/backstop.rs
+@@ -47,7 +47,7 @@
+ pub fn reach_violations(p: &Plan) -> Vec<u32> {
+     let armed_before = |n: u32| match &p.backstop {
+         None => false,
+-        Some(b) => b.arm_before <= n,
++        Some(_) => n > 0,
+     };
+     numbered(&p.body)
+         .into_iter()

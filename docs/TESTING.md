@@ -136,7 +136,11 @@ mutants. The rediscovery table makes the most important of these permanent.
 
 `tools/rediscovery/table.tsv` has one row per protection the project has
 paid for: a patch under `tools/rediscovery/patches/` that reverts it, the
-tier, and the tasty selector that must then fail.
+tier, the suite the selector runs in (`cabal` for the prototype, `cargo` for
+the workspace), and the selector that must then fail (a tasty `-p` pattern or
+a cargo test-name filter). A protection the Rust crates carry has a `-core`
+row of its own beside the Haskell one, since each is a separate check that
+can rot separately.
 `sh tools/rediscovery/run.sh --tier N` copies the tree to a scratch
 directory per row, runs the selector there (it must pass and select at
 least one test), applies the patch without fuzz, requires the patched tree

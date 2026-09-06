@@ -1,0 +1,13 @@
+# Reverts: par_ok: children of a par must have pairwise disjoint umbras (E0303) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/interference.rs
++++ b/core/src/interference.rs
+@@ -356,7 +356,7 @@
+             for cb in &grp[i + 1..] {
+                 for (a, oa) in ca {
+                     for (b, ob) in cb {
+-                        if !disjoint_umbra(owner, oa, ob) {
++                        if false && !disjoint_umbra(owner, oa, ob) {
+                             overlaps.push((*a, *b));
+                         }
+                     }

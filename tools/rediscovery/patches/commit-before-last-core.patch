@@ -1,0 +1,13 @@
+# Reverts: commit() must be the last item on its path (E0502) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/intent.rs
++++ b/core/src/intent.rs
+@@ -102,7 +102,7 @@
+             .iter()
+             .skip_while(|it| !matches!(it, Item::Commit))
+             .collect();
+-        after.len() >= 2
++        after.len() >= 3
+     })
+ }
+ 

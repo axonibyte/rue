@@ -14,21 +14,29 @@
 #               the root of the scratch copy
 #   tier        the tier the selected tests belong to (section 10.1)
 #   stage       '-' in Phase 0; tiers 6 and 7 name their stage here
-#   test        a tasty pattern (the -p argument) selecting the tests that
-#               must fail; the baseline run must select at least one
+#   suite       which suite the selector runs in: cabal (the Haskell
+#               prototype's tasty suite) or cargo (the Rust workspace)
+#   test        the selector: a tasty pattern (-p) for cabal, a test-name
+#               filter for cargo; the baseline run must select at least one
 #   env         '-' or VAR=VALUE assignments the row is run with; a tier-7
 #               row's seed and step count live here, not in a README
 #
-patch-file	tier	stage	test	env
-revert-composition-law.patch	1	-	laws	-
-par-not-disjoint.patch	1	-	E0303	-
-reach-late-arm.patch	1	-	E0401	-
-auto-with-force.patch	1	-	E0404	-
-knell-no-cost.patch	2	-	verdict.txt	-
-permanent-plan-reverts-at-wane.patch	4	-	states	-
-commit-before-last.patch	1	-	E0502	-
-intent-ambiguous-accepted.patch	1	-	E0501	-
-foreign-region-clobbered.patch	2	-	conditional	-
-pending-no-reserve.patch	4	-	ledger	-
-proof-scope-ignored.patch	1	-	requester	-
-held-outlives-wane.patch	4	-	states	-
+patch-file	tier	stage	suite	test	env
+revert-composition-law.patch	1	-	cabal	laws	-
+par-not-disjoint.patch	1	-	cabal	E0303	-
+reach-late-arm.patch	1	-	cabal	E0401	-
+auto-with-force.patch	1	-	cabal	E0404	-
+knell-no-cost.patch	2	-	cabal	verdict.txt	-
+permanent-plan-reverts-at-wane.patch	4	-	cabal	states	-
+commit-before-last.patch	1	-	cabal	E0502	-
+intent-ambiguous-accepted.patch	1	-	cabal	E0501	-
+foreign-region-clobbered.patch	2	-	cabal	conditional	-
+pending-no-reserve.patch	4	-	cabal	ledger	-
+proof-scope-ignored.patch	1	-	cabal	requester	-
+held-outlives-wane.patch	4	-	cabal	states	-
+revert-composition-law-core.patch	1	-	cargo	reverse	-
+par-not-disjoint-core.patch	1	-	cargo	par_ok	-
+reach-late-arm-core.patch	1	-	cargo	the_reach_rule	-
+commit-before-last-core.patch	1	-	cargo	commit_must_be_last	-
+intent-ambiguous-accepted-core.patch	1	-	cargo	intent_is_wane_xor	-
+proof-scope-ignored-core.patch	1	-	cargo	requester_is_counted	-

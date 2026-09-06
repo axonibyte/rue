@@ -8,7 +8,12 @@
 //! Phase 0 prototype under `proto/` is the specification this crate
 //! transcribes: every golden it produced must be reproduced byte for byte.
 
+pub mod algebra;
+pub mod backstop;
 pub mod diagnostics;
+pub mod gates;
+pub mod intent;
+pub mod interference;
 pub mod ir;
 pub mod json;
 pub mod model;

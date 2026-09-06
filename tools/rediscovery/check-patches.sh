@@ -56,12 +56,16 @@ fi
 
 rc=0
 : > "$tmp/listed"
-while IFS="$tab" read -r c1 c2 c3 c4 c5 extra; do
-    if [ -z "$c1" ] || [ -z "$c2" ] || [ -z "$c3" ] || [ -z "$c4" ] || [ -z "$c5" ] || [ -n "${extra:-}" ]; then
-        echo "check-patches: malformed row (need exactly 5 tab-separated fields): $c1" >&2
+while IFS="$tab" read -r c1 c2 c3 c4 c5 c6 extra; do
+    if [ -z "$c1" ] || [ -z "$c2" ] || [ -z "$c3" ] || [ -z "$c4" ] || [ -z "$c5" ] || [ -z "$c6" ] || [ -n "${extra:-}" ]; then
+        echo "check-patches: malformed row (need exactly 6 tab-separated fields): $c1" >&2
         rc=1
         continue
     fi
+    case $c4 in
+        cabal|cargo) ;;
+        *) echo "check-patches: $c1: suite '$c4' is neither cabal nor cargo" >&2; rc=1 ;;
+    esac
     case $c2 in
         *[!0-9]*|'') echo "check-patches: $c1: tier '$c2' is not a number" >&2; rc=1 ;;
     esac

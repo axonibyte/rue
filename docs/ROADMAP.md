@@ -498,7 +498,7 @@ A backstop is an op: its footprint is the artifact file inside the instance dire
 
 ### 5.7 The interference query
 
-Implemented as Datalog (Phase 1: `ascent`; Phase 0: list comprehension):
+Written as Datalog; implemented in Phase 0 as list comprehensions and in Phase 1 as iterator joins shaped as the Datalog, one function per relation with the names below (`ascent` sits behind the same signatures when scale demands it: the query is non-recursive, and result order, which the verdict's bytes depend on, is leaf order):
 
 ```
 writes(S, F)      :- step(S), umbra(S, F).

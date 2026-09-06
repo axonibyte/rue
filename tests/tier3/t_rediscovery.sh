@@ -27,10 +27,11 @@ expect() { # expect <status> <label>
 # The tree under test: the table, the patches, and the sources they touch.
 reset_tree() {
     rm -rf "$tmp/tree"
-    mkdir -p "$tmp/tree/tools/rediscovery/patches" "$tmp/tree/proto/src/Rue/Proto" || exit 2
+    mkdir -p "$tmp/tree/tools/rediscovery/patches" "$tmp/tree/proto/src/Rue/Proto" "$tmp/tree/core/src" || exit 2
     cp "$root/tools/rediscovery/table.tsv" "$tmp/tree/tools/rediscovery/table.tsv"
     cp "$root"/tools/rediscovery/patches/*.patch "$tmp/tree/tools/rediscovery/patches/"
     cp "$root"/proto/src/Rue/Proto/*.hs "$tmp/tree/proto/src/Rue/Proto/"
+    cp "$root"/core/src/*.rs "$tmp/tree/core/src/"
 }
 
 tab=$(printf '\t.')
@@ -42,7 +43,7 @@ expect 0 "copied tree passes"
 
 # 1. A row naming a patch that does not exist.
 reset_tree
-printf 'ghost.patch%s1%s-%slaws%s-\n' "$tab" "$tab" "$tab" "$tab" >> "$tmp/tree/tools/rediscovery/table.tsv"
+printf 'ghost.patch%s1%s-%scabal%slaws%s-\n' "$tab" "$tab" "$tab" "$tab" "$tab" >> "$tmp/tree/tools/rediscovery/table.tsv"
 expect 1 "listed but missing patch is caught"
 
 # 2. A patch file no row names.
@@ -55,10 +56,13 @@ reset_tree
 sed 's/armedBefore n = case planBackstop p of/armedBefore n = case (planBackstop p) of/' "$root/proto/src/Rue/Proto/Backstop.hs" > "$tmp/tree/proto/src/Rue/Proto/Backstop.hs"
 expect 1 "patch whose target moved is caught"
 
-# 4. A malformed row (four fields).
+# 4. A malformed row (five fields), and a row naming a suite that does not exist.
 reset_tree
-printf 'reach-late-arm.patch%s1%s-%sE0401\n' "$tab" "$tab" "$tab" >> "$tmp/tree/tools/rediscovery/table.tsv"
+printf 'reach-late-arm.patch%s1%s-%scabal%sE0401\n' "$tab" "$tab" "$tab" "$tab" >> "$tmp/tree/tools/rediscovery/table.tsv"
 expect 1 "malformed row is caught"
+reset_tree
+printf 'reach-late-arm.patch%s1%s-%spytest%sE0401%s-\n' "$tab" "$tab" "$tab" "$tab" "$tab" >> "$tmp/tree/tools/rediscovery/table.tsv"
+expect 1 "unknown suite is caught"
 
 # 5. An empty table refuses to check.
 reset_tree

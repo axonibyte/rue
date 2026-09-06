@@ -1,0 +1,13 @@
+# Reverts: a plan with both wane and commit(), or neither, has no intent (E0501) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/intent.rs
++++ b/core/src/intent.rs
+@@ -29,7 +29,7 @@
+     } else if has_commit && !has_wane {
+         Some(Intent::Permanent)
+     } else {
+-        None
++        Some(Intent::Temporary)
+     }
+ }
+ 

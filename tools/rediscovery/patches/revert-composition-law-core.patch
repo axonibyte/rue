@@ -1,0 +1,13 @@
+# Reverts: the composition law: reversing a sequence reverses its order (section 5.5) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/algebra.rs
++++ b/core/src/algebra.rs
+@@ -87,7 +87,7 @@
+ 
+ /// Reverse a sequence: last-in-first-out, each item reversed.
+ pub fn reverse_items(items: &[Item]) -> Result<Vec<Item>, Refused> {
+-    items.iter().rev().map(reverse_item).collect()
++    items.iter().map(reverse_item).collect()
+ }
+ 
+ /// Undo the applied prefix of a plan: the first `k` leaves, in reverse.

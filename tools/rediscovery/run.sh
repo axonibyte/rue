@@ -4,12 +4,14 @@
 #   sh tools/rediscovery/run.sh --tier N [--row NAME] [--keep]
 #
 # For each row of table.tsv in the named tier: copy the repository to a
-# scratch directory, run the row's test selector there and require it to pass
-# with at least one test (the baseline), apply the patch that REVERTS one
-# protection, require the patched tree to compile (a type error is not a
-# rediscovery), run the selector again and require it to FAIL. The working
-# tree is never touched. Run before a milestone is trusted, never
-# automatically.
+# scratch directory, run the row's test selector there in the row's suite
+# (cabal: the prototype's tasty suite; cargo: the Rust workspace) and require
+# it to pass with at least one test (the baseline), apply the patch that
+# REVERTS one protection, require the patched tree to compile (a type error is
+# not a rediscovery), run the selector again and require it to FAIL. The
+# working tree is never touched. Run before a milestone is trusted, never
+# automatically. Cargo rows share one target directory across the run so
+# dependencies compile once; each row's own crates rebuild.
 #
 # THE FALSE-PASS TRAP: this runner asserts a failure, so every way of not
 # running the tests at all looks like success. Each row therefore proves, in
@@ -61,12 +63,18 @@ if ! command -v cabal > /dev/null 2>&1 || ! command -v ghc > /dev/null 2>&1; the
     echo "rediscovery: ghc/cabal are not on PATH" >&2
     exit 2
 fi
+if ! command -v cargo > /dev/null 2>&1; then
+    echo "rediscovery: cargo is not on PATH" >&2
+    exit 2
+fi
+CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/rue-rediscover-target}
+export CARGO_TARGET_DIR
 
 # The data rows of one tier, comments and header dropped.
 rows() {
     awk -F "$tab" -v t="$1" '
         /^#/ { next }
-        NF < 5 { next }
+        NF < 6 { next }
         $1 == "patch-file" { next }
         $2 == t { print }
     ' "$table"
@@ -85,19 +93,44 @@ pass=0
 fail=0
 skippedrows=0
 
-# cabal_test <copy> <selector> <env> <log>  -- run the selector in a copy;
-# the exit status is cabal's.
-cabal_test() {
-    # shellcheck disable=SC2086
-    #   Deliberate word splitting: the row's fifth column is VAR=VALUE
-    #   assignments, and env(1) is what takes them.
-    ( cd "$1/proto" && env $3 cabal test all --builddir "$1/proto/dist-newstyle" --test-show-details=direct --test-options="-p $2" ) > "$4" 2>&1
+# run_suite <suite> <copy> <selector> <env> <log>  -- run the selector in a
+# copy; the exit status is the suite runner's.
+# shellcheck disable=SC2086
+#   Deliberate word splitting: the row's env column is VAR=VALUE assignments,
+#   and env(1) is what takes them.
+run_suite() {
+    case $1 in
+        cabal) ( cd "$2/proto" && env $4 cabal test all --builddir "$2/proto/dist-newstyle" --test-show-details=direct --test-options="-p $3" ) > "$5" 2>&1 ;;
+        cargo) ( cd "$2" && env $4 cargo test --workspace --locked -- "$3" ) > "$5" 2>&1 ;;
+        *) echo "rediscovery: unknown suite $1" >&2; return 2 ;;
+    esac
 }
 
-passed_count() { # the N of "All N tests passed", or 0
-    n=$(sed -n 's/^All \([0-9][0-9]*\) tests passed.*/\1/p' "$1")
+# build_suite <suite> <copy> <log>  -- the patched tree must compile.
+build_suite() {
+    case $1 in
+        cabal) ( cd "$2/proto" && cabal build all --builddir "$2/proto/dist-newstyle" ) > "$3" 2>&1 ;;
+        cargo) ( cd "$2" && cargo build --workspace --all-targets --locked ) > "$3" 2>&1 ;;
+        *) return 2 ;;
+    esac
+}
+
+passed_count() { # passed_count <suite> <log>: tests the baseline selected
+    case $1 in
+        cabal) n=$(sed -n 's/^All \([0-9][0-9]*\) tests passed.*/\1/p' "$2") ;;
+        cargo) n=$(awk '/^test result:/ { for (i = 1; i <= NF; i++) if ($i == "passed;") s += $(i - 1) } END { print s + 0 }' "$2") ;;
+        *) n=0 ;;
+    esac
     [ -n "$n" ] || n=0
     echo "$n"
+}
+
+failed_evidence() { # failed_evidence <suite> <log>: the run reported failed tests
+    case $1 in
+        cabal) grep -q 'tests failed' "$2" ;;
+        cargo) grep -q '^test result: FAILED' "$2" ;;
+        *) return 1 ;;
+    esac
 }
 
 row_fail() { # row_fail <scratch> <message...>
@@ -112,16 +145,17 @@ row_fail() { # row_fail <scratch> <message...>
     fi
 }
 
-run_row() { # run_row <patch> <stage> <selector> <env>
+run_row() { # run_row <patch> <stage> <suite> <selector> <env>
     patch=$1
     stage=$2
-    selector=$3
-    rowenv=$4
+    suite=$3
+    selector=$4
+    rowenv=$5
     if [ -n "$only" ] && [ "$patch" != "$only.patch" ]; then
         skippedrows=$((skippedrows + 1))
         return 0
     fi
-    echo "== $patch: expecting '-p $selector' to fail (stage $stage, env $rowenv)"
+    echo "== $patch: expecting $suite '$selector' to fail (stage $stage, env $rowenv)"
     if [ ! -r "$here/patches/$patch" ]; then
         echo "   FAIL: no such patch: $here/patches/$patch"
         fail=$((fail + 1))
@@ -131,7 +165,7 @@ run_row() { # run_row <patch> <stage> <selector> <env>
     scratch=$(mktemp -d "${TMPDIR:-/tmp}/rue-rediscover.XXXXXX") || return 1
 
     # A copy, not a checkout, in two commands so each answers for itself.
-    if ! ( cd "$root" && tar -cf "$scratch.tar" --exclude ./.git --exclude ./out --exclude ./proto/dist-newstyle --exclude ./.cabal_cache . ); then
+    if ! ( cd "$root" && tar -cf "$scratch.tar" --exclude ./.git --exclude ./out --exclude ./proto/dist-newstyle --exclude ./.cabal_cache --exclude ./target --exclude ./.cargo_cache . ); then
         rm -rf "$scratch" "$scratch.tar"
         echo "   FAIL: could not archive the tree"
         fail=$((fail + 1))
@@ -148,14 +182,14 @@ run_row() { # run_row <patch> <stage> <selector> <env>
 
     # 1. Baseline: the selector passes and selects at least one test.
     if [ "$rowenv" = "-" ]; then rowenv=''; fi
-    if ! cabal_test "$scratch" "$selector" "$rowenv" "$log"; then
-        row_fail "$scratch" "the baseline run of '-p $selector' did not pass in the unpatched copy"
+    if ! run_suite "$suite" "$scratch" "$selector" "$rowenv" "$log"; then
+        row_fail "$scratch" "the baseline run of $suite '$selector' did not pass in the unpatched copy"
         tail -20 "$log" | sed 's/^/         /'
         return 0
     fi
-    n=$(passed_count "$log")
+    n=$(passed_count "$suite" "$log")
     if [ "$n" -lt 1 ]; then
-        row_fail "$scratch" "'-p $selector' selects no test; a selector that runs nothing cannot fail"
+        row_fail "$scratch" "$suite '$selector' selects no test; a selector that runs nothing cannot fail"
         return 0
     fi
 
@@ -168,31 +202,31 @@ run_row() { # run_row <patch> <stage> <selector> <env>
     fi
 
     # 3. The patched tree compiles.
-    if ! ( cd "$scratch/proto" && cabal build all --builddir "$scratch/proto/dist-newstyle" ) > "$log.build" 2>&1; then
+    if ! build_suite "$suite" "$scratch" "$log.build"; then
         row_fail "$scratch" "the patched tree does not compile; a type error is not a rediscovery"
         grep -A6 'error' "$log.build" | head -30 | sed 's/^/         /'
         return 0
     fi
 
     # 4. The selector fails, and says so.
-    if cabal_test "$scratch" "$selector" "$rowenv" "$log"; then
-        row_fail "$scratch" "'-p $selector' still passed with the protection reverted ($n tests ran, none noticed)"
+    if run_suite "$suite" "$scratch" "$selector" "$rowenv" "$log"; then
+        row_fail "$scratch" "$suite '$selector' still passed with the protection reverted ($n tests ran, none noticed)"
         return 0
     fi
-    if ! grep -q 'tests failed' "$log"; then
+    if ! failed_evidence "$suite" "$log"; then
         row_fail "$scratch" "the run exited non-zero without reporting failed tests"
         tail -20 "$log" | sed 's/^/         /'
         return 0
     fi
     echo "   PASS: rediscovered ($n tests in the baseline), by:"
-    grep -E 'FAIL$' "$log" | sed 's/^ */         /'
+    grep -E 'FAIL$|^test .* FAILED$' "$log" | sed 's/^ */         /'
     rm -rf "$scratch"
     pass=$((pass + 1))
     return 0
 }
 
-while IFS="$tab" read -r c1 c2 c3 c4 c5; do
-    run_row "$c1" "$c3" "$c4" "$c5" || { echo "rediscovery: could not create a scratch copy" >&2; exit 2; }
+while IFS="$tab" read -r c1 c2 c3 c4 c5 c6; do
+    run_row "$c1" "$c3" "$c4" "$c5" "$c6" || { echo "rediscovery: could not create a scratch copy" >&2; exit 2; }
     : "$c2"
 done < "$rowfile"
 

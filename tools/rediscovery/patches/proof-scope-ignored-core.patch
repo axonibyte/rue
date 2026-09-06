@@ -1,0 +1,15 @@
+# Reverts: a gate that counts the requester is refused; the requester's proof has no scope there (E0508) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/gates.rs
++++ b/core/src/gates.rs
+@@ -172,8 +172,8 @@
+     let requester_human = auths.iter().any(|a| a.id == requester && a.human);
+     fn factor(auths: &[Authenticator], requester: &str, requester_human: bool, f: &Factor) -> bool {
+         match f {
+-            Factor::Auth { id, .. } => id == requester,
+-            Factor::Humans { .. } => requester_human,
++            Factor::Auth { id, .. } => false && id == requester,
++            Factor::Humans { .. } => false && requester_human,
+             Factor::Group { expr, .. } => counts_requester(auths, requester, expr),
+             Factor::Wait { .. } => false,
+         }
