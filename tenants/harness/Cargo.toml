@@ -1,0 +1,15 @@
+[package]
+name = "rue-tenants"
+description = "The acceptance tenants' harness: the case table, the golden contract, and the tests that hold rue-core to the Phase 0 goldens"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Lives under tenants/ because it names tenants; the seam guard exempts that
+# directory and nothing else may.
+[dependencies]
+rue-core = { path = "../../core" }
+serde_json.workspace = true

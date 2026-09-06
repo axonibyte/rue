@@ -1,0 +1,19 @@
+# Reverts: the verdict states a knell's cost (Appendix A) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/prose.rs
++++ b/core/src/prose.rs
+@@ -107,13 +107,12 @@
+ 
+     if let Some(p) = &v.point_of_no_return {
+         out.push(format!(
+-            "step {} is a point of no return{}, cost {}, acknowledged by {}{}",
++            "step {} is a point of no return{}, acknowledged by {}{}",
+             p.step,
+             p.guard
+                 .as_ref()
+                 .map(|g| format!(", guard {g}"))
+                 .unwrap_or_default(),
+-            p.cost,
+             p.ack,
+             v.reversible_back_to
+                 .map(|(f, t)| format!("; step {f} reversible back to step {t}"))

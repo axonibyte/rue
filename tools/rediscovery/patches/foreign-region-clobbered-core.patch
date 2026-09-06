@@ -1,0 +1,13 @@
+# Reverts: a region's damaged-marker fallback is conditional on no foreign region (section 5.2, D-053) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -243,7 +243,7 @@
+         .flat_map(|(n, o)| {
+             o.footprint
+                 .iter()
+-                .filter(|e| e.kind == Kind::Region)
++                .filter(|e| e.kind == Kind::Region && false)
+                 .map(move |e| (*n, format!("foreign region in {}", e.shape)))
+         })
+         .collect();

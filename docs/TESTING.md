@@ -50,10 +50,15 @@ whole run:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the code enumeration; the reversal laws as QuickCheck properties; every emitted code raised by one plan and not by its sibling |
-| 2 | `Test.Golden`, `Test.Tenants` | Every artifact byte-identical to its expected file, no orphans; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields |
-| 3 | `Test.Schema` (plus the shell guards in the gate) | Every verdict golden validates against `docs/verdict-schema.json`; every declared property path is produced by some golden |
-| 4 | `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations |
+| 1 | `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check`; Rust `core/tests/{canonical,diagnostics,ir,laws,interference,gates,intent_backstop,check,render}.rs` | The canonical encoder's bytes and round trip; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses |
+| 2 | `Test.Golden`, `Test.Tenants`; Rust `tenants/harness/tests/{goldens,tenants}.rs` | Every artifact byte-identical to its expected file, no orphans and no missing inputs; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields |
+| 3 | `Test.Schema`; Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
+| 4 | `Test.States`, `Test.Ledger`; Rust `core/tests/{states,ledger}.rs` | The five state-machine rules over the generated table; the cross-plan ledger's reservations |
+
+The Rust half is a transcription of the Haskell half, test for test, and reads
+the same goldens; `tenants/harness` (`rue-tenants`) is the case table as code
+(`TENANT_CASES`, `NEGATIVES`, `EMITTED_CODES`) and the golden plumbing, and
+lives under `tenants/` because it names tenants.
 
 ## Goldens
 
@@ -65,6 +70,11 @@ variable, and the gate checksums `tenants/` and `docs/` before and after
 `cabal test` and fails on any change. A mismatch prints the first differing
 line with context and writes the actual bytes under
 `$RUE_BUILDDIR/golden-actual/<path>` for diffing.
+
+The Rust suite is read-only too: it compares the same files and writes its
+differing bytes under `target/golden-actual/`; it has no writer, since the
+inputs (`plan.json`) can only come from the prototype while the prototype is
+the emitter.
 
 Regenerating goldens is a decision, not a fix. Read the diff. If the change
 is intended, the commit body says why the verdict changed.

@@ -44,3 +44,5 @@ auto-with-force-core.patch	1	-	cargo	mode_rules	-
 permanent-plan-reverts-at-wane-core.patch	4	-	cargo	rule_2_wane	-
 held-outlives-wane-core.patch	4	-	cargo	rule_2_wane	-
 pending-no-reserve-core.patch	4	-	cargo	pending_umbra	-
+knell-no-cost-core.patch	2	-	cargo	every_artifact_matches	-
+foreign-region-clobbered-core.patch	2	-	cargo	section_8	-

@@ -11,37 +11,6 @@ use rue_core::diagnostics::Code;
 use rue_core::model::*;
 use rue_core::verdict::*;
 
-/// The codes the checker emits. Every other code in the table is a surface,
-/// engine or analysis rule this crate does not model yet.
-pub const EMITTED_CODES: &[Code] = &[
-    Code::E0201,
-    Code::E0202,
-    Code::E0203,
-    Code::E0205,
-    Code::E0207,
-    Code::E0208,
-    Code::E0301,
-    Code::E0302,
-    Code::E0303,
-    Code::E0304,
-    Code::E0305,
-    Code::E0401,
-    Code::E0403,
-    Code::E0404,
-    Code::E0405,
-    Code::E0407,
-    Code::E0410,
-    Code::E0501,
-    Code::E0502,
-    Code::E0503,
-    Code::E0504,
-    Code::E0505,
-    Code::E0506,
-    Code::E0507,
-    Code::E0508,
-    Code::E0509,
-];
-
 fn site0() -> Site {
     Site {
         hosts: vec![
@@ -855,12 +824,4 @@ fn diagnostics_are_sorted_by_code_and_stable_within_a_code() {
             (Code::E0501, None)
         ]
     );
-}
-
-#[test]
-fn the_emitted_code_list_is_sorted_and_duplicate_free() {
-    let mut sorted = EMITTED_CODES.to_vec();
-    sorted.sort();
-    sorted.dedup();
-    assert_eq!(sorted, EMITTED_CODES);
 }

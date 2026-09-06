@@ -41,6 +41,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-tenants"
+version = "0.0.1"
+dependencies = [
+ "rue-core",
+ "serde_json",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
