@@ -2,22 +2,24 @@
 #
 # Two guests, two execution modes, from the first commit:
 #
-#   ubuntu-26.04  container  the whole gate (tools/check.sh) in a digest-pinned
-#                            GHC image -- the same GHC the FreeBSD workstation
-#                            installs from pkg, so a failure here is a failure
-#                            of the code, not of a version difference.
+#   ubuntu-26.04  container  the whole gate (tools/check.sh) and the Windows
+#                            suite under wine, in the digest-pinned Rust image
+#                            the pipeline uses (Debian trixie: Rust 1.97.1,
+#                            wine 10), with GHC 9.10.3 and cabal installed by
+#                            ghcup into a cache on first use -- the same
+#                            versions the FreeBSD workstation has from pkg, so
+#                            a failure here is a failure of the code, not of a
+#                            version difference.
 #   freebsd-15.1  host       the POSIX-sh half of the gate on a system with only
 #                            base: no GHC, no shellcheck. Those skips are
 #                            declared HERE, in RUE_CHECK_SKIP_OK, so a missing
 #                            cabal anywhere else is a failure and never a quiet
 #                            pass.
 #
-# There is no Windows guest, and not because a template is unregistered:
-# reaper's runner is POSIX sh over ZFS with a closed Linux/FreeBSD switch, so
-# hosting Windows is a port of reaper, tracked as a dependency on that project
-# (docs/ROADMAP.md, Phase 1 and section 12). Until it lands, Windows is
-# proven by the pipeline: a cross-build of every binary and the test suite run
-# under wine (bitbucket-pipelines.yml, doTestWindows).
+# Windows is tested on the Ubuntu guest: the suite is built for
+# x86_64-pc-windows-gnu and run under wine there (ci/test-windows.sh, the same
+# script the pipeline runs). What wine cannot exercise -- services, named
+# pipes, the Task Scheduler -- is Phase 3's to test on a real machine.
 #
 # Every cmd runs under /bin/sh and dash has no pipefail, so no cmd below pipes;
 # tools/check.sh owns its own exit status the same way.
@@ -36,36 +38,40 @@ name = "ubuntu-26.04"
 # Ubuntu's alone: the FreeBSD guest is host-execution and a host build may not
 # carry an image, so this block must not be a root default it would inherit.
 [guests.build]
-# docker.io/library/haskell:9.10.3-bookworm, resolved from the registry on
-# 2026-09-06 (ci/image-digest.sh prints the current one). GHC 9.10.3 matches
-# the workstation's pkg ghc-9.10.3; cabal-install differs (3.14 here, 3.16
-# there) and selects nothing: proto/cabal.project and its freeze fix the plan.
-# bitbucket-pipelines.yml carries the same image by tag; bump both together.
-image = "docker.io/library/haskell@sha256:f5400211315c07ff6bc47c1f14333b75d02960ed9b7e93e68a5f89ddc3e232d0"
+# docker.io/library/rust:1.97-trixie, resolved from the registry on 2026-09-06
+# (ci/image-digest.sh prints the current one); bitbucket-pipelines.yml
+# carries the same image by tag, and pins the GHC image the gate step there
+# runs in. Rust 1.97.1 is the image's own. GHC 9.10.3 and cabal 3.16.1.0 come
+# from ghcup, installed into the ghcup cache the first time and found there
+# afterwards (the ghcup binary is fetched to a file, never piped into a
+# shell). Trixie, not bookworm, because the Windows suite needs a wine that
+# knows bcryptprimitives.dll (wine 8.13 and later): bookworm's 8.0 does not.
+image = "docker.io/library/rust@sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97644c3d791450f131dec813f"
 
 # The cache paths come from the environment rather than being written out.
 # The command is a shell command, so these expand; a manifest env value would
-# not, deliberately. The image carries GHC and no Rust, so Rust 1.97.1 is
-# installed by rustup into the rustup and cargo caches the first time and
-# found there afterwards (rustup-init is fetched to a file, never piped into
-# a shell). The build is the cabal build and the cargo build; the run below
-# tests both.
+# not, deliberately. The build is the cabal build and the cargo build; the run
+# below tests.
 cmd = """
+export GHCUP_INSTALL_BASE_PREFIX=$REAPER_CACHE_GHCUP PATH=$REAPER_CACHE_GHCUP/.ghcup/bin:$PATH && \
+{ test -x $REAPER_CACHE_GHCUP/.ghcup/bin/ghc || { \
+    apt-get -qq update && \
+    apt-get -qq install -y --no-install-recommends libgmp-dev libffi-dev libncurses-dev libtinfo6 && \
+    mkdir -p $REAPER_CACHE_GHCUP && \
+    curl -sSf https://downloads.haskell.org/~ghcup/x86_64-linux-ghcup -o $REAPER_CACHE_GHCUP/ghcup && \
+    chmod 0755 $REAPER_CACHE_GHCUP/ghcup && \
+    $REAPER_CACHE_GHCUP/ghcup install ghc 9.10.3 --set && \
+    $REAPER_CACHE_GHCUP/ghcup install cabal 3.16.1.0 --set; }; } && \
 cd proto && \
 CABAL_DIR=$REAPER_CACHE_CABAL cabal update && \
 CABAL_DIR=$REAPER_CACHE_CABAL cabal build all --builddir $REAPER_CACHE_BUILD_DIR && \
 cd .. && \
-export RUSTUP_HOME=$REAPER_CACHE_RUSTUP CARGO_HOME=$REAPER_CACHE_CARGO && \
-{ test -x $REAPER_CACHE_CARGO/bin/cargo || { \
-    curl -sSf https://sh.rustup.rs -o $REAPER_CACHE_RUSTUP/rustup-init.sh && \
-    sh $REAPER_CACHE_RUSTUP/rustup-init.sh -y --no-modify-path --profile minimal \
-        --default-toolchain 1.97.1 -c rustfmt -c clippy; }; } && \
-PATH=$REAPER_CACHE_CARGO/bin:$PATH CARGO_TARGET_DIR=$REAPER_CACHE_TARGET \
+CARGO_HOME=$REAPER_CACHE_CARGO CARGO_TARGET_DIR=$REAPER_CACHE_TARGET \
 cargo build --workspace --all-targets --release --locked"""
 
 # Named by us and meaningless to the framework. Everything large lives here
 # and not on the guest's small root disk.
-cache = ["cabal", "build-dir", "rustup", "cargo", "target"]
+cache = ["cabal", "build-dir", "ghcup", "cargo", "target"]
 
 [[guests]]
 name = "freebsd-15.1"
@@ -78,16 +84,22 @@ run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test,c
 [run]
 # The Ubuntu run, in build.image (a container run with no image of its own
 # inherits it). The apt line is the honest cost of not having a purpose-built
-# image: the stock GHC image carries neither shellcheck nor patch, and both
-# are real dependencies of the gate. TMPDIR sits on the cache so rediscovery
-# scratch copies never touch the root disk.
+# image: the Rust image carries neither shellcheck nor patch, both real
+# dependencies of the gate, nor GHC's libraries, the mingw linker or wine, and
+# ships rustc without rustfmt and clippy, which the gate's two lint phases are.
+# TMPDIR sits on the cache so rediscovery scratch copies never touch the root
+# disk. The gate first, then the Windows suite under wine.
 cmd = """
-apt-get -qq update && apt-get -qq install -y --no-install-recommends shellcheck patch && \
+apt-get -qq update && \
+apt-get -qq install -y --no-install-recommends shellcheck patch libgmp-dev libffi-dev libncurses-dev libtinfo6 gcc-mingw-w64-x86-64 wine && \
+rustup component add rustfmt clippy && \
 mkdir -p $REAPER_CACHE_BUILD_DIR/tmp && \
-PATH=$REAPER_CACHE_CARGO/bin:$PATH RUSTUP_HOME=$REAPER_CACHE_RUSTUP CARGO_HOME=$REAPER_CACHE_CARGO \
-CARGO_TARGET_DIR=$REAPER_CACHE_TARGET \
+export PATH=$REAPER_CACHE_GHCUP/.ghcup/bin:$PATH GHCUP_INSTALL_BASE_PREFIX=$REAPER_CACHE_GHCUP \
+CARGO_HOME=$REAPER_CACHE_CARGO CARGO_TARGET_DIR=$REAPER_CACHE_TARGET \
 CABAL_DIR=$REAPER_CACHE_CABAL RUE_BUILDDIR=$REAPER_CACHE_BUILD_DIR \
-TMPDIR=$REAPER_CACHE_BUILD_DIR/tmp sh tools/check.sh"""
+TMPDIR=$REAPER_CACHE_BUILD_DIR/tmp && \
+sh tools/check.sh && \
+bash ci/test-windows.sh"""
 
 [sync]
 # Workstation build output is for a different operating system and is rebuilt

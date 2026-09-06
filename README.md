@@ -81,7 +81,7 @@ for the owner to reconcile.
 | 26 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205, E0207, E0208, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509 |
 | The other 30 codes | Not modeled: the surface's E01xx (parsing, names, kinds, totality), the secret rules E0206, E0209-E0211, E0411, the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0606. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
 | Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md` as a finding for the owner: thirteen items, from the requester as an input to `check` to the verdict's new `mode` field. None is folded into the roadmap yet |
-| Windows beyond wine | Reaper cannot host a Windows guest (its runner is POSIX sh over ZFS); that port is a tracked dependency on the reaper project, due before Phase 3 exits. The pipeline builds every binary for `x86_64-pc-windows-gnu` and runs the whole suite under wine, which proves the logic and the bytes and nothing about services, named pipes or the Task Scheduler |
+| Windows beyond wine | The whole suite is built for `x86_64-pc-windows-gnu` and run under wine, on the Ubuntu reaper guest and in the pipeline; that proves the logic and the bytes and nothing about services, named pipes or the Task Scheduler, which Phase 3 tests on a real machine |
 | The Rust pipeline steps | Present and gated: each prints a skip line until a `Cargo.toml` exists in Phase 1 |
 | Deploy | Refuses on every tag until Phase 1 produces artifacts and a workspace version |
 

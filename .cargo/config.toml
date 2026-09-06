@@ -1,0 +1,9 @@
+# Per-target build settings that belong to the workspace, not to a host.
+#
+# The windows-gnu binaries link the C runtime statically so they carry no
+# mingw DLL dependency: the same exe runs under wine in the test step and on a
+# Windows machine with nothing installed beside it. Without this, wine refuses
+# to load the test binaries with STATUS_DLL_NOT_FOUND (libgcc_s_seh-1.dll,
+# libwinpthread-1.dll), and a shipped rue.exe would want the same DLLs.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]

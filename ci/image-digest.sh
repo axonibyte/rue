@@ -4,13 +4,13 @@
 # .reaper.toml must carry a digest (reaper refuses tags); this is how the
 # digest is refreshed when the tag in bitbucket-pipelines.yml is bumped.
 #
-# Usage: sh ci/image-digest.sh [repository[:tag]]     default haskell:9.10.3-bookworm
+# Usage: sh ci/image-digest.sh [repository[:tag]]     default rust:1.97-trixie
 #
 # Needs only curl and sed. No pipes: each response lands in a file first, so
 # a failed request cannot be mistaken for an empty digest.
 set -u
 
-ref=${1:-haskell:9.10.3-bookworm}
+ref=${1:-rust:1.97-trixie}
 case $ref in
     *:*) repo=${ref%%:*}; tag=${ref#*:} ;;
     *)   repo=$ref; tag=latest ;;

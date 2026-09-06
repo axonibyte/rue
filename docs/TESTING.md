@@ -164,18 +164,21 @@ caught at once rather than when someone remembers the battery.
 ## Under reaper
 
 `.reaper.toml` runs the whole gate on the Ubuntu guest, in the digest-pinned
-GHC 9.10.3 image with Rust 1.97.1 installed by rustup into the guest's caches
-on first use, and the POSIX-sh half on the FreeBSD host guest with its skips
-declared. `reaper up && reaper test`. The manifest validates with
+Rust 1.97 image the pipeline uses (Debian trixie) with GHC 9.10.3 and cabal
+installed by ghcup into the guest's caches on first use, and the POSIX-sh half
+on the FreeBSD host guest with its skips declared. `reaper up && reaper test`. The manifest validates with
 `reaper-manifest-validate .reaper.toml`.
 
-There is no Windows guest, and not for want of a template: reaper's runner is
-POSIX sh over ZFS with a closed Linux/FreeBSD switch, so hosting Windows is a
-port of reaper, tracked as a dependency on that project and required before
-Phase 3 exits. Until then the pipeline's `doTestWindows` step builds the
-whole suite for `x86_64-pc-windows-gnu` and runs it under wine, which proves
-the crates' logic and the CLI's bytes on that target and nothing about
-services, named pipes or the Task Scheduler.
+Windows is tested under wine: `ci/test-windows.sh` builds the whole suite for
+`x86_64-pc-windows-gnu`, statically linked against the C runtime
+(`.cargo/config.toml`) so the binaries carry no mingw DLL dependency, and
+runs it with wine as cargo's runner, on the Ubuntu reaper guest after the gate
+and in the pipeline's `doTestWindows` step. Rust's standard library needs
+`bcryptprimitives.dll`, which wine has had since 8.13; Debian trixie's wine 10
+qualifies and bookworm's 8.0 does not, which is why both hosts are trixie. That
+proves the crates' logic and the CLI's bytes on the Windows target. What wine
+cannot exercise -- services, named pipes, the Task Scheduler, ACLs -- is
+Phase 3's to test on a real machine.
 
 ## What green does not prove
 
@@ -185,5 +188,5 @@ services, named pipes or the Task Scheduler.
 - Nothing about hosts: no executor, no backstop artifact, no engine exists.
   Tiers 5 to 7 begin in Phase 3.
 - On Windows, only what wine can show: the suite passing on the windows-gnu
-  target. Services, named pipes, the Task Scheduler and ACLs wait for a real
-  guest, which waits for reaper.
+  target. Services, named pipes, the Task Scheduler and ACLs are Phase 3's,
+  on a real machine.

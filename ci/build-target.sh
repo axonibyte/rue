@@ -67,6 +67,8 @@ case "$TARGET" in
         ;;
 
     x86_64-pc-windows-gnu)
+        # Statically linked C runtime via .cargo/config.toml: the exe carries
+        # no mingw DLL dependency, under wine or on a Windows machine.
         apt_install gcc-mingw-w64-x86-64
         rustup target add "$TARGET"
         export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc

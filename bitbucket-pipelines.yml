@@ -1,6 +1,6 @@
 # Pinned rather than :latest so a tag build today and a rebuild next year use
 # the same compiler, and pinned to a Debian codename so the apt packages the
-# steps install (mingw, wine64, python3-pip) come from one release. Bump
+# steps install (mingw, wine, python3-pip) come from one release. Bump
 # deliberately, together with rust-version in Cargo.toml, the toolchain check
 # in tools/check.sh, the nightly pin in ci/build-target.sh, and the GHC image
 # below (whose digest .reaper.toml carries).
@@ -39,7 +39,9 @@ definitions:
 
     - step: &doCheck
         name: Gate (tools/check.sh)
-        # haskell:9.10.3-bookworm; the same image, by digest, in .reaper.toml.
+        # The stock GHC 9.10.3 image: the cabal phases need GHC and this step
+        # needs nothing else. The reaper guest runs the same gate in the Rust
+        # image with GHC from ghcup, so the gate is proven under both.
         image: haskell:9.10.3-bookworm
         caches:
           - cabal-store
@@ -66,30 +68,14 @@ definitions:
           - cargo test --release --locked
 
     - step: &doTestWindows
-        # Windows is first-class (D-031) and no reaper Windows guest exists
-        # (hosting one is a port of reaper, tracked on that project), so this
-        # is the Windows proof this phase has: the whole test suite, built for
-        # x86_64-pc-windows-gnu and run under wine. It proves the crates' logic
-        # and the CLI's bytes on the Windows target; it proves nothing about
-        # services, named pipes or the Task Scheduler, which need a real guest
-        # before Phase 3 exits.
+        # Windows is first-class (D-031). The suite runs on the Windows target
+        # under wine, here and in the Ubuntu reaper guest, from one script.
         name: Test x86_64-pc-windows-gnu under wine
         caches:
           - cargo
         script:
           - export CARGO_HOME="$BITBUCKET_CLONE_DIR/.cargo_cache"
-          - apt-get -qq update
-          - apt-get -qq install -y --no-install-recommends gcc-mingw-w64-x86-64 wine64
-          - rustup target add x86_64-pc-windows-gnu
-          - export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
-          - export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER=wine64
-          # No display, no fixme chatter, a prefix inside the clone, and the
-          # repository root stated so the golden tests need no ancestor walk.
-          - export WINEDEBUG=-all WINEPREFIX="$BITBUCKET_CLONE_DIR/.wine" RUE_REPO_ROOT="$BITBUCKET_CLONE_DIR"
-          # If the windows-gnu test binaries ever need the mingw runtime DLLs
-          # under wine, the fix is RUSTFLAGS="-C target-feature=+crt-static"
-          # for this target, not copying DLLs about.
-          - cargo test --workspace --release --locked --target x86_64-pc-windows-gnu
+          - bash ci/test-windows.sh
 
     - step: &buildLinuxAmd64
         name: Build x86_64-unknown-linux-gnu
