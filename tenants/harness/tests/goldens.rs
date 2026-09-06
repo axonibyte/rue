@@ -1,17 +1,18 @@
-//! Tier 2: every declared artifact matches its expected file byte for byte,
-//! and every file under an expected directory is either an input a case
-//! declares or an artifact the crates reproduce.
+//! Tier 2: every declared artifact -- the IR, the verdicts and the listings
+//! the terms produce, and the state table -- matches its expected file byte
+//! for byte; every file under an expected directory is an artifact; and the
+//! writer refuses to write unless told to.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use rue_tenants::golden::{actual_path, compare_bytes, render_mismatch, repo_root};
-use rue_tenants::{artifacts, inputs, STATE_TABLE};
+use rue_tenants::{artifacts, STATE_TABLE};
 
 #[test]
 fn every_artifact_matches_its_expected_file() {
     let root = repo_root().unwrap();
-    let arts = artifacts(&root);
+    let arts = artifacts();
     assert!(!arts.is_empty());
     let mut failures = Vec::new();
     for a in &arts {
@@ -91,14 +92,10 @@ fn expected_files(root: &Path) -> Vec<String> {
 }
 
 #[test]
-fn no_orphan_expected_files_and_no_missing_inputs() {
+fn no_orphan_expected_files_and_no_missing_artifacts() {
     let root = repo_root().unwrap();
     let found = expected_files(&root);
-    let mut declared: Vec<String> = artifacts(&root)
-        .into_iter()
-        .map(|a| a.path)
-        .chain(inputs())
-        .collect();
+    let mut declared: Vec<String> = artifacts().into_iter().map(|a| a.path).collect();
     declared.sort();
     declared.dedup();
     let orphans: Vec<&String> = found.iter().filter(|f| !declared.contains(f)).collect();
@@ -111,4 +108,32 @@ fn no_orphan_expected_files_and_no_missing_inputs() {
         missing.is_empty(),
         "declared files that do not exist: {missing:?}"
     );
+}
+
+#[test]
+fn the_writer_refuses_without_the_variable_and_touches_nothing() {
+    let root = repo_root().unwrap();
+    let before: Vec<(PathBuf, std::time::SystemTime)> = artifacts()
+        .iter()
+        .map(|a| root.join(&a.path))
+        .map(|p| {
+            let t = fs::metadata(&p).unwrap().modified().unwrap();
+            (p, t)
+        })
+        .collect();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_rue-goldens"))
+        .env_remove("RUE_UPDATE_GOLDENS")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("RUE_UPDATE_GOLDENS=1"));
+    for (p, t) in before {
+        assert_eq!(
+            fs::metadata(&p).unwrap().modified().unwrap(),
+            t,
+            "{} was touched",
+            p.display()
+        );
+    }
 }

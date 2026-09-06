@@ -8,6 +8,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# The only golden writer; a development tool, not a shipped binary
+# (ci/build-target.sh packages rue, rued and rue-hook and nothing else).
+[[bin]]
+name = "rue-goldens"
+path = "src/bin/rue-goldens.rs"
+
 # Lives under tenants/ because it names tenants; the seam guard exempts that
 # directory and nothing else may.
 [dependencies]

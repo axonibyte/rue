@@ -26,11 +26,9 @@ revert-composition-law.patch	1	-	cabal	laws	-
 par-not-disjoint.patch	1	-	cabal	E0303	-
 reach-late-arm.patch	1	-	cabal	E0401	-
 auto-with-force.patch	1	-	cabal	E0404	-
-knell-no-cost.patch	2	-	cabal	verdict.txt	-
 permanent-plan-reverts-at-wane.patch	4	-	cabal	states	-
 commit-before-last.patch	1	-	cabal	E0502	-
 intent-ambiguous-accepted.patch	1	-	cabal	E0501	-
-foreign-region-clobbered.patch	2	-	cabal	conditional	-
 pending-no-reserve.patch	4	-	cabal	ledger	-
 proof-scope-ignored.patch	1	-	cabal	requester	-
 held-outlives-wane.patch	4	-	cabal	states	-

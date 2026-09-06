@@ -50,31 +50,30 @@ whole run:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check`; Rust `core/tests/{canonical,diagnostics,ir,laws,interference,gates,intent_backstop,check,render}.rs` | The canonical encoder's bytes and round trip; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses |
-| 2 | `Test.Golden`, `Test.Tenants`; Rust `tenants/harness/tests/{goldens,tenants}.rs` | Every artifact byte-identical to its expected file, no orphans and no missing inputs; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields |
-| 3 | `Test.Schema`; Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
-| 4 | `Test.States`, `Test.Ledger`; Rust `core/tests/{states,ledger}.rs` | The five state-machine rules over the generated table; the cross-plan ledger's reservations |
+| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests |
+| 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields |
+| 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
+| 4 | Rust `core/tests/{states,ledger}.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now |
 
-The Rust half is a transcription of the Haskell half, test for test, and reads
-the same goldens; `tenants/harness` (`rue-tenants`) is the case table as code
-(`TENANT_CASES`, `NEGATIVES`, `EMITTED_CODES`) and the golden plumbing, and
-lives under `tenants/` because it names tenants.
+`tenants/harness` (`rue-tenants`) holds the tenants and the negatives as
+Rust terms, the case table as code (`TENANT_CASES`, `NEGATIVES`,
+`EMITTED_CODES`), the golden plumbing, and the writer; it lives under
+`tenants/` because it names tenants. The Haskell prototype is the Phase 0
+record: its tier-1 and tier-4 tests still run in the gate, but it no longer
+compares against or writes the goldens.
 
 ## Goldens
 
-The list of goldens is `Rue.Proto.Tenants.artifacts`, a Haskell value, never
-a directory listing. A missing expected file fails; an expected file no
-artifact claims fails ("orphan"). The suite is read-only: the only writer is
-`RUE_UPDATE_GOLDENS=1 cabal run rue-proto-goldens`, which refuses without the
-variable, and the gate checksums `tenants/` and `docs/` before and after
-`cabal test` and fails on any change. A mismatch prints the first differing
-line with context and writes the actual bytes under
-`$RUE_BUILDDIR/golden-actual/<path>` for diffing.
-
-The Rust suite is read-only too: it compares the same files and writes its
-differing bytes under `target/golden-actual/`; it has no writer, since the
-inputs (`plan.json`) can only come from the prototype while the prototype is
-the emitter.
+The list of goldens is `rue_tenants::artifacts()`, computed from the terms
+under `tenants/harness/src/tenants/`, never from a directory listing. A
+missing expected file fails; an expected file no artifact claims fails
+("orphan"). The suite is read-only: the only writer is
+`RUE_UPDATE_GOLDENS=1 cargo run -p rue-tenants --bin rue-goldens`, which
+refuses without the variable (a test proves it refuses and touches nothing),
+and the gate checksums `tenants/` and `docs/` before and after both test runs
+and fails on any change. A mismatch prints the first differing line with
+context and writes the actual bytes under `target/golden-actual/<path>` for
+diffing.
 
 Regenerating goldens is a decision, not a fix. Read the diff. If the change
 is intended, the commit body says why the verdict changed.
@@ -107,12 +106,12 @@ The checker's input as data: one `plan.json` per checked case beside its
 verdict goldens (`tenants/<t>/expected/<host>/plan.json`,
 `tenants/_negative/<code>-<slug>/expected/plan.json`), holding what `check`
 consumes -- the site, the requester and one concrete per-host plan -- in
-canonical JSON. It is a golden like the others: enumerated from code, read
-only in tests, written only by `rue-proto-goldens`, covered by the hygiene
-guard and the orphan walk.
+canonical JSON. It is a golden like the others: produced from the case's
+term by `rue-goldens`, read only in tests (which also parse it back and
+require the term), covered by the hygiene guard and the orphan walk.
 
-The shape is `Rue.Proto.Json.PlanIr`, written field by field so no
-implementation's constructor names leak into it. `ir_version` is an integer;
+The shape is `rue_core::model`'s serde form, spelled deliberately field by
+field so no implementation's constructor names leak into it. `ir_version` is an integer;
 a reader refuses any version it does not know. While the prototype is the
 only emitter, any change of shape bumps the version and changes emitter and
 readers in one commit; Phase 2's front end freezes it. Durations are whole
@@ -122,8 +121,7 @@ a step's fields flattened beside it. The prototype's stand-in flags
 (`undo_closed`, `undo_idempotent`, `undo_one_line`) are carried as they are
 until bodies replace them.
 
-`rue-proto-check <tenant> <host> --ir` prints a case's IR; it must equal the
-golden.
+`rue check <plan.json>` reads one.
 
 ## Negative cases
 

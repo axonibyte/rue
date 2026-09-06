@@ -1,43 +1,62 @@
 //! Tier 2, the Phase 0 acceptance (docs/ROADMAP.md section 9) held by the
-//! Rust crates: every tenant checks clean; every negative refuses with
-//! exactly its code; the negative goldens cover exactly the codes the checker
-//! emits; and the claims section 8 makes about each verdict hold as fields.
-//! Also the source-as-data half: every case directory carries its `.rue`
-//! text and every tenant an inventory.
+//! Rust crates: the terms and the case table agree; every tenant checks
+//! clean; every negative refuses with exactly its code; the negative goldens
+//! cover exactly the codes the checker emits; and the claims section 8 makes
+//! about each verdict hold as fields. Also the source-as-data half: every case
+//! directory carries its `.rue` text and every tenant an inventory.
 
 use std::collections::BTreeSet;
-use std::path::Path;
 
-use rue_core::check::check;
 use rue_core::diagnostics::Code;
 use rue_core::intent::Intent;
+use rue_core::ir::PlanIr;
 use rue_core::model::{Duration, Strictness};
 use rue_core::verdict::{HostTouched, Status, Verdict};
 use rue_tenants::golden::repo_root;
-use rue_tenants::{load, TenantCase, EMITTED_CODES, NEGATIVES, TENANT_CASES};
+use rue_tenants::{
+    cases, load, verdict_of, CaseTerm, TenantCase, EMITTED_CODES, NEGATIVES, TENANT_CASES,
+};
 
-fn verdict(root: &Path, input: &str) -> (Verdict, rue_core::ir::PlanIr) {
-    let ir = load(root, input).unwrap_or_else(|e| panic!("{e}"));
-    (check(&ir.site, &ir.requester, &ir.plan), ir)
+fn term(dir: &str) -> CaseTerm {
+    cases()
+        .into_iter()
+        .find(|c| c.dir == dir)
+        .unwrap_or_else(|| panic!("no term for {dir}"))
 }
 
-fn case(root: &Path, tenant: &str, host: &str) -> Verdict {
-    verdict(
-        root,
-        &TenantCase {
-            tenant: Box::leak(tenant.to_string().into_boxed_str()),
-            host: Box::leak(host.to_string().into_boxed_str()),
-        }
-        .input(),
-    )
-    .0
+fn verdict(dir: &str) -> (Verdict, PlanIr) {
+    let t = term(dir);
+    (verdict_of(&t.ir), t.ir)
+}
+
+fn case(tenant: &str, host: &str) -> Verdict {
+    verdict(&format!("tenants/{tenant}/expected/{host}")).0
+}
+
+#[test]
+fn the_terms_and_the_case_table_agree_one_to_one() {
+    let dirs: Vec<String> = cases().iter().map(|c| c.dir.clone()).collect();
+    let table: Vec<String> = TENANT_CASES
+        .iter()
+        .map(TenantCase::dir)
+        .chain(NEGATIVES.iter().map(|n| n.dir()))
+        .collect();
+    assert_eq!(dirs, table);
+}
+
+#[test]
+fn every_plan_json_parses_back_to_its_term() {
+    let root = repo_root().unwrap();
+    for c in cases() {
+        let ir = load(&root, &format!("{}/plan.json", c.dir)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(ir, c.ir, "{}", c.dir);
+    }
 }
 
 #[test]
 fn every_tenant_checks_clean() {
-    let root = repo_root().unwrap();
     for c in TENANT_CASES {
-        let (v, _) = verdict(&root, &c.input());
+        let (v, _) = verdict(&c.dir());
         assert_eq!(v.diagnostics, vec![], "{}", c.dir());
         assert_eq!(v.status, Status::Ok, "{}", c.dir());
     }
@@ -45,9 +64,8 @@ fn every_tenant_checks_clean() {
 
 #[test]
 fn every_negative_refuses_with_exactly_its_code() {
-    let root = repo_root().unwrap();
     for n in NEGATIVES {
-        let (v, _) = verdict(&root, &n.input());
+        let (v, _) = verdict(&n.dir());
         assert_eq!(v.status, Status::Refused, "{}", n.name());
         let codes: Vec<Code> = v.diagnostics.iter().map(|d| d.code).collect();
         assert_eq!(codes, vec![n.code], "{}", n.name());
@@ -72,8 +90,8 @@ fn the_negative_goldens_cover_exactly_the_emitted_codes() {
 fn case_directories_are_distinct() {
     let names: BTreeSet<String> = NEGATIVES.iter().map(|n| n.name()).collect();
     assert_eq!(names.len(), NEGATIVES.len());
-    let cases: BTreeSet<String> = TENANT_CASES.iter().map(|c| c.dir()).collect();
-    assert_eq!(cases.len(), TENANT_CASES.len());
+    let dirs: BTreeSet<String> = TENANT_CASES.iter().map(|c| c.dir()).collect();
+    assert_eq!(dirs.len(), TENANT_CASES.len());
 }
 
 #[test]
@@ -98,8 +116,7 @@ fn the_rue_text_and_inventory_exist_for_every_case() {
 
 #[test]
 fn t1_break_glass_section_8_1() {
-    let root = repo_root().unwrap();
-    let t1 = case(&root, "t1", "db-01");
+    let t1 = case("t1", "db-01");
     assert_eq!(t1.intent, Some(Intent::Temporary));
     assert_eq!(t1.wane, Some(Duration::new(14_400)));
     assert_eq!(t1.reversible_through, 4);
@@ -143,16 +160,8 @@ fn t1_break_glass_section_8_1() {
 
 #[test]
 fn t2_succession_section_8_2() {
-    let root = repo_root().unwrap();
-    let (auto, ir_auto) = verdict(
-        &root,
-        &TenantCase {
-            tenant: "t2",
-            host: "node-b-auto",
-        }
-        .input(),
-    );
-    let manual = case(&root, "t2", "node-b-manual");
+    let (auto, ir_auto) = verdict("tenants/t2/expected/node-b-auto");
+    let manual = case("t2", "node-b-manual");
     assert_eq!(auto.intent, Some(Intent::Permanent));
     assert_eq!(auto.commit_step, Some(9));
     assert_eq!(manual.commit_step, Some(10));
@@ -194,9 +203,8 @@ fn t2_succession_section_8_2() {
 
 #[test]
 fn t3_commit_confirmed_change_section_8_3() {
-    let root = repo_root().unwrap();
-    let pf = case(&root, "t3", "fw-01");
-    let win = case(&root, "t3", "fw-win-01");
+    let pf = case("t3", "fw-01");
+    let win = case("t3", "fw-win-01");
     for v in [&pf, &win] {
         assert_eq!(v.intent, Some(Intent::Permanent));
         assert_eq!(v.commit_step, Some(4));
@@ -227,9 +235,8 @@ fn t3_commit_confirmed_change_section_8_3() {
 
 #[test]
 fn t4_reactive_host_section_8_4() {
-    let root = repo_root().unwrap();
-    let clobber = case(&root, "t4", "site-ctl");
-    let defer = case(&root, "t4", "site-ctl-defer");
+    let clobber = case("t4", "site-ctl");
+    let defer = case("t4", "site-ctl-defer");
     for v in [&clobber, &defer] {
         assert_eq!(v.intent, Some(Intent::Temporary));
         assert_eq!(v.wane, Some(Duration::new(7200)));

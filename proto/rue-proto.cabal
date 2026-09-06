@@ -36,11 +36,9 @@ library
     Rue.Proto.Diagnostics
     Rue.Proto.Explain
     Rue.Proto.Gates
-    Rue.Proto.Golden
     Rue.Proto.Intent
     Rue.Proto.Interference
     Rue.Proto.Json.Canonical
-    Rue.Proto.Json.PlanIr
     Rue.Proto.Ledger
     Rue.Proto.Model
     Rue.Proto.Prose
@@ -48,45 +46,8 @@ library
     Rue.Proto.Verdict
   build-depends:
     aeson,
-    directory,
-    filepath,
     scientific,
     vector
-
--- The tenants, as terms. An internal sublibrary rooted at a directory named
--- tenants/, which is the one directory name the seam guard exempts.
-library tenants
-  import:          shared
-  hs-source-dirs:  tenants
-  exposed-modules:
-    Rue.Proto.Tenants
-    Rue.Proto.Tenants.Common
-    Rue.Proto.Tenants.Negative
-    Rue.Proto.Tenants.T1
-    Rue.Proto.Tenants.T2
-    Rue.Proto.Tenants.T3
-    Rue.Proto.Tenants.T4
-  build-depends:
-    rue-proto
-
-executable rue-proto-check
-  import:         shared
-  hs-source-dirs: app
-  main-is:        Check.hs
-  build-depends:
-    rue-proto,
-    rue-proto:tenants,
-    text
-
-executable rue-proto-goldens
-  import:         shared
-  hs-source-dirs: app
-  main-is:        Goldens.hs
-  build-depends:
-    rue-proto,
-    rue-proto:tenants,
-    directory,
-    filepath
 
 executable rue-proto-states
   import:         shared
@@ -105,19 +66,12 @@ test-suite rue-proto-test
     Test.Canonical
     Test.Check
     Test.Diagnostics
-    Test.Golden
     Test.Laws
     Test.Ledger
-    Test.Schema
     Test.States
-    Test.Tenants
   build-depends:
     rue-proto,
-    rue-proto:tenants,
     aeson,
-    directory,
-    filepath,
-    scientific,
     QuickCheck,
     tasty,
     tasty-hunit,

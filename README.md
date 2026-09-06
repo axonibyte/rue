@@ -95,8 +95,7 @@ sh tests/tier3/t_seam.sh          # a guard's self-test
 sh tools/rediscovery/run.sh --tier 1   # revert each tier-1 protection in a scratch copy; the suite must fail
 cargo build --workspace --all-targets --locked && cargo test --workspace --locked
 cargo run -q -- check tenants/t1/expected/db-01/plan.json     # the prose verdict; --json, or `explain`, or `states`
-cd proto && cabal build all && cabal test all --test-show-details=direct
-cd proto && cabal run -v0 rue-proto-check -- t3 fw-01            # a tenant's prose verdict; --json, --explain
+cd proto && cabal build all && cabal test all --test-show-details=direct   # the Phase 0 record's own tests
 ```
 
 The crates need Rust 1.97 (`pkg install rust` on FreeBSD; the gate refuses
@@ -104,9 +103,9 @@ another minor). The prototype needs GHC 9.10.3 and cabal (`pkg install ghc
 hs-cabal-install`). `proto/cabal.project` pins the Hackage index state and
 `proto/cabal.project.freeze` pins every dependency, so the same inputs give
 the same bytes on the workstation, in CI and in a reaper session.
-`RUE_UPDATE_GOLDENS=1 cabal run rue-proto-goldens` is the only thing that
-writes an expected file; the test suite is read-only and the gate fails if
-a test run changes anything under `tenants/` or `docs/`.
+`RUE_UPDATE_GOLDENS=1 cargo run -p rue-tenants --bin rue-goldens` is the only
+thing that writes an expected file; the test suites are read-only and the
+gate fails if a test run changes anything under `tenants/` or `docs/`.
 
 `tools/check.sh` exits 0 only if every phase ran and passed. A phase whose
 tool is missing exits 77 and counts as a failure unless the caller named it
@@ -133,8 +132,8 @@ on both registered guests. Validate the manifest with
 | `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
 | `Cargo.toml`, `core/` | The Rust workspace and `rue-core` (Phase 1): the model and its plan-IR shape, the checker, the verdict and its prose, `explain`, the state machine, the ledger; pure, no I/O |
 | `cli/` | `rue`, the operator CLI: `check`, `explain` and `states` over a plan IR document, exit codes per the roadmap's section 6.8 |
-| `tenants/harness/` | `rue-tenants`: the case table as code and the tests that hold `rue-core` to every Phase 0 golden byte for byte |
-| `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests; `proto/README.md` has the layout and the findings. The specification the crates are held to |
+| `tenants/harness/` | `rue-tenants`: the tenants and negatives as Rust terms, the case table as code, the tests that hold `rue-core` to every golden byte for byte, and `rue-goldens`, the only writer |
+| `proto/` | The Phase 0 prototype (Haskell), kept as the record of what Phase 0 proved: its library, its state-table printer and its tier-1 and tier-4 tests still build and run in the gate; the goldens are the Rust crates' now. `proto/README.md` has the layout and the findings |
 | `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |
 | `tests/tier3/` | Self-tests of the guards: each plants the fault it exists to catch |
 | `ci/build-target.sh` | All per-target build knowledge for the five release triples |

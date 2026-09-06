@@ -34,7 +34,7 @@ fn schema_and_verdicts() -> (Value, Vec<(String, Value)>) {
     let root = repo_root().unwrap();
     let schema: Value =
         serde_json::from_slice(&fs::read(root.join("docs/verdict-schema.json")).unwrap()).unwrap();
-    let verdicts: Vec<(String, Value)> = artifacts(&root)
+    let verdicts: Vec<(String, Value)> = artifacts()
         .into_iter()
         .filter(|a| a.path.ends_with("verdict.json"))
         .map(|a| {

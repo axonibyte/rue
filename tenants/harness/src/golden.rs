@@ -1,6 +1,5 @@
-//! Where goldens live and how they are compared: the Rust side of the
-//! prototype's `Rue.Proto.Golden`. Read-only: the prototype's
-//! `rue-proto-goldens` is the only writer.
+//! Where goldens live and how they are compared. The test suite is
+//! read-only; `rue-goldens` is the only writer, and only when told to.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -89,6 +88,6 @@ pub fn render_mismatch(expected_file: &Path, actual_file: &Path, m: &Mismatch) -
     for l in &m.actual_context {
         s.push_str(&format!("    {l}\n"));
     }
-    s.push_str("  the prototype is the writer: RUE_UPDATE_GOLDENS=1 cabal run rue-proto-goldens, in proto/, if the change is intended\n");
+    s.push_str("  if the change is intended: RUE_UPDATE_GOLDENS=1 cargo run -p rue-tenants --bin rue-goldens\n");
     s
 }

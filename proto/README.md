@@ -1,10 +1,13 @@
 # rue-proto
 
-The Phase 0 prototype: a Haskell encoding of the core model (docs/ROADMAP.md
-section 5) with a checker over it, the four acceptance tenants as terms, and
-the tests that hold the roadmap's claims to their letter. It exists to find
-out whether the model is coherent before Phase 1 rewrites it in Rust; its
-goldens and its canonical JSON are what Phase 1 must reproduce.
+The Phase 0 prototype, kept as the record of what Phase 0 proved: a Haskell
+encoding of the core model (docs/ROADMAP.md section 5) with a checker over it
+and the tests that held the roadmap's claims to their letter. It existed to
+find out whether the model was coherent before Phase 1 wrote it in Rust. The
+Rust crates reproduced its goldens byte for byte and became their source; the
+tenants as terms, the golden comparison and the writer moved to
+`tenants/harness`, and this tree keeps its library, its state-table printer
+and its tier-1 and tier-4 tests, which still run in the gate.
 
 ## Layout
 
@@ -22,15 +25,12 @@ goldens and its canonical JSON are what Phase 1 must reproduce.
 | `src/Rue/Proto/Ledger.hs` | The cross-plan ledger: reservation at Pending, exclusivity classes (5.12) |
 | `src/Rue/Proto/Diagnostics.hs` | Every code of section 6.7 as a constructor; the only place a code is text |
 | `src/Rue/Proto/Json/Canonical.hs` | The canonical encoder (docs/TESTING.md) |
-| `src/Rue/Proto/Json/PlanIr.hs` | The plan IR: the checker's input as data, one `plan.json` golden per case (docs/TESTING.md) |
-| `tenants/Rue/Proto/Tenants/` | T1 to T4 as terms, the negative cases, and the artifact list |
-| `app/` | `rue-proto-check`, `rue-proto-goldens` (the only golden writer), `rue-proto-states` |
-| `test/` | The suite; see docs/TESTING.md |
+| `app/` | `rue-proto-states`, the state table printer |
+| `test/` | Tier 1 and tier 4; see docs/TESTING.md |
 
 ```sh
 cabal build all && cabal test all --test-show-details=direct
-cabal run -v0 rue-proto-check -- t1 db-01             # prose; --json, --explain, --ir
-RUE_UPDATE_GOLDENS=1 cabal run rue-proto-goldens       # rewrite expected files, deliberately
+cabal run -v0 rue-proto-states                          # the transition table
 ```
 
 ## What encoding the tenants taught
@@ -41,8 +41,8 @@ silent, or where its text could not be followed as written. Each is a test.
 
 1. **The requester is an input to `check`.** E0508 (a gate counting the
    requester) is only decidable offline if the checker knows who is asking.
-   `check` takes the requester's authenticator id; `rue-proto-check` takes it
-   from the tenant. Phase 2's CLI needs an `--as` or an operator identity.
+   `check` takes the requester's authenticator id; the harness takes it from
+   the tenant. Phase 2's CLI needs an `--as` or an operator identity.
 2. **Facts are scoped by host.** The same shape on two hosts is two facts;
    T2's heir on node-c does not collide with the per-guest loop on node-b.
    A step whose host is bound at runtime is penumbral by host, and the

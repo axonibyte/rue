@@ -1,12 +1,16 @@
-//! The acceptance tenants and everything golden-tested about them, for the
-//! Rust crates. The Phase 0 prototype is the writer of every golden; this
-//! crate reads the same files and holds `rue-core` to them byte for byte.
+//! The acceptance tenants and everything golden-tested about them.
 //!
-//! The case table below is the authority on which goldens exist: the tests
-//! compare exactly these, any expected file no case claims is an orphan, and
-//! any case without its `plan.json` is a missing input.
+//! The terms under [`tenants`] are the record of what Phase 0 proved and the
+//! source of every golden: `plan.json` is a case's term as the plan IR,
+//! `verdict.json`, `verdict.txt` and `explain.txt` are what `rue-core` says
+//! about it, and `docs/state-transitions.tsv` is the state machine's table.
+//! The case table below ([`TENANT_CASES`], [`NEGATIVES`]) is the authority on
+//! which goldens exist; the tests hold the terms and the table 1:1, compare
+//! every artifact byte for byte, and refuse an expected file nothing
+//! declares. `rue-goldens` is the only writer, and only when told to.
 
 pub mod golden;
+pub mod tenants;
 
 use std::fs;
 use std::path::Path;
@@ -14,11 +18,12 @@ use std::path::Path;
 use rue_core::check::{check, deferred_steps};
 use rue_core::diagnostics::Code;
 use rue_core::explain::explain;
-use rue_core::ir::{parse, PlanIr};
+use rue_core::ir::{parse, PlanIr, IR_VERSION};
 use rue_core::json::canonical;
+use rue_core::model::{Plan, Site};
 use rue_core::prose::prose;
 use rue_core::states::render_table;
-use rue_core::verdict::to_json;
+use rue_core::verdict::{to_json, Verdict};
 
 pub use golden::Artifact;
 
@@ -68,8 +73,8 @@ pub const TENANT_CASES: &[TenantCase] = &[
     },
 ];
 
-/// The negative cases, in the prototype's order: docs/ROADMAP.md Phase 0
-/// task 8 first, then one or more for every other code the checker emits.
+/// The negative cases: docs/ROADMAP.md Phase 0 task 8 first, then one or
+/// more for every other code the checker emits.
 pub const NEGATIVES: &[NegativeCase] = &[
     NegativeCase {
         code: Code::E0401,
@@ -252,75 +257,86 @@ impl NegativeCase {
 /// The path of the generated transition table.
 pub const STATE_TABLE: &str = "docs/state-transitions.tsv";
 
-/// Every input the cases read, relative to the repository root.
-pub fn inputs() -> Vec<String> {
-    TENANT_CASES
-        .iter()
-        .map(TenantCase::input)
-        .chain(NEGATIVES.iter().map(NegativeCase::input))
-        .collect()
+/// A case as a term: its directory, its IR, and whether it has an explain
+/// golden (tenant cases do; negatives do not).
+#[derive(Debug, Clone)]
+pub struct CaseTerm {
+    pub dir: String,
+    pub ir: PlanIr,
+    pub with_explain: bool,
 }
 
-/// Read and parse a case's plan IR.
+fn ir_of(site: &Site, requester: &str, plan: &Plan) -> PlanIr {
+    PlanIr {
+        ir_version: IR_VERSION,
+        requester: requester.to_string(),
+        site: site.clone(),
+        plan: plan.clone(),
+    }
+}
+
+/// Every case, tenants first in the table's order, then the negatives in
+/// theirs. A term without a table row, or a row without a term, is caught by
+/// the tests.
+pub fn cases() -> Vec<CaseTerm> {
+    let mut out = Vec::new();
+    for t in tenants::tenants() {
+        for c in &t.cases {
+            out.push(CaseTerm {
+                dir: format!("tenants/{}/expected/{}", t.name, c.host),
+                ir: ir_of(&t.site, &t.requester, &c.plan),
+                with_explain: true,
+            });
+        }
+    }
+    for n in tenants::negatives() {
+        out.push(CaseTerm {
+            dir: format!("tenants/_negative/{}-{}/expected", n.code, n.slug),
+            ir: ir_of(&n.site, &n.requester, &n.plan),
+            with_explain: false,
+        });
+    }
+    out
+}
+
+/// A case's verdict.
+pub fn verdict_of(ir: &PlanIr) -> Verdict {
+    check(&ir.site, &ir.requester, &ir.plan)
+}
+
+/// Read and parse a case's plan IR from disk.
 pub fn load(root: &Path, input: &str) -> Result<PlanIr, String> {
     let bytes = fs::read(root.join(input)).map_err(|e| format!("{input}: {e}"))?;
     parse(&bytes).map_err(|e| format!("{input}: {e}"))
 }
 
-fn verdict_artifacts(root: &Path, dir: &str, input: &str, with_explain: bool) -> Vec<Artifact> {
-    match load(root, input) {
-        Err(e) => {
-            let mut v = vec![
-                Artifact {
-                    path: format!("{dir}/verdict.json"),
-                    bytes: Err(e.clone()),
-                },
-                Artifact {
-                    path: format!("{dir}/verdict.txt"),
-                    bytes: Err(e.clone()),
-                },
-            ];
-            if with_explain {
-                v.push(Artifact {
-                    path: format!("{dir}/explain.txt"),
-                    bytes: Err(e),
-                });
-            }
-            v
-        }
-        Ok(ir) => {
-            let v = check(&ir.site, &ir.requester, &ir.plan);
-            let mut out = vec![
-                Artifact {
-                    path: format!("{dir}/verdict.json"),
-                    bytes: canonical::encode(&to_json(&v)).map_err(|e| e.to_string()),
-                },
-                Artifact {
-                    path: format!("{dir}/verdict.txt"),
-                    bytes: Ok(prose(&v).into_bytes()),
-                },
-            ];
-            if with_explain {
-                out.push(Artifact {
-                    path: format!("{dir}/explain.txt"),
-                    bytes: Ok(explain(&ir.plan, &deferred_steps(&ir.site, &ir.plan)).into_bytes()),
-                });
-            }
-            out
-        }
-    }
-}
-
-/// Every golden artifact the Rust crates reproduce, with its path relative
-/// to the repository root: the tenant cases' verdicts and explain listings,
-/// the negatives' verdicts, and the transition table.
-pub fn artifacts(root: &Path) -> Vec<Artifact> {
+/// Every golden artifact, with its path relative to the repository root: for
+/// each case its IR, verdict, prose and (tenant cases) explain listing, and
+/// the transition table.
+pub fn artifacts() -> Vec<Artifact> {
     let mut out = Vec::new();
-    for c in TENANT_CASES {
-        out.extend(verdict_artifacts(root, &c.dir(), &c.input(), true));
-    }
-    for n in NEGATIVES {
-        out.extend(verdict_artifacts(root, &n.dir(), &n.input(), false));
+    for c in cases() {
+        let v = verdict_of(&c.ir);
+        out.push(Artifact {
+            path: format!("{}/plan.json", c.dir),
+            bytes: serde_json::to_value(&c.ir)
+                .map_err(|e| e.to_string())
+                .and_then(|j| canonical::encode(&j).map_err(|e| e.to_string())),
+        });
+        out.push(Artifact {
+            path: format!("{}/verdict.json", c.dir),
+            bytes: canonical::encode(&to_json(&v)).map_err(|e| e.to_string()),
+        });
+        out.push(Artifact {
+            path: format!("{}/verdict.txt", c.dir),
+            bytes: Ok(prose(&v).into_bytes()),
+        });
+        if c.with_explain {
+            out.push(Artifact {
+                path: format!("{}/explain.txt", c.dir),
+                bytes: Ok(explain(&c.ir.plan, &deferred_steps(&c.ir.site, &c.ir.plan)).into_bytes()),
+            });
+        }
     }
     out.push(Artifact {
         path: STATE_TABLE.to_string(),
