@@ -19,7 +19,7 @@ reviewable surface.
 The plan of record is [`docs/ROADMAP.md`](docs/ROADMAP.md). Every rule is
 stated once, in the section that governs it.
 
-## Status: Phase 0 in progress
+## Status: Phase 0 built; its exit is the owner's
 
 The Phase 0 prototype under `proto/` checks plans. The four acceptance
 tenants of the roadmap's section 8 are encoded as terms and as unparsed
@@ -27,8 +27,12 @@ tenants of the roadmap's section 8 are encoded as terms and as unparsed
 `docs/verdict-schema.json`, the one-sentence prose, and the `explain`
 listing -- are goldens the test suite compares byte for byte. Thirty
 negative cases refuse with exactly their named code, one or more for every
-code the prototype can raise. The rediscovery table and the falsification
-day's findings follow in this same unit of work.
+code the prototype can raise. The twelve seeded rediscovery rows all
+rediscover. The falsification sweep is in [`docs/prior-art.md`](docs/prior-art.md);
+what the prototype learned, and the positions it took where section 5 was
+silent, are in [`proto/README.md`](proto/README.md) for the owner to fold
+back into the roadmap. Phase 0 exits when that is done and `reaper test` is
+green on both registered guests; neither has happened yet.
 
 ## What rue is not
 
@@ -41,13 +45,20 @@ right model, rue is the wrong tool.
 
 ## Prior art, and the delta from each
 
-The claim is narrow on purpose: rue is the first plan language in which "this
-can be undone" is a compile-time verdict rather than a comment. The table is
-the falsification attempt; before Phase 0 exits, one person spends a day
-trying to break it, and the findings go in [`docs/prior-art.md`](docs/prior-art.md).
+The claim is narrow on purpose: rue is the first language for operations
+against hosts in which "this can be undone" is a compile-time verdict rather
+than a comment, computed from declared footprints rather than by search over
+a world model, and stating where the undo runs, past which step it cannot,
+what that step costs and who must acknowledge it. The sweep of 2026-09-06
+([`docs/prior-art.md`](docs/prior-art.md)) found two fields that decide
+undoability offline and were not in this table, and narrowed the claim to
+that wording; the roadmap's section 1.1 still carries the broader sentence
+for the owner to reconcile.
 
 | Prior art | What it has | What rue adds |
 |---|---|---|
+| Action reversibility in AI planning (Eiter, Erdem & Faber 2008; Morak, Chrpa, Faber & Fišer, KR 2020; Med et al. 2024, 2025) | Decides offline whether an action's effects can be undone, by search over a STRIPS-like domain; PSPACE-hard | Decides from declarations, not search; the verdict states locus, cost, acknowledgement, arming order and bound, none of which the planning model has |
+| Compensation calculi (Bruni, Melgratti & Montanari, POPL 2005; Sagas calculi; compensating CSP) | Semantics and expressiveness of compensations; decidability with static compensations | No footprints, no check that a given program's compensations compose; rue is the checker the calculi lack |
 | Sagas / compensating transactions (Garcia-Molina & Salem, 1987) | Sequenced steps with hand-written compensations | The compensations are typed, checked for composition, and their locus is known |
 | Temporal / Cadence | Durable execution; saga pattern for compensation | Checks nothing about compensations; no undo that survives the engine's death; no point of no return |
 | Junos `commit confirmed` | Apply, auto-revert unless confirmed, on one device | Generalized to any op with a target-standalone undo; the `reach` rule proves the arming order |
@@ -69,7 +80,8 @@ trying to break it, and the findings go in [`docs/prior-art.md`](docs/prior-art.
 | The `.rue` text | Unparsed in Phase 0. The checked form of each tenant is its Haskell term; Phase 2's front end must accept the text and produce the same verdict |
 | 26 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205, E0207, E0208, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509 |
 | The other 30 codes | Not modeled: the surface's E01xx (parsing, names, kinds, totality), the secret rules E0206, E0209-E0211, E0411, the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0606. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
-| Where section 5 was silent | The prototype took a position and recorded it as a finding for the owner (see `proto/README.md` when it lands): the requester is an input to `check`; the verdict holds per knell segment; a step is deferred when its host is unreachable by the site's transports or bound at runtime; `Pending` is bounded by the gate window or `max_wait` (E0506 otherwise); facts are scoped by host; par siblings have no order and are judged only by disjointness; a repeated anchor is E0305 alone |
+| Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md` as a finding for the owner: thirteen items, from the requester as an input to `check` to the verdict's new `mode` field. None is folded into the roadmap yet |
+| The reaper guests | `.reaper.toml` validates and the gate passes on the workstation; `reaper up && reaper test` has not been run on either guest |
 | The gate on a Windows guest | No reaper Windows template is registered yet; it is a Phase 1 deliverable. The manifest names the two registered guests and says so |
 | The Rust pipeline steps | Present and gated: each prints a skip line until a `Cargo.toml` exists in Phase 1 |
 | Deploy | Refuses on every tag until Phase 1 produces artifacts and a workspace version |
@@ -108,7 +120,8 @@ on both registered guests. Validate the manifest with
 | Path | What |
 |---|---|
 | `docs/ROADMAP.md` | The plan of record: claim, model, surface, engine, tenants, phases, tests |
-| `docs/prior-art.md` | The falsification day's findings (Phase 0) |
+| `docs/prior-art.md` | The falsification sweep of 2026-09-06: every candidate, what was checked, the delta or the narrowing |
+| `docs/TESTING.md` | The gate's phases, the tiers, goldens, canonical JSON, negatives, mutation checks, rediscovery, and what green does not prove |
 | `docs/verdict-schema.json` | The structured verdict's schema, version 1; every golden validates and every declared field is produced |
 | `docs/state-transitions.tsv` | The runtime state machine's full transition table, generated from its five rules |
 | `tools/check.sh` | The gate |
@@ -116,7 +129,7 @@ on both registered guests. Validate the manifest with
 | `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |
 | `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
 | `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
-| `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests |
+| `proto/` | The Phase 0 prototype (Haskell): library, tenants sublibrary, executables, tests; `proto/README.md` has the layout and the findings |
 | `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |
 | `tests/tier3/` | Self-tests of the guards: each plants the fault it exists to catch |
 | `ci/build-target.sh` | All per-target build knowledge for the five release triples |

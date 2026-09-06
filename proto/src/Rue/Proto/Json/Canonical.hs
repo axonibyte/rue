@@ -12,7 +12,7 @@
 --     else @\\u00xx@ in lowercase hex); everything else is raw UTF-8.
 --
 -- This is byte-compatible with @serde_json::to_string_pretty@ plus a trailing
--- newline, which is what "after canonicalisation" means in Phase 1.
+-- newline, which is what "after canonicalization" means in Phase 1.
 module Rue.Proto.Json.Canonical
   ( encode
   ) where
