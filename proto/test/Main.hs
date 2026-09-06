@@ -5,6 +5,7 @@ import Test.Tasty (defaultMain, testGroup)
 import qualified Test.Canonical
 import qualified Test.Diagnostics
 import qualified Test.Golden
+import qualified Test.Laws
 
 main :: IO ()
 main = do
@@ -12,6 +13,6 @@ main = do
   defaultMain $
     testGroup
       "rue-proto"
-      [ testGroup "tier1" [Test.Canonical.tests, Test.Diagnostics.tests]
+      [ testGroup "tier1" [Test.Canonical.tests, Test.Diagnostics.tests, Test.Laws.tests]
       , testGroup "tier2" [golden]
       ]

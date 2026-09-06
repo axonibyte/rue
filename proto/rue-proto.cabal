@@ -30,9 +30,11 @@ library
   import:          shared
   hs-source-dirs:  src
   exposed-modules:
+    Rue.Proto.Algebra
     Rue.Proto.Diagnostics
     Rue.Proto.Golden
     Rue.Proto.Json.Canonical
+    Rue.Proto.Model
   build-depends:
     aeson,
     directory,
@@ -83,6 +85,7 @@ test-suite rue-proto-test
     Test.Canonical
     Test.Diagnostics
     Test.Golden
+    Test.Laws
   build-depends:
     rue-proto,
     rue-proto:tenants,
