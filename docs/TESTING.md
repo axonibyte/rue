@@ -163,10 +163,19 @@ caught at once rather than when someone remembers the battery.
 
 ## Under reaper
 
-`.reaper.toml` runs the whole gate in a digest-pinned GHC 9.10.3 image on the
-Ubuntu guest, and the POSIX-sh half on the FreeBSD host guest with its skips
+`.reaper.toml` runs the whole gate on the Ubuntu guest, in the digest-pinned
+GHC 9.10.3 image with Rust 1.97.1 installed by rustup into the guest's caches
+on first use, and the POSIX-sh half on the FreeBSD host guest with its skips
 declared. `reaper up && reaper test`. The manifest validates with
 `reaper-manifest-validate .reaper.toml`.
+
+There is no Windows guest, and not for want of a template: reaper's runner is
+POSIX sh over ZFS with a closed Linux/FreeBSD switch, so hosting Windows is a
+port of reaper, tracked as a dependency on that project and required before
+Phase 3 exits. Until then the pipeline's `doTestWindows` step builds the
+whole suite for `x86_64-pc-windows-gnu` and runs it under wine, which proves
+the crates' logic and the CLI's bytes on that target and nothing about
+services, named pipes or the Task Scheduler.
 
 ## What green does not prove
 
@@ -175,4 +184,6 @@ declared. `reaper up && reaper test`. The manifest validates with
   existence per case is asserted.
 - Nothing about hosts: no executor, no backstop artifact, no engine exists.
   Tiers 5 to 7 begin in Phase 3.
-- Nothing on Windows: no reaper Windows guest is registered until Phase 1.
+- On Windows, only what wine can show: the suite passing on the windows-gnu
+  target. Services, named pipes, the Task Scheduler and ACLs wait for a real
+  guest, which waits for reaper.

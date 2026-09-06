@@ -65,6 +65,32 @@ definitions:
           - cargo clippy --workspace --all-targets --locked -- -D warnings
           - cargo test --release --locked
 
+    - step: &doTestWindows
+        # Windows is first-class (D-031) and no reaper Windows guest exists
+        # (hosting one is a port of reaper, tracked on that project), so this
+        # is the Windows proof this phase has: the whole test suite, built for
+        # x86_64-pc-windows-gnu and run under wine. It proves the crates' logic
+        # and the CLI's bytes on the Windows target; it proves nothing about
+        # services, named pipes or the Task Scheduler, which need a real guest
+        # before Phase 3 exits.
+        name: Test x86_64-pc-windows-gnu under wine
+        caches:
+          - cargo
+        script:
+          - export CARGO_HOME="$BITBUCKET_CLONE_DIR/.cargo_cache"
+          - apt-get -qq update
+          - apt-get -qq install -y --no-install-recommends gcc-mingw-w64-x86-64 wine64
+          - rustup target add x86_64-pc-windows-gnu
+          - export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+          - export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER=wine64
+          # No display, no fixme chatter, a prefix inside the clone, and the
+          # repository root stated so the golden tests need no ancestor walk.
+          - export WINEDEBUG=-all WINEPREFIX="$BITBUCKET_CLONE_DIR/.wine" RUE_REPO_ROOT="$BITBUCKET_CLONE_DIR"
+          # If the windows-gnu test binaries ever need the mingw runtime DLLs
+          # under wine, the fix is RUSTFLAGS="-C target-feature=+crt-static"
+          # for this target, not copying DLLs about.
+          - cargo test --workspace --release --locked --target x86_64-pc-windows-gnu
+
     - step: &buildLinuxAmd64
         name: Build x86_64-unknown-linux-gnu
         caches:
@@ -154,6 +180,7 @@ pipelines:
       - step: *doMirror
       - step: *doCheck
       - step: *doFetchAndTest
+      - step: *doTestWindows
       - parallel: &buildAll
           steps:
             - step: *buildLinuxAmd64
@@ -166,6 +193,7 @@ pipelines:
       - step: *doMirror
       - step: *doCheck
       - step: *doFetchAndTest
+      - step: *doTestWindows
 
     '**':
       - step: *doMirror
@@ -175,5 +203,6 @@ pipelines:
       - step: *doMirror
       - step: *doCheck
       - step: *doFetchAndTest
+      - step: *doTestWindows
       - parallel: *buildAll
       - step: *doDeploy

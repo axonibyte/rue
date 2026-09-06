@@ -1148,7 +1148,7 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Goal.** Transcribe the proven calculus into pure, I/O-free crates with golden-tested verdicts and the state machine.
 
-**Deliverables.** `core/`, `render/`; `docs/DESIGN.md`; verdict schema v1 frozen; the seam guard; repository scaffold and reaper tenancy on all three OS families, including the reaper Windows guest template (built per reaper's runbook pattern and registered in the site registry; a Phase 1 deliverable, not a recorded gap).
+**Deliverables.** `core/`, `render/`; `docs/DESIGN.md`; verdict schema v1 frozen; the seam guard; repository scaffold and reaper tenancy on FreeBSD and Linux, and the Windows proof the harness can give: every binary cross-built for `x86_64-pc-windows-gnu` and the whole suite run under wine in CI. A reaper Windows guest is not a template to register but a port of reaper (its runner is POSIX sh over ZFS with a closed Linux/FreeBSD switch); it is tracked as a dependency on the reaper project and is required before Phase 3 exits, since services, named pipes, the Task Scheduler and ACLs are beyond what wine proves.
 
 **Tasks.**
 1. Types per §5 with `serde` and the canonical encoding (length-prefixed, field-ordered, domain-separated) for journal hashing and the request digest.
@@ -1161,11 +1161,11 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 8. Diagnostics type with codes, spans, expected/found, nearest-name.
 9. `tools/lint-seam.sh`, `tools/seam-denylist.txt`, `tools/check.sh` reporting all failures.
 10. Fuzz: a plan generator over random ops/footprints; the laws; `check` never panics.
-11. Repository scaffold (§12): `bitbucket-pipelines.yml`, `ci/build-target.sh` for all five targets, pinned image and `rust-version`, `.reaper.toml` with FreeBSD, Linux and Windows guests; first tag `v0.0.1` deploys core-only artifacts and the mirror reflects it.
+11. Repository scaffold (§12): `bitbucket-pipelines.yml`, `ci/build-target.sh` for all five targets, pinned image and `rust-version`, `.reaper.toml` with FreeBSD and Linux guests; the wine test step; first tag `v0.0.1` deploys core-only artifacts and the mirror reflects it.
 
 **Tests.** Tier 1 units per rule (every E-code has a triggering and a non-triggering test); Tier 2 goldens for the four tenants' verdicts (JSON byte-identical after canonicalisation; prose golden); property/fuzz for the laws; Tier 3 seam guard self-test.
 
-**Acceptance.** Verdict JSON matches Phase 0 byte-for-byte after canonicalisation; every E-code exercised; seam guard passes and its self-test fails on a planted word; `cargo clippy -D warnings` clean on all five targets; `reaper test` green on all three OS families.
+**Acceptance.** Verdict JSON matches Phase 0 byte-for-byte after canonicalisation; every E-code exercised; seam guard passes and its self-test fails on a planted word; `cargo clippy -D warnings` clean on all five targets; `reaper test` green on both registered guests and the suite green under wine on the Windows target.
 
 **Exit criteria.** Acceptance met; schema v1 tagged; "not proven" published.
 
@@ -1295,7 +1295,7 @@ After every simulated event, the shadow model and the engine must agree on: (1) 
 | Byte-equality fallback for probes without a declared equivalence: allow with a warning, or require? | 2 | Lean: allow with a warning-class diagnostic |
 | Sidecar vs spawned-child default for `rued` hooks in docs | 4 | Both via the same protocol |
 | `winrm()` executor as a generic built-in, or OpenSSH-for-Windows only? | 3 | Lean: ssh only in v0 |
-| Windows service wrapper: `windows-service` crate (msvc) vs a gnu-target shim | 3 | Decide against the Phase 1 Windows guest |
+| Windows service wrapper: `windows-service` crate (msvc) vs a gnu-target shim | 3 | Decide against the reaper Windows guest once reaper can host one |
 | `elevate via:` binding (sudo/doas/runas) so `rue bootstrap` could act, not only verify | v1 | v0 is free of elevation |
 | Independent backstop watchdog (separate machine, separate credential; reads deadlines, re-asserts or pages) | v1 | Accepted out of v0 (§7.12) |
 | Editor tooling before or after v0.1.0? | 5 | After; keep the grammar settled first |
@@ -1307,7 +1307,7 @@ After every simulated event, the shadow model and the engine must agree on: (1) 
 - **Name sweep**: crates.io, PyPI, npm, GitHub for `rue`, `rued`, `rue-core`; record in `docs/prior-art.md` before anything public.
 - **Repository**: primary on Bitbucket (`axonibyte/rue`), mirrored to GitHub by the `doMirror` pipeline step on every push (`git clone --mirror`, `git push --mirror`; repositories and deploy keys assumed provisioned). GitHub description: `[ Mirror ] A language for provably reversible operations`. License BSD-2-Clause, copyright Axonibyte Innovations, LLC.
 - **Pipeline**: `bitbucket-pipelines.yml` in the sibling projects' shape — pinned `rust:<ver>` image and `rust-version`; `doMirror` first on every branch and tag; `doFetchAndTest` (cargo fetch `--locked`, `fmt --check`, `clippy --workspace --all-targets -- -D warnings`, `test --release`, shellcheck, the seam guard, service-install tests); parallel `build*` steps for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-freebsd`, `aarch64-unknown-freebsd`, `x86_64-pc-windows-gnu` — all binaries on all targets — via `bash ci/build-target.sh <triple>` producing `dist/*`; `doDeploy` on tags only: refuse if the tag disagrees with the workspace version, write `.sha256` sidecars, upload to Bitbucket Downloads with `BB_PUB_SECRET`. FreeBSD targets cross-link with `cargo-zigbuild` (amd64) and a pinned nightly `-Z build-std` (aarch64). `rustls` mandatory, `native-tls` banned. A released FreeBSD or Windows binary is smoke-tested on the oldest release it targets before it is announced.
-- **reaper tenancy**: `.reaper.toml` at the root from Phase 1; guests `freebsd-15.1`, `ubuntu-26.04` and the Windows guest delivered in Phase 1 (until it is registered, the Phase 0 manifest names the first two and the README says so); `[build]` runs `cargo build --locked --workspace --all-targets` and `cargo test` against declared caches; `[run]` is the e2e harness from Phase 3; no pipes in any `cmd`. `reaper test` is the pre-push loop; CI is the independent re-proof.
+- **reaper tenancy**: `.reaper.toml` at the root from Phase 1; guests `freebsd-15.1` and `ubuntu-26.04`; a Windows guest needs a port of reaper (POSIX-sh runner over ZFS), tracked on that project and due before Phase 3 exits, and until then Windows is proven in CI by cross-building every binary and running the suite under wine; `[build]` runs `cargo build --locked --workspace --all-targets` and `cargo test` against declared caches; `[run]` is the e2e harness from Phase 3; no pipes in any `cmd`. `reaper test` is the pre-push loop; CI is the independent re-proof.
 - **Docs**: `README.md` (first screen: the claim, the honesty caveat, the prior-art table, which journal configuration gives which guarantee), `DESIGN.md`, `LANGUAGE.md`, `TESTING.md`, `hook-protocol.md`, `control-protocol.md`, `verdict-schema.json`, `prior-art.md`, this file.
 - **Versioning**: SemVer for the crates; verdict schema, hook protocol and control protocol versioned independently; `.rue` and store upgrade vectors from v0.1.0 onward.
 
