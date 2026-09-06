@@ -1,8 +1,8 @@
 # Testing
 
-How rue is tested in Phase 0, what the tests are allowed to do, and what the
-suite being green does and does not prove. This document is binding on the
-prototype the way reaper's `docs/testing-methodology.md` is binding on every
+How rue is tested, what the tests are allowed to do, and what the suite
+being green does and does not prove. This document is binding on the crates
+and on the Phase 0 record the way reaper's `docs/testing-methodology.md` is binding on every
 reaper tenant, and rue is one: never weaken a check to make a run pass; every
 fix ships with the test that would have caught it; every new assertion is
 mutation-checked before it counts; a pre-existing failure is proven by stash,
@@ -38,15 +38,16 @@ present but not 1.97 is a failure, not a skip: the workspace's `rust-version`,
 the CI image and the gate say one minor so fmt and clippy output is
 comparable everywhere.
 
-Two implementations, one set of goldens: the Haskell prototype writes them
-and its suite compares them; the Rust crates compare the same files. Both run
-in one gate, so the two cannot disagree while the gate is green.
+One set of goldens with one writer: the Rust terms under `tenants/harness`
+produce every expected file and the Rust suite compares them. The Haskell
+prototype's own tier-1 and tier-4 tests run in the same gate as the record
+of Phase 0; it neither writes nor compares a golden.
 
-## Tiers in Phase 0
+## Tiers
 
-The roadmap's section 10.1 names seven tiers. Phase 0 has the four that run
-on a workstation, all inside one tasty suite so a single `cabal test` is the
-whole run:
+The roadmap's section 10.1 names seven tiers. Phase 1 has the four that run
+on a workstation: the Rust tiers under `cargo test --workspace`, the
+prototype's under one tasty suite, and both inside the gate:
 
 | Tier | Group | What |
 |---|---|---|
@@ -195,8 +196,8 @@ Phase 3's to test on a real machine.
 ## What green does not prove
 
 - Nothing about a construct no tenant or negative case uses.
-- Nothing about the `.rue` text: it is unparsed in Phase 0, and only its
-  existence per case is asserted.
+- Nothing about the `.rue` text: it is unparsed until Phase 2, and only its
+  existence per case is asserted; the terms are transcribed from it by hand.
 - Nothing about hosts: no executor, no backstop artifact, no engine exists.
   Tiers 5 to 7 begin in Phase 3.
 - On Windows, only what wine can show: the suite passing on the windows-gnu

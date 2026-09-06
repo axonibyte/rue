@@ -19,20 +19,24 @@ reviewable surface.
 The plan of record is [`docs/ROADMAP.md`](docs/ROADMAP.md). Every rule is
 stated once, in the section that governs it.
 
-## Status: Phase 0 built; its exit is the owner's
+## Status: Phase 1 in progress; v0.0.1 tagged
 
-The Phase 0 prototype under `proto/` checks plans. The four acceptance
-tenants of the roadmap's section 8 are encoded as terms and as unparsed
-`.rue` text under `tenants/`, and their verdicts -- structured JSON against
-`docs/verdict-schema.json`, the one-sentence prose, and the `explain`
-listing -- are goldens the test suite compares byte for byte. Thirty
-negative cases refuse with exactly their named code, one or more for every
-code the prototype can raise. The twelve seeded rediscovery rows all
-rediscover. The falsification sweep is in [`docs/prior-art.md`](docs/prior-art.md);
-what the prototype learned, and the positions it took where section 5 was
-silent, are in [`proto/README.md`](proto/README.md) for the owner to fold
-back into the roadmap. Phase 0 exits when that is done and `reaper test` is
-green on both registered guests; neither has happened yet.
+The Rust workspace checks plans: `rue-core` is the checker, `rue` the
+command line (`check`, `explain`, `states`) over a plan IR, `rue-tenants`
+the harness. The four acceptance tenants of the roadmap's section 8 are
+Rust terms under `tenants/harness/src/tenants/`, transcribed body by body
+from the unparsed `.rue` text beside their goldens under `tenants/`, and
+their verdicts -- structured JSON against `docs/verdict-schema.json`, the
+one-sentence prose, and the `explain` listing -- are goldens the test suite
+compares byte for byte. Thirty-five negative cases refuse with exactly their
+named code, one or more for every code the checker can raise. Thirty-two
+rediscovery rows all rediscover. Bodies, closure analysis, secret placement,
+the journal model with its canonical hash encoding, the request digests and
+the injected `now` are in; `rue-render`, fuzzing and the Phase 1 acceptance
+are next. The Phase 0 prototype under `proto/` is the record of what the
+tenants taught ([`proto/README.md`](proto/README.md)); its own tests still
+run in the gate. The falsification sweep is in
+[`docs/prior-art.md`](docs/prior-art.md).
 
 ## What rue is not
 
@@ -83,10 +87,10 @@ for the owner to reconcile.
 | E0202's positions | Closure treats a plan parameter and a host-record field as bakeable (closed) and an earlier step's output as never closed, positions section 5.3 does not state; recorded for the owner |
 | E0206 | Decided only as a structural re-run: a `reestablish` primitive equal to one of the op's `do` primitives. The full rule ("reachable from") needs an op reference bodies do not carry |
 | E0211 | Decided for static hosts only; a `:controller` step and a host bound at runtime are not judged at check |
-| Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md` as a finding for the owner: thirteen items, from the requester as an input to `check` to the verdict's new `mode` field. None is folded into the roadmap yet |
+| Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md`: thirteen items, from the requester as an input to `check` to the verdict's `mode` field; the Rust crates reproduce each. The roadmap carries the owner's answers where given |
 | Windows beyond wine | The whole suite is built for `x86_64-pc-windows-gnu` and run under wine, on the Ubuntu reaper guest and in the pipeline; that proves the logic and the bytes and nothing about services, named pipes or the Task Scheduler, which Phase 3 tests on a real machine |
-| The Rust pipeline steps | Present and gated: each prints a skip line until a `Cargo.toml` exists in Phase 1 |
-| Deploy | Refuses on every tag until Phase 1 produces artifacts and a workspace version |
+| The five build targets | Built and packaged in the pipeline (`ci/build-target.sh`); only the Linux x86-64 and wine-run Windows binaries execute the suite there, the others are cross-built and unexecuted until Phase 3's real machines |
+| Deploy | Uploads the packaged artifacts on a tag equal to the workspace version, and refuses otherwise; nothing about the artifacts beyond the suite that produced them |
 
 ## Running the checks
 

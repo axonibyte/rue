@@ -1152,7 +1152,7 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Tasks.**
 1. Types per §5 with `serde` and the canonical encoding (length-prefixed, field-ordered, domain-separated) for journal hashing and the request digest.
-2. `check`, `explain`, `render` as pure functions; interference via `ascent`; disjointness for `par`; anchors.
+2. `check`, `explain`, `render` as pure functions; interference as iterator joins shaped as the Datalog (§5.7); disjointness for `par`; anchors.
 3. Closure analysis for `:target` undos (E0202) and secret-placement checks (E0209, E0210, E0211) over `Body`/`Prim` argument classes.
 4. Refusal lattice; intent inference and its checks (E0501–E0505); backstop coverage, triggers by intent, `reach` ordering, install/arm (E0401–E0403, E0406); bounded waits by reachability (E0506); gate satisfiability, minimum humans, requester exclusion, zero-human (E0508, E0509).
 5. The state machine from the five rules with an injected `now`; renewal windows; exclusivity; secret delivery at step completion.
@@ -1169,7 +1169,7 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Exit criteria.** Acceptance met; schema v1 tagged; "not proven" published.
 
-**Not proven.** Anything about the world: honesty, executors, sinks, arming. Any surface syntax.
+**Not proven.** Anything about the world: honesty, executors, sinks, arming. Any surface syntax. Positions the crates take where §5 is silent, for the owner: closure (E0202) treats a plan parameter and a host-record field as bakeable into a target-side artifact, and an earlier step's output as never bakeable, since nothing in §7.7 persists an output to the target; E0206 is decided only as a structural re-run (a `reestablish` primitive equal to one of the op's `do`), the "reachable from" rule needing an op reference bodies do not carry; E0211 is decided for static hosts only, a `:controller` step and a bound host being unjudged at check; E0411 is not decided at all, the site not declaring sinks; E0406 cannot arise, installation preceding the first covered step by construction.
 
 **Rediscovery rows seeded.** `chain-skips-prev-hash`, `expiry-at-boundary-open`, `secret-in-explain`, `knell-reverse-allowed`, `closure-uses-controller-fact`, `secret-in-run-string`, `secret-in-target-undo`, `reach-defer-drift-accepted`, `covered-step-before-install`, `temporary-after-not-wane`, `wait-unbounded`.
 
