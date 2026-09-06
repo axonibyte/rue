@@ -1,0 +1,50 @@
+# What is ignored, and -- more importantly -- what is deliberately not.
+
+### Build output ###
+# The Haskell prototype's build tree (redirected under a cache in CI and reaper,
+# but it lands here on a workstation).
+/proto/dist-newstyle/
+# Cabal's own store when CI redirects CABAL_DIR into the clone.
+/.cabal_cache/
+# Rust workspace output, from Phase 1 on.
+/target/
+/dist/
+/.cargo_cache/
+
+### reaper ###
+# reaper pulls session results into out/ at the tree root.
+/out/
+
+### Operating systems ###
+.DS_Store
+Thumbs.db
+desktop.ini
+
+### Editors ###
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+.idea/
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+### Local tooling ###
+# Claude Code local (per-machine) settings.
+.claude/settings.local.json
+# Test scratch and generic temp/backups.
+*.tmp
+*.bak
+*.orig
+*.rej
+nohup.out
+
+# Deliberately NOT ignored:
+#   proto/cabal.project.freeze -- the freeze IS the reproducibility pin.
+#   Cargo.lock (Phase 1 on)    -- rue ships binaries; the lock is source.
+#   *.patch                    -- tools/rediscovery/patches are the battery.
+#   *.log in general           -- fixtures may be logs.

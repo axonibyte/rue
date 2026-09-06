@@ -1,0 +1,27 @@
+# Words that may not appear in framework code.
+#
+# Framework code is everything under proto/ (except its tenants/ sublibrary),
+# tools/, ci/ and tests/. Tenant names and platform vocabulary may appear only
+# under tenants/, docs/, and test fixtures (ROADMAP.md section 8). One word per
+# line; matched case-insensitively as a whole word; lines starting with '#'
+# and blank lines are ignored.
+#
+# Grows by one line every time a tenant is onboarded. Never shrinks to make a
+# hit go away: a hit means the layering slipped (ROADMAP.md section 4.4).
+
+# The projects rue was distilled from (T1, T2, T4; T3 has no source project).
+lychgate
+seance
+merlin
+
+# Platform vocabulary the tenants speak and the engine must not.
+cbsd
+bhyve
+redfish
+ipmi
+mqtt
+carp
+zfs
+pfctl
+nftables
+netsh

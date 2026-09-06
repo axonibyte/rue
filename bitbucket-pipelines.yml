@@ -1,0 +1,171 @@
+# Pinned rather than :latest so a tag build today and a rebuild next year use
+# the same compiler. Bump deliberately, together with rust-version in the
+# workspace Cargo.toml (Phase 1), the nightly pin in ci/build-target.sh, and
+# the GHC image below (whose digest .reaper.toml carries).
+#
+# The Rust image is the default because the house pipeline shape is Rust;
+# until a Cargo.toml exists (Phase 1), every Rust step prints a skip line and
+# exits 0 -- a stated skip, never an empty pass. The gate step runs in the GHC
+# image because the Phase 0 prototype is Haskell.
+image: rust:1.97
+
+definitions:
+  caches:
+    # Path-only until the key files exist: Cargo.lock arrives in Phase 1 and
+    # proto/cabal.project.freeze in the next commit. Key both then.
+    cargo:
+      path: .cargo_cache
+    cabal-store:
+      path: .cabal_cache/store
+
+  steps:
+    - step: &doMirror
+        name: Mirror repository
+        clone:
+          enabled: false
+        script:
+          - git clone --mirror git@bitbucket.org:${BITBUCKET_REPO_OWNER}/${BITBUCKET_REPO_SLUG}.git
+          - cd ${BITBUCKET_REPO_SLUG}.git
+          - git push --mirror git@github.com:${BITBUCKET_REPO_OWNER}/${BITBUCKET_REPO_SLUG}.git
+
+    - step: &doCheck
+        name: Gate (tools/check.sh)
+        # haskell:9.10.3-bookworm; the same image, by digest, in .reaper.toml.
+        image: haskell:9.10.3-bookworm
+        caches:
+          - cabal-store
+        script:
+          - export CABAL_DIR="$BITBUCKET_CLONE_DIR/.cabal_cache"
+          # The stock GHC image carries neither shellcheck nor patch; both are
+          # real dependencies of the gate.
+          - apt-get -qq update
+          - apt-get -qq install -y --no-install-recommends shellcheck patch
+          - RUE_CABAL_UPDATE=1 sh tools/check.sh
+
+    - step: &doFetchAndTest
+        name: Fetch dependencies, lint and run tests
+        caches:
+          - cargo
+        script:
+          - test -f Cargo.toml || { echo "skip - no Cargo.toml yet (Phase 0); the Rust gate arms in Phase 1"; exit 0; }
+          - export CARGO_HOME="$BITBUCKET_CLONE_DIR/.cargo_cache"
+          - rustup component add rustfmt clippy
+          - cargo fetch --locked
+          # The repository is kept fmt-clean and clippy-clean; the gate is what
+          # keeps it that way.
+          - cargo fmt --check
+          - cargo clippy --workspace --all-targets --locked -- -D warnings
+          - cargo test --release --locked
+
+    - step: &buildLinuxAmd64
+        name: Build x86_64-unknown-linux-gnu
+        caches:
+          - cargo
+        artifacts:
+          - dist/*
+        script:
+          - bash ci/build-target.sh x86_64-unknown-linux-gnu
+
+    - step: &buildLinuxArm64
+        name: Build aarch64-unknown-linux-gnu
+        caches:
+          - cargo
+        artifacts:
+          - dist/*
+        script:
+          - bash ci/build-target.sh aarch64-unknown-linux-gnu
+
+    - step: &buildFreebsdAmd64
+        name: Build x86_64-unknown-freebsd
+        caches:
+          - cargo
+        artifacts:
+          - dist/*
+        script:
+          - bash ci/build-target.sh x86_64-unknown-freebsd
+
+    - step: &buildFreebsdArm64
+        name: Build aarch64-unknown-freebsd
+        caches:
+          - cargo
+        artifacts:
+          - dist/*
+        script:
+          - bash ci/build-target.sh aarch64-unknown-freebsd
+
+    - step: &buildWindowsAmd64
+        # Windows is first-class (D-031): every binary, not a client-only build.
+        name: Build x86_64-pc-windows-gnu
+        caches:
+          - cargo
+        artifacts:
+          - dist/*
+        script:
+          - bash ci/build-target.sh x86_64-pc-windows-gnu
+
+    - step: &doDeploy
+        name: Deploy multi-target artifacts
+        clone:
+          enabled: false
+        script:
+          - |
+            # Refuse rather than publish nothing: a tag with no artifacts is a
+            # tag that was cut before Phase 1 armed the builds, or a broken build.
+            shopt -s nullglob
+            files=(dist/*)
+            shopt -u nullglob
+            if [[ ${#files[@]} -eq 0 ]]; then
+              echo "deploy: no artifacts under dist/; refusing" >&2
+              exit 1
+            fi
+            # The tag must agree with the workspace version (ROADMAP.md section 12).
+            version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+            if [[ -z "$version" ]]; then
+              echo "deploy: no workspace version found in Cargo.toml; refusing" >&2
+              exit 1
+            fi
+            if [[ "$BITBUCKET_TAG" != "v$version" ]]; then
+              echo "deploy: tag $BITBUCKET_TAG disagrees with workspace version v$version; refusing" >&2
+              exit 1
+            fi
+            for f in dist/*; do
+              if [[ -f "$f" && "$f" != *.sha256 ]]; then
+                echo "Uploading $f..."
+                sha256sum "$f" | awk '{ print $1 }' > "${f}.sha256"
+                curl -sS --fail-with-body \
+                  -H "Authorization: Bearer ${BB_PUB_SECRET}" \
+                  -X POST "https://api.bitbucket.org/2.0/repositories/${BITBUCKET_REPO_OWNER}/${BITBUCKET_REPO_SLUG}/downloads" \
+                  --form files=@"${f}" --form files=@"${f}.sha256"
+                echo "Uploaded $f + checksum"
+              fi
+            done
+
+pipelines:
+  branches:
+    main:
+      - step: *doMirror
+      - step: *doCheck
+      - step: *doFetchAndTest
+      - parallel: &buildAll
+          steps:
+            - step: *buildLinuxAmd64
+            - step: *buildLinuxArm64
+            - step: *buildFreebsdAmd64
+            - step: *buildFreebsdArm64
+            - step: *buildWindowsAmd64
+
+    '{feature/**,bugfix/**,release/**,hotfix/**}':
+      - step: *doMirror
+      - step: *doCheck
+      - step: *doFetchAndTest
+
+    '**':
+      - step: *doMirror
+
+  tags:
+    '**':
+      - step: *doMirror
+      - step: *doCheck
+      - step: *doFetchAndTest
+      - parallel: *buildAll
+      - step: *doDeploy

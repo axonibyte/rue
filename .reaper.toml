@@ -1,0 +1,94 @@
+# rue under reaper (ROADMAP.md section 12, D-032).
+#
+# Two guests, two execution modes, from the first commit:
+#
+#   ubuntu-26.04  container  the whole gate (tools/check.sh) in a digest-pinned
+#                            GHC image -- the same GHC the FreeBSD workstation
+#                            installs from pkg, so a failure here is a failure
+#                            of the code, not of a version difference.
+#   freebsd-15.1  host       the POSIX-sh half of the gate on a system with only
+#                            base: no GHC, no shellcheck. Those skips are
+#                            declared HERE, in RUE_CHECK_SKIP_OK, so a missing
+#                            cabal anywhere else is a failure and never a quiet
+#                            pass.
+#
+# The third guest -- Windows -- is a Phase 1 deliverable (docs/ROADMAP.md,
+# Phase 1). It cannot be named until the sysadmin registers its template;
+# naming an unregistered guest is refused before any machine is created.
+#
+# Every cmd runs under /bin/sh and dash has no pipefail, so no cmd below pipes;
+# tools/check.sh owns its own exit status the same way.
+
+schema = 1
+project = "rue"
+
+# Container execution is the default; the FreeBSD guest overrides it below.
+# Stated up here because TOML cannot return to the root scope once a table
+# has opened.
+exec = "container"
+
+[[guests]]
+name = "ubuntu-26.04"
+
+# Ubuntu's alone: the FreeBSD guest is host-execution and a host build may not
+# carry an image, so this block must not be a root default it would inherit.
+[guests.build]
+# docker.io/library/haskell:9.10.3-bookworm, resolved from the registry on
+# 2026-09-06 (ci/image-digest.sh prints the current one). GHC 9.10.3 matches
+# the workstation's pkg ghc-9.10.3; cabal-install differs (3.14 here, 3.16
+# there) and selects nothing: proto/cabal.project and its freeze fix the plan.
+# bitbucket-pipelines.yml carries the same image by tag; bump both together.
+image = "docker.io/library/haskell@sha256:f5400211315c07ff6bc47c1f14333b75d02960ed9b7e93e68a5f89ddc3e232d0"
+
+# The cache paths come from the environment rather than being written out.
+# The command is a shell command, so these expand; a manifest env value would
+# not, deliberately. The build is `cabal build all`; the run below tests.
+cmd = """
+cd proto && \
+CABAL_DIR=$REAPER_CACHE_CABAL cabal update && \
+CABAL_DIR=$REAPER_CACHE_CABAL cabal build all --builddir $REAPER_CACHE_BUILD_DIR"""
+
+# Named by us and meaningless to the framework. Everything large lives here
+# and not on the guest's small root disk.
+cache = ["cabal", "build-dir"]
+
+[[guests]]
+name = "freebsd-15.1"
+exec = "host"
+# Base system only: shellcheck and cabal are absent by design, and declared so.
+run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test sh tools/check.sh" }
+
+[run]
+# The Ubuntu run, in build.image (a container run with no image of its own
+# inherits it). The apt line is the honest cost of not having a purpose-built
+# image: the stock GHC image carries neither shellcheck nor patch, and both
+# are real dependencies of the gate. TMPDIR sits on the cache so rediscovery
+# scratch copies never touch the root disk.
+cmd = """
+apt-get -qq update && apt-get -qq install -y --no-install-recommends shellcheck patch && \
+mkdir -p $REAPER_CACHE_BUILD_DIR/tmp && \
+CABAL_DIR=$REAPER_CACHE_CABAL RUE_BUILDDIR=$REAPER_CACHE_BUILD_DIR \
+TMPDIR=$REAPER_CACHE_BUILD_DIR/tmp sh tools/check.sh"""
+
+[sync]
+# Workstation build output is for a different operating system and is rebuilt
+# in the session's own cache anyway; out/ is always excluded regardless.
+exclude = ["/proto/dist-newstyle/", "/.cabal_cache/", "/out/"]
+
+[reset]
+# Nothing of rue's state accumulates in a session yet. Declared so the tenant
+# exercises the reset path from the start.
+datasets = ["state"]
+
+[resources]
+cores = 4
+ram_gb = 8
+
+[profiles.dev]
+ttl = "4h"
+warm_cache = true
+
+[profiles.nightly]
+ttl = "12h"
+# Cold, so a warm cache can never be the reason a nightly run passed.
+warm_cache = false
