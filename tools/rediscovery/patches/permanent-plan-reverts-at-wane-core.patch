@@ -1,0 +1,15 @@
+# Reverts: a permanent plan is never reverted by time (section 5.9 rule 2) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/states.rs
++++ b/core/src/states.rs
+@@ -194,9 +194,7 @@
+         // plan except DriftHeld and Stuck (unbounded by declaration) and
+         // Pending (bounded by its approval window instead). A permanent plan
+         // has no wane, so the event cannot occur.
+-        return if permanent {
+-            NotApplicable
+-        } else if matches!(s, S::DriftHeld | S::Stuck) {
++        return if matches!(s, S::DriftHeld | S::Stuck) {
+             Stay
+         } else if matches!(
+             s,

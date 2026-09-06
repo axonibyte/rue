@@ -1,0 +1,13 @@
+# Reverts: mode: :auto refuses every force: statically (E0404) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -443,7 +443,7 @@
+     let has_force = steps
+         .iter()
+         .any(|(_, it)| step_of(it).is_some_and(|s| !s.force.is_empty()));
+-    if p.mode == Mode::Auto && has_force {
++    if p.mode == Mode::Auto && has_force && false {
+         diagnostics.push(d(
+             Code::E0404,
+             None,

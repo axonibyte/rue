@@ -1,0 +1,16 @@
+# Reverts: a request reserves its umbra at Pending (section 5.12) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/ledger.rs
++++ b/core/src/ledger.rs
+@@ -68,9 +68,8 @@
+         }) {
+             return Err((LedgerCode::R0203, format!("umbra overlaps {}", h.id)));
+         }
+-        let mut held = vec![inst];
+-        held.extend(self.held.iter().cloned());
+-        Ok(Ledger { held })
++        let _ = inst;
++        Ok(self.clone())
+     }
+ 
+     /// Release on cancel, lapse, close or commit.

@@ -10,8 +10,10 @@
 # REVERTS one protection, require the patched tree to compile (a type error is
 # not a rediscovery), run the selector again and require it to FAIL. The
 # working tree is never touched. Run before a milestone is trusted, never
-# automatically. Cargo rows share one target directory across the run so
-# dependencies compile once; each row's own crates rebuild.
+# automatically. Each cargo row builds into its own target directory inside
+# its scratch copy: a target directory shared across copies let one row's
+# artifacts answer for another's baseline once, and a battery that can
+# misreport a baseline is worth less than the minutes the sharing saved.
 #
 # THE FALSE-PASS TRAP: this runner asserts a failure, so every way of not
 # running the tests at all looks like success. Each row therefore proves, in
@@ -67,8 +69,6 @@ if ! command -v cargo > /dev/null 2>&1; then
     echo "rediscovery: cargo is not on PATH" >&2
     exit 2
 fi
-CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/rue-rediscover-target}
-export CARGO_TARGET_DIR
 
 # The data rows of one tier, comments and header dropped.
 rows() {
@@ -101,7 +101,7 @@ skippedrows=0
 run_suite() {
     case $1 in
         cabal) ( cd "$2/proto" && env $4 cabal test all --builddir "$2/proto/dist-newstyle" --test-show-details=direct --test-options="-p $3" ) > "$5" 2>&1 ;;
-        cargo) ( cd "$2" && env $4 cargo test --workspace --locked -- "$3" ) > "$5" 2>&1 ;;
+        cargo) ( cd "$2" && env $4 CARGO_TARGET_DIR="$2/target" cargo test --workspace --locked -- "$3" ) > "$5" 2>&1 ;;
         *) echo "rediscovery: unknown suite $1" >&2; return 2 ;;
     esac
 }
@@ -110,7 +110,7 @@ run_suite() {
 build_suite() {
     case $1 in
         cabal) ( cd "$2/proto" && cabal build all --builddir "$2/proto/dist-newstyle" ) > "$3" 2>&1 ;;
-        cargo) ( cd "$2" && cargo build --workspace --all-targets --locked ) > "$3" 2>&1 ;;
+        cargo) ( cd "$2" && CARGO_TARGET_DIR="$2/target" cargo build --workspace --all-targets --locked ) > "$3" 2>&1 ;;
         *) return 2 ;;
     esac
 }
@@ -183,8 +183,8 @@ run_row() { # run_row <patch> <stage> <suite> <selector> <env>
     # 1. Baseline: the selector passes and selects at least one test.
     if [ "$rowenv" = "-" ]; then rowenv=''; fi
     if ! run_suite "$suite" "$scratch" "$selector" "$rowenv" "$log"; then
-        row_fail "$scratch" "the baseline run of $suite '$selector' did not pass in the unpatched copy"
         tail -20 "$log" | sed 's/^/         /'
+        row_fail "$scratch" "the baseline run of $suite '$selector' did not pass in the unpatched copy"
         return 0
     fi
     n=$(passed_count "$suite" "$log")
@@ -196,15 +196,15 @@ run_row() { # run_row <patch> <stage> <suite> <selector> <env>
     # 2. The patch applies.
     # No fuzz: a patch whose context has drifted is a protection that moved.
     if ! ( cd "$scratch" && patch -p1 -F 0 -s < "$here/patches/$patch" ) > "$log.patch" 2>&1; then
-        row_fail "$scratch" "the patch did not apply; the protection it reverts has moved"
         sed 's/^/         /' "$log.patch"
+        row_fail "$scratch" "the patch did not apply; the protection it reverts has moved"
         return 0
     fi
 
     # 3. The patched tree compiles.
     if ! build_suite "$suite" "$scratch" "$log.build"; then
-        row_fail "$scratch" "the patched tree does not compile; a type error is not a rediscovery"
         grep -A6 'error' "$log.build" | head -30 | sed 's/^/         /'
+        row_fail "$scratch" "the patched tree does not compile; a type error is not a rediscovery"
         return 0
     fi
 
@@ -214,8 +214,8 @@ run_row() { # run_row <patch> <stage> <suite> <selector> <env>
         return 0
     fi
     if ! failed_evidence "$suite" "$log"; then
-        row_fail "$scratch" "the run exited non-zero without reporting failed tests"
         tail -20 "$log" | sed 's/^/         /'
+        row_fail "$scratch" "the run exited non-zero without reporting failed tests"
         return 0
     fi
     echo "   PASS: rediscovered ($n tests in the baseline), by:"

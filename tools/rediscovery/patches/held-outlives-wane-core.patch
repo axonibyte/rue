@@ -1,0 +1,13 @@
+# Reverts: wane bounds Held in a temporary plan (section 5.9 rules 2 and 3) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/states.rs
++++ b/core/src/states.rs
+@@ -203,7 +203,7 @@
+             S::Pending | S::Unchecked | S::Checked | S::ApprovalExpired
+         ) {
+             NotApplicable
+-        } else if s == S::Expired {
++        } else if s == S::Expired || s == S::Held {
+             Stay
+         } else {
+             To(S::Expired)

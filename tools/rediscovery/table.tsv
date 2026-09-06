@@ -40,3 +40,7 @@ reach-late-arm-core.patch	1	-	cargo	the_reach_rule	-
 commit-before-last-core.patch	1	-	cargo	commit_must_be_last	-
 intent-ambiguous-accepted-core.patch	1	-	cargo	intent_is_wane_xor	-
 proof-scope-ignored-core.patch	1	-	cargo	requester_is_counted	-
+auto-with-force-core.patch	1	-	cargo	mode_rules	-
+permanent-plan-reverts-at-wane-core.patch	4	-	cargo	rule_2_wane	-
+held-outlives-wane-core.patch	4	-	cargo	rule_2_wane	-
+pending-no-reserve-core.patch	4	-	cargo	pending_umbra	-
