@@ -16,3 +16,5 @@ path = "src/lib.rs"
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+# The journal chain and the request digest. A pure hash crate, no I/O.
+sha2 = "0.10"

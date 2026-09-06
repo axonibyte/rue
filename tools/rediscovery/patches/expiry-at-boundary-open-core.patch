@@ -1,0 +1,13 @@
+# Reverts: the expiry boundary is closed: observed at the instant is expired (section 5.9) -- the Rust crate's copy of the protection.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/states.rs
++++ b/core/src/states.rs
+@@ -357,7 +357,7 @@
+ /// Whether a bound has been reached. The boundary is closed: observed *at*
+ /// the instant is expired (section 5.9).
+ pub fn expired(now: Instant, deadline: Instant) -> bool {
+-    now >= deadline
++    now > deadline
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]

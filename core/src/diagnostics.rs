@@ -9,6 +9,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 macro_rules! codes {
     ($($code:ident => $meaning:literal,)*) => {
         /// A diagnostic code. Ordered as the table is.
@@ -32,6 +34,14 @@ macro_rules! codes {
             pub fn meaning(self) -> &'static str {
                 match self {
                     $(Code::$code => $meaning,)*
+                }
+            }
+
+            /// The code named by its text, if it is one.
+            pub fn parse(text: &str) -> Option<Code> {
+                match text {
+                    $(stringify!($code) => Some(Code::$code),)*
+                    _ => None,
                 }
             }
         }
@@ -101,4 +111,93 @@ impl fmt::Display for Code {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
+}
+
+impl Serialize for Code {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Code {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Code, D::Error> {
+        let text = String::deserialize(d)?;
+        Code::parse(&text)
+            .ok_or_else(|| serde::de::Error::custom(format!("{text} is not a diagnostic code")))
+    }
+}
+
+/// Where in a source file a diagnostic points (Phase 2's front end fills it).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Span {
+    pub file: String,
+    pub line: u32,
+    pub col: u32,
+}
+
+/// A front-end diagnostic (docs/ROADMAP.md section 6.7): a code, where it
+/// points, what was expected and found, the nearest name where one applies,
+/// and the message. The verdict's own diagnostic ({code, step, message}) is a
+/// schema field and stays what it is; this type locates by span, that one by
+/// step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Diagnostic {
+    pub code: Code,
+    pub span: Option<Span>,
+    pub expected: Option<String>,
+    pub found: Option<String>,
+    pub nearest: Option<String>,
+    pub message: String,
+}
+
+impl Diagnostic {
+    /// `file:line:col: E0xxx: message; expected X, found Y; did you mean Z?`
+    pub fn render(&self) -> String {
+        let mut s = String::new();
+        if let Some(sp) = &self.span {
+            s.push_str(&format!("{}:{}:{}: ", sp.file, sp.line, sp.col));
+        }
+        s.push_str(&format!("{}: {}", self.code, self.message));
+        match (&self.expected, &self.found) {
+            (Some(e), Some(f)) => s.push_str(&format!("; expected {e}, found {f}")),
+            (Some(e), None) => s.push_str(&format!("; expected {e}")),
+            (None, Some(f)) => s.push_str(&format!("; found {f}")),
+            (None, None) => {}
+        }
+        if let Some(n) = &self.nearest {
+            s.push_str(&format!("; did you mean {n}?"));
+        }
+        s
+    }
+}
+
+/// Levenshtein distance between two strings, by characters.
+fn distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut cur = vec![i + 1];
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            cur.push((prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1));
+        }
+        prev = cur;
+    }
+    prev[b.len()]
+}
+
+/// The nearest candidate within an edit distance of two, the first on a tie;
+/// `None` when nothing is close enough to suggest.
+pub fn nearest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let mut best: Option<(usize, &str)> = None;
+    for c in candidates {
+        let d = distance(name, c);
+        if d <= 2 && best.is_none_or(|(bd, _)| d < bd) {
+            best = Some((d, c));
+        }
+    }
+    best.map(|(_, c)| c.to_string())
 }

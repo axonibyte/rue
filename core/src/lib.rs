@@ -10,6 +10,7 @@
 
 pub mod algebra;
 pub mod backstop;
+pub mod canon;
 pub mod check;
 pub mod diagnostics;
 pub mod explain;
@@ -17,10 +18,12 @@ pub mod gates;
 pub mod intent;
 pub mod interference;
 pub mod ir;
+pub mod journal;
 pub mod json;
 pub mod ledger;
 pub mod model;
 pub mod prose;
+pub mod request;
 pub mod states;
 pub mod util;
 pub mod verdict;

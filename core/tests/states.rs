@@ -231,3 +231,48 @@ fn the_table_lists_only_applicable_transitions_and_respects_intent() {
     assert!(table.contains("temporary\tmanual\tno\trevert\tUnchecked\tCheck\t-> Checked\n"));
     assert!(table.contains("\tDriftHeld\tRecant\trefuse R0103\n"));
 }
+
+mod time {
+    use rue_core::model::{Duration, Instant};
+    use rue_core::states::{expired, renew, RenewRefusal};
+
+    #[test]
+    fn expiry_is_observed_at_the_instant_closed_boundary() {
+        let deadline = Instant::new(1000);
+        assert!(!expired(Instant::new(999), deadline));
+        assert!(
+            expired(Instant::new(1000), deadline),
+            "observed at the instant is expired"
+        );
+        assert!(expired(Instant::new(1001), deadline));
+    }
+
+    #[test]
+    fn renewal_is_within_the_window_never_after_expiry_and_anchored_at_renewal() {
+        let deadline = Instant::new(1000);
+        let within = Duration::new(300);
+        let wane = Duration::new(3600);
+        assert_eq!(
+            renew(Instant::new(1000), deadline, within, wane),
+            Err(RenewRefusal::Expired)
+        );
+        assert_eq!(
+            renew(Instant::new(1500), deadline, within, wane),
+            Err(RenewRefusal::Expired)
+        );
+        assert_eq!(
+            renew(Instant::new(699), deadline, within, wane),
+            Err(RenewRefusal::OutsideWindow {
+                until: Instant::new(700)
+            })
+        );
+        assert_eq!(
+            renew(Instant::new(700), deadline, within, wane),
+            Ok(Instant::new(4300))
+        );
+        assert_eq!(
+            renew(Instant::new(999), deadline, within, wane),
+            Ok(Instant::new(4599))
+        );
+    }
+}

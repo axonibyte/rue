@@ -46,6 +46,26 @@ impl Duration {
     }
 }
 
+/// A point in time, whole seconds since the Unix epoch. Core never reads a
+/// clock; every `now` is an input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Instant {
+    pub unix_s: u64,
+}
+
+impl Instant {
+    pub const fn new(unix_s: u64) -> Instant {
+        Instant { unix_s }
+    }
+
+    pub fn plus(self, d: Duration) -> Instant {
+        Instant {
+            unix_s: self.unix_s + d.seconds,
+        }
+    }
+}
+
 /// Three-valued truth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -22,7 +22,7 @@
 use std::fmt;
 
 use crate::intent::Intent;
-use crate::model::{Mode, OnLapse};
+use crate::model::{Duration, Instant, Mode, OnLapse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum State {
@@ -352,4 +352,38 @@ pub fn render_table() -> String {
         ));
     }
     out
+}
+
+/// Whether a bound has been reached. The boundary is closed: observed *at*
+/// the instant is expired (section 5.9).
+pub fn expired(now: Instant, deadline: Instant) -> bool {
+    now >= deadline
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenewRefusal {
+    /// The plan has expired; an expired plan is never renewed.
+    Expired,
+    /// Renewal is accepted only within `renew_within` of expiry; the instant
+    /// it opens.
+    OutsideWindow { until: Instant },
+}
+
+/// Renewal of a temporary plan (section 5.6): accepted only within
+/// `renew_within` of the deadline, never for an expired plan, and anchored
+/// at the renewal, so the new deadline is `now + wane`.
+pub fn renew(
+    now: Instant,
+    deadline: Instant,
+    renew_within: Duration,
+    wane: Duration,
+) -> Result<Instant, RenewRefusal> {
+    if expired(now, deadline) {
+        return Err(RenewRefusal::Expired);
+    }
+    let opens = Instant::new(deadline.unix_s.saturating_sub(renew_within.seconds));
+    if now < opens {
+        return Err(RenewRefusal::OutsideWindow { until: opens });
+    }
+    Ok(now.plus(wane))
 }
