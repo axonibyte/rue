@@ -1,0 +1,13 @@
+# Reverts: a backstop covers exactly the steps with a :target undo (section 5.6) -- a controller-undo step baked into the artifact would run its undo from the wrong locus.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/backstop.rs
++++ b/core/src/backstop.rs
+@@ -24,7 +24,7 @@
+         .into_iter()
+         .filter_map(|(n, it)| {
+             op_of(it)
+-                .filter(|o| o.undo_locus == UndoLocus::Target)
++                .filter(|o| o.undo_locus != UndoLocus::NoLocus)
+                 .map(|_| n)
+         })
+         .collect()

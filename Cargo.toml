@@ -3,7 +3,7 @@
 # nothing in the workspace and on no I/O crate.
 [workspace]
 resolver = "2"
-members = ["core", "cli", "tenants/harness"]
+members = ["core", "render", "cli", "tenants/harness"]
 
 [workspace.package]
 # Read by ci/build-target.sh and the deploy step: the tag must be v<version>.

@@ -1,0 +1,13 @@
+# Reverts: an embedded quote in a value interpolated for sh is escaped as '\'' (section 6.4) -- without it a value ends the quote and the rest is executed.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/quote.rs
++++ b/render/src/quote.rs
+@@ -69,7 +69,7 @@
+ /// `'…'` with `'\''` for an embedded quote.
+ pub fn posix(s: &str) -> Result<String, Unquotable> {
+     refuse(Family::Posix, s, |c| !readable(c))?;
+-    Ok(format!("'{}'", s.replace('\'', "'\\''")))
++    Ok(format!("'{}'", s))
+ }
+ 
+ /// `'…'` with `''` for an embedded quote.

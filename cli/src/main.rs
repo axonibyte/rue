@@ -1,5 +1,5 @@
-//! `rue`, the operator CLI (docs/ROADMAP.md section 6.8), as far as Phase 1's
-//! first unit takes it: `check` and `explain` over a plan IR document, and
+//! `rue`, the operator CLI (docs/ROADMAP.md section 6.8), as far as Phase 1
+//! takes it: `check`, `explain` and `artifact` over a plan IR document, and
 //! `states`. The surface verbs (`.rue` input, `--host`, `--as`) arrive with
 //! Phase 2; the IR is already one host's plan and carries the requester.
 //!
@@ -23,6 +23,7 @@ use rue_core::json::canonical;
 use rue_core::prose::prose;
 use rue_core::states::render_table;
 use rue_core::verdict::{to_json, Status, Verdict};
+use rue_render::{render, Bindings, Instance, RenderError};
 
 #[derive(Parser)]
 #[command(
@@ -53,6 +54,26 @@ enum Verb {
     },
     /// Print the runtime state machine's transition table.
     States,
+    /// Print the backstop artifact a :target backstop installs on the host
+    /// (section 7.7): the scheduler-run script that undoes the covered
+    /// steps when its trigger is due.
+    Artifact {
+        /// The plan IR.
+        plan: PathBuf,
+        /// The host whose record selects the shell family and artifact
+        /// language; the plan's owner when absent.
+        #[arg(long)]
+        host: Option<String>,
+        /// The instance id the artifact is rendered for.
+        #[arg(long)]
+        instance: String,
+        /// The target's rue_root; the family's default when absent.
+        #[arg(long)]
+        rue_root: Option<String>,
+        /// A plan parameter the artifact bakes in, `name=value`; repeatable.
+        #[arg(long = "set", value_name = "NAME=VALUE")]
+        set: Vec<String>,
+    },
 }
 
 fn load(path: &PathBuf) -> Result<PlanIr> {
@@ -97,6 +118,44 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
         Verb::States => {
             out.write_all(render_table().as_bytes())?;
             Ok(ExitCode::SUCCESS)
+        }
+        Verb::Artifact {
+            plan,
+            host,
+            instance,
+            rue_root,
+            set,
+        } => {
+            let ir = load(&plan)?;
+            let mut bindings = Bindings::default();
+            for kv in &set {
+                let (k, v) = kv
+                    .split_once('=')
+                    .with_context(|| format!("--set {kv}: expected NAME=VALUE"))?;
+                bindings.params.insert(k.to_string(), v.to_string());
+            }
+            let host = host.unwrap_or_else(|| ir.plan.owner.clone());
+            let inst = Instance {
+                id: instance,
+                rue_root,
+            };
+            match render(&ir.site, &ir.plan, &host, &inst, &bindings) {
+                Ok(a) => {
+                    out.write_all(a.text.as_bytes())?;
+                    Ok(ExitCode::SUCCESS)
+                }
+                // A diagnostic or a refusal of the plan's own content is 1;
+                // a wrong call (no backstop, an unknown host) is 2.
+                Err(e) => {
+                    eprintln!("rue: {e}");
+                    Ok(match e {
+                        RenderError::NoBackstop
+                        | RenderError::NotTarget
+                        | RenderError::UnknownHost(_) => ExitCode::from(2),
+                        _ => ExitCode::from(1),
+                    })
+                }
+            }
         }
     }
 }

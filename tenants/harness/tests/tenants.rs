@@ -6,6 +6,7 @@
 //! directory carries its `.rue` text and every tenant an inventory.
 
 use std::collections::BTreeSet;
+use std::fs;
 
 use rue_core::diagnostics::Code;
 use rue_core::intent::Intent;
@@ -14,7 +15,8 @@ use rue_core::model::{Duration, Strictness};
 use rue_core::verdict::{HostTouched, Status, Verdict};
 use rue_tenants::golden::repo_root;
 use rue_tenants::{
-    cases, load, verdict_of, CaseTerm, TenantCase, EMITTED_CODES, NEGATIVES, TENANT_CASES,
+    artifact_of, cases, load, verdict_of, CaseTerm, TenantCase, EMITTED_CODES, NEGATIVES,
+    TENANT_CASES,
 };
 
 fn term(dir: &str) -> CaseTerm {
@@ -271,4 +273,42 @@ fn t4_reactive_host_section_8_4() {
         }])
     );
     assert_eq!(clobber.controller_only_undos, vec![1]);
+}
+
+/// Every artifact golden is the plan's covered steps and nothing else: a
+/// marker path per covered step, in reverse order, and no uncovered step's
+/// id anywhere in the text (section 7.7).
+#[test]
+fn every_artifact_holds_exactly_the_covered_steps_in_reverse() {
+    let root = repo_root().unwrap();
+    let mut seen = 0;
+    for c in cases() {
+        let Some(a) = artifact_of(&c.ir) else {
+            continue;
+        };
+        let a = a.unwrap_or_else(|e| panic!("{}: {e}", c.dir));
+        let text = fs::read_to_string(root.join(&c.dir).join(a.file_name)).unwrap();
+        let cov = rue_core::backstop::coverage(&c.ir.plan).unwrap();
+        let mut expected = cov.covered.clone();
+        expected.reverse();
+        let listed: Vec<u32> = text
+            .lines()
+            .filter_map(|l| l.trim_start_matches("# ").strip_prefix("step "))
+            .map(|l| l.split(':').next().unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(listed, expected, "{}", c.dir);
+        for (n, it) in rue_core::algebra::numbered(&c.ir.plan.body) {
+            if let Some(o) = rue_core::algebra::op_of(it) {
+                let covered = cov.covered.contains(&n);
+                assert_eq!(
+                    text.contains(&format!(": {}\n", o.id)),
+                    covered,
+                    "{}: step {n}",
+                    c.dir
+                );
+            }
+        }
+        seen += 1;
+    }
+    assert_eq!(seen, 6, "six cases carry a :target backstop");
 }

@@ -1,0 +1,13 @@
+# Reverts: an embedded quote in a value interpolated for PowerShell is doubled (section 6.4) -- without it a value ends the quote and the rest is executed.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/quote.rs
++++ b/render/src/quote.rs
+@@ -75,7 +75,7 @@
+ /// `'…'` with `''` for an embedded quote.
+ pub fn powershell(s: &str) -> Result<String, Unquotable> {
+     refuse(Family::Powershell, s, |c| !readable(c))?;
+-    Ok(format!("'{}'", s.replace('\'', "''")))
++    Ok(format!("'{}'", s))
+ }
+ 
+ /// A Python string literal in single quotes.

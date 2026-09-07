@@ -24,6 +24,7 @@ use rue_core::model::{Plan, Site};
 use rue_core::prose::prose;
 use rue_core::states::render_table;
 use rue_core::verdict::{to_json, Verdict};
+use rue_render::{Bindings, Instance};
 
 pub use golden::Artifact;
 
@@ -354,6 +355,49 @@ pub fn load(root: &Path, input: &str) -> Result<PlanIr, String> {
 /// Every golden artifact, with its path relative to the repository root: for
 /// each case its IR, verdict, prose and (tenant cases) explain listing, and
 /// the transition table.
+/// The instance every artifact golden is rendered for.
+pub const GOLDEN_INSTANCE: &str = "golden";
+
+/// A plan's step arguments as the bindings a render bakes: every
+/// `name: value` argument of every step, as the request would bind them.
+pub fn bindings_of(plan: &Plan) -> Bindings {
+    let mut b = Bindings::default();
+    for (_, it) in rue_core::algebra::numbered(&plan.body) {
+        if let Some(s) = rue_core::algebra::step_of(it) {
+            for a in &s.args {
+                if let Some((k, v)) = a.split_once(": ") {
+                    b.params.insert(k.to_string(), v.to_string());
+                }
+            }
+        }
+    }
+    b
+}
+
+/// The backstop artifact of a case whose plan has a `:target` backstop, if
+/// its plan checks clean: rendered for the plan's owner and the golden
+/// instance. A clean plan whose artifact cannot be rendered is an error the
+/// golden suite reports.
+pub fn artifact_of(ir: &PlanIr) -> Option<Result<rue_render::Artifact, rue_render::RenderError>> {
+    if verdict_of(ir).status != rue_core::verdict::Status::Ok {
+        return None;
+    }
+    let instance = Instance {
+        id: GOLDEN_INSTANCE.into(),
+        rue_root: None,
+    };
+    match rue_render::render(
+        &ir.site,
+        &ir.plan,
+        &ir.plan.owner,
+        &instance,
+        &bindings_of(&ir.plan),
+    ) {
+        Err(rue_render::RenderError::NoBackstop) | Err(rue_render::RenderError::NotTarget) => None,
+        r => Some(r),
+    }
+}
+
 pub fn artifacts() -> Vec<Artifact> {
     let mut out = Vec::new();
     for c in cases() {
@@ -376,6 +420,16 @@ pub fn artifacts() -> Vec<Artifact> {
             out.push(Artifact {
                 path: format!("{}/explain.txt", c.dir),
                 bytes: Ok(explain(&c.ir.plan, &deferred_steps(&c.ir.site, &c.ir.plan)).into_bytes()),
+            });
+        }
+        if let Some(a) = artifact_of(&c.ir) {
+            out.push(Artifact {
+                path: format!(
+                    "{}/{}",
+                    c.dir,
+                    a.as_ref().map(|a| a.file_name).unwrap_or("artifact")
+                ),
+                bytes: a.map(|a| a.text.into_bytes()).map_err(|e| e.to_string()),
             });
         }
     }

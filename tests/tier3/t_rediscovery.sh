@@ -24,14 +24,18 @@ expect() { # expect <status> <label>
     fi
 }
 
-# The tree under test: the table, the patches, and the sources they touch.
+# The tree under test: the table, the patches, and exactly the sources the
+# patches touch, read from their `+++ b/` headers so a patch on a new crate
+# or a new directory is covered the day it lands.
 reset_tree() {
     rm -rf "$tmp/tree"
-    mkdir -p "$tmp/tree/tools/rediscovery/patches" "$tmp/tree/proto/src/Rue/Proto" "$tmp/tree/core/src" || exit 2
+    mkdir -p "$tmp/tree/tools/rediscovery/patches" || exit 2
     cp "$root/tools/rediscovery/table.tsv" "$tmp/tree/tools/rediscovery/table.tsv"
     cp "$root"/tools/rediscovery/patches/*.patch "$tmp/tree/tools/rediscovery/patches/"
-    cp "$root"/proto/src/Rue/Proto/*.hs "$tmp/tree/proto/src/Rue/Proto/"
-    cp "$root"/core/src/*.rs "$tmp/tree/core/src/"
+    sed -n 's|^+++ b/||p' "$root"/tools/rediscovery/patches/*.patch | sort -u | while IFS= read -r f; do
+        mkdir -p "$tmp/tree/$(dirname -- "$f")" || exit 2
+        cp "$root/$f" "$tmp/tree/$f" || exit 2
+    done
 }
 
 tab=$(printf '\t.')

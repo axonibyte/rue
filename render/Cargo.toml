@@ -1,0 +1,12 @@
+[package]
+name = "rue-render"
+description = "Backstop artifact rendering per OS family and artifact language, with per-family quoting; pure, depends only on rue-core"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rue-core = { path = "../core" }

@@ -1,0 +1,13 @@
+# Reverts: the artifact undoes the covered steps in reverse order (section 7.7) -- forward order undoes a step whose successors still depend on it.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/lib.rs
++++ b/render/src/lib.rs
+@@ -174,7 +174,7 @@
+     }
+     let numbered_items = numbered(&plan.body);
+     let mut steps = Vec::new();
+-    for n in cov.covered.iter().rev() {
++    for n in cov.covered.iter() {
+         let op = numbered_items
+             .iter()
+             .find(|(m, _)| m == n)

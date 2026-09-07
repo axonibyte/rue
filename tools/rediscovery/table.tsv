@@ -55,3 +55,8 @@ reach-defer-drift-accepted-core.patch	1	-	cargo	op_rules	-
 temporary-after-not-wane-core.patch	1	-	cargo	backstop_rules	-
 wait-unbounded-core.patch	1	-	cargo	wait_rules	-
 artifact-language-unchecked-core.patch	1	-	cargo	artifact_language_rules	-
+quote-posix-unescaped-core.patch	1	-	cargo	round_trips_in_every_family	-
+quote-powershell-undoubled-core.patch	1	-	cargo	round_trips_in_every_family	-
+artifact-forward-order-core.patch	1	-	cargo	reverse_order_and_nothing_else	-
+artifact-renders-uncovered-step-core.patch	1	-	cargo	reverse_order_and_nothing_else	-
+artifact-bakes-secret-core.patch	1	-	cargo	refusals	-
