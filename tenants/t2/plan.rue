@@ -52,7 +52,7 @@ end
 defop :resurrection_gate, _ do
   footprint modified: platform.mode("node-a")
   do: hook(:platform, set: :slave, node: "node-a")
-  undo: hook(:platform, set: :master, node: "node-a")
+  undo: hook(:platform, set: :master, node: "node-a", idempotent: true)
   undo_pre platform.mode("node-a")
   refusal: :hold, via: :slave_mode
   undo_locus: :controller
@@ -62,7 +62,7 @@ end
 defop :start_guest, %{os: :freebsd} do
   footprint modified: guest.state(g)
   do: run("cbsd bstart #{g}")
-  undo: run("cbsd bstop #{g}")
+  undo: run("cbsd bstop #{g}", idempotent: true)
   undo_pre guest.state(g)
   refusal: :hold
   undo_locus: :controller
@@ -81,7 +81,7 @@ end
 defop :start_heir, %{os: :freebsd} do
   footprint modified: guest.state("heir")
   do: run("cbsd bstart heir")
-  undo: run("cbsd bstop heir")
+  undo: run("cbsd bstop heir", idempotent: true)
   undo_pre guest.state("heir")
   refusal: :hold
   undo_locus: :controller

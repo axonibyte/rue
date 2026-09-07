@@ -35,7 +35,9 @@
       },
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "ack: humans()"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
@@ -217,7 +219,7 @@
               "anchor": null,
               "instance": null,
               "kind": "modified",
-              "shape": "platform:node-a:mode"
+              "shape": "platform:mode:node-a"
             }
           ],
           "handoff_done": null,
@@ -258,7 +260,7 @@
                 }
               ],
               "undo_pre": [
-                "platform:node-a:mode"
+                "platform:mode:node-a"
               ]
             }
           },
@@ -271,7 +273,9 @@
         "body": [
           {
             "alias": null,
-            "args": [],
+            "args": [
+              "g: g"
+            ],
             "direction": "forward",
             "force": [],
             "gate": null,
@@ -303,7 +307,7 @@
                   "anchor": null,
                   "instance": null,
                   "kind": "modified",
-                  "shape": "guest:{g}:state"
+                  "shape": "guest:state:{g}"
                 }
               ],
               "handoff_done": null,
@@ -341,7 +345,7 @@
                     }
                   ],
                   "undo_pre": [
-                    "guest:{g}:state"
+                    "guest:state:{g}"
                   ]
                 }
               },
@@ -363,7 +367,9 @@
       },
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "entry: succession_entry"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
@@ -498,7 +504,7 @@
               "anchor": null,
               "instance": null,
               "kind": "modified",
-              "shape": "guest:heir:state"
+              "shape": "guest:state:heir"
             }
           ],
           "handoff_done": "heir_running_on_c",
@@ -535,7 +541,7 @@
                 }
               ],
               "undo_pre": [
-                "guest:heir:state"
+                "guest:state:heir"
               ]
             }
           },

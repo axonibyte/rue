@@ -798,13 +798,15 @@ A body is a list of **primitives**; the checker sees primitives, never shell. Ev
 
 ```
 body := "[" prim ("," prim)* "]" | prim
-prim := "run(" STRING ("," "env:" record)? ("," "stdin:" expr)? ")"
+prim := "run(" STRING ("," "env:" record)? ("," "stdin:" expr)? ("," "idempotent:" BOOL)? ")"
       | "write(" factshape "," "content:" expr ")" | "remove(" factshape ")" | "append(" factshape "," "line:" expr ")"
       | "region_set(" factshape "," "content:" expr ")" | "region_clear(" factshape ")"
       | "stage(" NAME "," "content:" expr "," "mode:" INT ")"
-      | "hook(" ATOM ("," kw)* ")" | "install(" ATOM ")" | "release(" ATOM ")"
+      | "hook(" ATOM ("," kw)* ")" | "install(" ATOM ")" | "release(" ATOM ")"   -- hook admits idempotent: BOOL among its keywords
       | call                                     -- a tenant-declared defprim
 ```
+
+An undo is provably idempotent (E0208 otherwise) when it is `:restore` or `compensate:`, or a body whose every primitive is: the fact primitives, `install` and `release` are by construction; a `run` or a `hook` is only when it carries `idempotent: true`, the author's declaration that running it twice ends where once does.
 
 `run` strings are the only place shell text exists. Interpolation into a `run` string is quoted by the renderer for the step's OS family (POSIX single-quote with `'\''` escaping; PowerShell single-quote doubling), and the whole string is then embedded per the artifact's language (a Python literal with backslash escapes when the artifact is Python); a value that cannot be safely quoted is E0109 (a NUL anywhere; a control character other than tab, newline and return in a shell family).
 

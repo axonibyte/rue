@@ -149,7 +149,7 @@
       "conditional": null,
       "drift": null,
       "footprint": [
-        "held: proc:vnc-tunnel"
+        "held: proc:vnc_tunnel"
       ],
       "gate": null,
       "knell": null,

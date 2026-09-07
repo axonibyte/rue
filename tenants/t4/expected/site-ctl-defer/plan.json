@@ -5,7 +5,9 @@
     "body": [
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "drift: :defer"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
@@ -34,19 +36,19 @@
               "anchor": null,
               "instance": null,
               "kind": "modified",
-              "shape": "actuator:hvac-1:state"
+              "shape": "actuator:state:hvac-1"
             },
             {
               "anchor": null,
               "instance": null,
               "kind": "modified",
-              "shape": "actuator:hvac-2:state"
+              "shape": "actuator:state:hvac-2"
             },
             {
               "anchor": null,
               "instance": null,
               "kind": "modified",
-              "shape": "actuator:pump-1:state"
+              "shape": "actuator:state:pump-1"
             }
           ],
           "handoff_done": null,

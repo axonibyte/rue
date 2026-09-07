@@ -18,7 +18,9 @@
     "body": [
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "posture: PermitRootLogin yes"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
@@ -91,7 +93,9 @@
       },
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "keys: requester_key"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
@@ -253,7 +257,7 @@
               "anchor": null,
               "instance": null,
               "kind": "held",
-              "shape": "proc:vnc-tunnel"
+              "shape": "proc:vnc_tunnel"
             }
           ],
           "handoff_done": null,
@@ -311,7 +315,7 @@
                 }
               ],
               "undo_pre": [
-                "proc:vnc-tunnel"
+                "proc:vnc_tunnel"
               ]
             }
           },

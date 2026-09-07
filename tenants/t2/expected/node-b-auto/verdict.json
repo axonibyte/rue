@@ -142,7 +142,7 @@
       "conditional": null,
       "drift": "defer",
       "footprint": [
-        "modified: platform:node-a:mode"
+        "modified: platform:mode:node-a"
       ],
       "gate": null,
       "knell": null,
@@ -157,7 +157,7 @@
       "conditional": null,
       "drift": "defer",
       "footprint": [
-        "modified: guest:{g}:state"
+        "modified: guest:state:{g}"
       ],
       "gate": null,
       "knell": null,
@@ -188,7 +188,7 @@
       "conditional": null,
       "drift": "defer",
       "footprint": [
-        "modified: guest:heir:state"
+        "modified: guest:state:heir"
       ],
       "gate": null,
       "knell": null,

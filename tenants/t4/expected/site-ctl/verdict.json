@@ -38,9 +38,9 @@
       "conditional": null,
       "drift": "clobber",
       "footprint": [
-        "modified: actuator:hvac-1:state",
-        "modified: actuator:hvac-2:state",
-        "modified: actuator:pump-1:state"
+        "modified: actuator:state:hvac-1",
+        "modified: actuator:state:hvac-2",
+        "modified: actuator:state:pump-1"
       ],
       "gate": null,
       "knell": null,
@@ -48,7 +48,7 @@
       "n": 1,
       "op": "shed_load",
       "refusal": "revert",
-      "undo": "restore actuator:hvac-1:state from snapshot; restore actuator:hvac-2:state from snapshot; restore actuator:pump-1:state from snapshot",
+      "undo": "restore actuator:state:hvac-1 from snapshot; restore actuator:state:hvac-2 from snapshot; restore actuator:state:pump-1 from snapshot",
       "undo_locus": "controller"
     }
   ],

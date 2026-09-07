@@ -44,7 +44,7 @@ defop :winfw_allow, %{os: :windows} do
   footprint owned: winfw.rule("rue-mgmt")
   reach ssh(host)
   do: run("New-NetFirewallRule -Name rue-mgmt -Direction Inbound -Protocol TCP -LocalPort #{port} -Action Allow")
-  undo: run("Remove-NetFirewallRule -Name rue-mgmt")
+  undo: run("Remove-NetFirewallRule -Name rue-mgmt", idempotent: true)
   undo_pre winfw.rule("rue-mgmt")
   undo_locus: :target
 end

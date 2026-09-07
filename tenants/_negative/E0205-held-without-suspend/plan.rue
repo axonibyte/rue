@@ -15,7 +15,7 @@ end
 defop :tunnel, _ do
   footprint held: proc.tunnel
   do: run("tunnel up")
-  undo: run("tunnel down")
+  undo: run("tunnel down", idempotent: true)
   undo_pre proc.tunnel   # so that E0207 does not fire first; Phase 0's text omitted it
   undo_locus: :controller
 end

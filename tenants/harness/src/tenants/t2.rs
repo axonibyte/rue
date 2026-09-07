@@ -57,13 +57,13 @@ fn resurrection_gate() -> Op {
                 "platform",
                 vec![("set", lit(":master")), ("node", lit("node-a"))],
             )],
-            &["platform:node-a:mode"],
+            &["platform:mode:node-a"],
         ),
         ..Op::new(
             "resurrection_gate",
             vec![FootprintEntry::entry(
                 Kind::Modified,
-                "platform:node-a:mode",
+                "platform:mode:node-a",
             )],
         )
     }
@@ -76,11 +76,11 @@ fn start_guest() -> Op {
         do_: vec![run(vec![text("cbsd bstart "), interp(controller("g"))])],
         undo: computed(
             vec![run(vec![text("cbsd bstop "), interp(controller("g"))])],
-            &["guest:{g}:state"],
+            &["guest:state:{g}"],
         ),
         ..Op::new(
             "start_guest",
-            vec![FootprintEntry::entry(Kind::Modified, "guest:{g}:state")],
+            vec![FootprintEntry::entry(Kind::Modified, "guest:state:{g}")],
         )
     }
 }
@@ -141,15 +141,15 @@ fn heir_on_other_node() -> Op {
         locus: Locus::Host(HostRef::Static("node-c".into())),
         handoff_done: Some("heir_running_on_c".into()),
         do_: vec![run_lit("cbsd bstart heir")],
-        undo: computed(vec![run_lit("cbsd bstop heir")], &["guest:heir:state"]),
+        undo: computed(vec![run_lit("cbsd bstop heir")], &["guest:state:heir"]),
         ..Op::new(
             "start_heir",
-            vec![FootprintEntry::entry(Kind::Modified, "guest:heir:state")],
+            vec![FootprintEntry::entry(Kind::Modified, "guest:state:heir")],
         )
     }
 }
 
-fn ladder(ack: Ack, manual_only: Vec<Item>) -> Plan {
+fn ladder(ack: Ack, fence_args: &[&str], manual_only: Vec<Item>) -> Plan {
     let mut body = vec![
         Item::Preflight {
             guards: vec![Guard::new("written_bytes_since_split", Tri::Yes)],
@@ -168,7 +168,10 @@ fn ladder(ack: Ack, manual_only: Vec<Item>) -> Plan {
             window: None,
             on_lapse: OnLapse::Revert,
         },
-        knell(fence(ack)),
+        Item::Knell(StepI {
+            args: strings(fence_args),
+            ..StepI::new(fence(ack))
+        }),
     ];
     body.extend(manual_only);
     body.extend(vec![
@@ -180,9 +183,9 @@ fn ladder(ack: Ack, manual_only: Vec<Item>) -> Plan {
                 set_valued: true,
             },
             var: "g".into(),
-            body: vec![s(start_guest())],
+            body: vec![with_args(start_guest(), &["g: g"])],
         },
-        s(succession_log()),
+        with_args(succession_log(), &["entry: succession_entry"]),
         s(heir_on_other_node()),
         Item::Commit,
     ]);
@@ -198,6 +201,10 @@ pub fn promote_auto() -> Plan {
         id: "promote_auto".into(),
         ..ladder(
             Ack::NoAck("the driver's verified-off is the automation's own evidence".into()),
+            &[
+                "ack: :none",
+                "reason: the driver's verified-off is the automation's own evidence",
+            ],
             vec![],
         )
     }
@@ -206,6 +213,7 @@ pub fn promote_auto() -> Plan {
 pub fn promote_manual() -> Plan {
     ladder(
         Ack::Gate(humans()),
+        &["ack: humans()"],
         vec![Item::When {
             guard: Guard::new("datasets_ahead", Tri::Yes),
             window: None,

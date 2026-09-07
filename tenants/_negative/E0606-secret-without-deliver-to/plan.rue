@@ -15,7 +15,7 @@ end
 defop :issue_token, _ do
   footprint modified: api.token
   do: hook(:issue_token)
-  undo: hook(:revoke_token)
+  undo: hook(:revoke_token, idempotent: true)
   undo_pre api.token
   outputs token, secret: true   # and the site above names no acceptor
   locus: :controller

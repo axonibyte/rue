@@ -105,7 +105,7 @@ fn vnc_console() -> Op {
             text("vnc-tunnel up --to "),
             interp(host_field("address")),
         ])],
-        undo: computed(vec![run_lit("vnc-tunnel down")], &["proc:vnc-tunnel"]),
+        undo: computed(vec![run_lit("vnc-tunnel down")], &["proc:vnc_tunnel"]),
         suspend: Some(vec![run_lit("vnc-tunnel suspend")]),
         reestablish: Some(vec![run_lit("vnc-tunnel resume --rotate")]),
         outputs: vec![Output {
@@ -114,7 +114,7 @@ fn vnc_console() -> Op {
         }],
         ..Op::new(
             "console_tunnel",
-            vec![FootprintEntry::entry(Kind::Held, "proc:vnc-tunnel")],
+            vec![FootprintEntry::entry(Kind::Held, "proc:vnc_tunnel")],
         )
     }
 }
@@ -139,8 +139,8 @@ pub fn breakglass() -> Plan {
             "breakglass",
             "db-01",
             vec![
-                s(sshd_posture()),
-                s(authorized_keys_block()),
+                with_args(sshd_posture(), &["posture: PermitRootLogin yes"]),
+                with_args(authorized_keys_block(), &["keys: requester_key"]),
                 Item::Step(StepI {
                     alias: Some("bmc".into()),
                     ..StepI::new(bmc_account())

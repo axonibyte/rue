@@ -16,7 +16,7 @@ end
 defop :tunnel, _ do
   footprint held: proc.tunnel
   do: run("tunnel up")
-  undo: run("tunnel down")
+  undo: run("tunnel down", idempotent: true)
   undo_pre proc.tunnel
   outputs token, secret: true
   suspend: run("tunnel suspend")

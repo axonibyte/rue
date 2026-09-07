@@ -15,7 +15,7 @@ end
 defop :posture, _ do
   footprint owned: file("/etc/a")
   do: write(file("/etc/a"), content: "x")
-  undo: run("counter-decrement /etc/a")   # a second run changes the fact again
+  undo: run("counter-decrement /etc/a")   # a run not marked idempotent: true is not provably idempotent
   undo_pre file("/etc/a")   # so that E0207 does not fire first; Phase 0's text omitted it
 end
 

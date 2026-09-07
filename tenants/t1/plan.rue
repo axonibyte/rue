@@ -52,7 +52,7 @@ end
 defop :bmc_account_enable, %{os: :appliance} do
   footprint modified: bmc.account("breakglass")
   do: hook(:bmc_enable, account: "breakglass")
-  undo: hook(:bmc_disable, account: "breakglass")
+  undo: hook(:bmc_disable, account: "breakglass", idempotent: true)
   undo_pre bmc.account("breakglass")
   undo_locus: :controller
   outputs bmc_password, secret: true
@@ -63,7 +63,7 @@ end
 defop :console_tunnel, _ do
   footprint held: proc.vnc_tunnel
   do: run("vnc-tunnel up --to #{host.address}")
-  undo: run("vnc-tunnel down")
+  undo: run("vnc-tunnel down", idempotent: true)
   # A computed undo names the facts it needs unchanged (E0207); the held
   # process is the only one. Phase 0's text omitted this line.
   undo_pre proc.vnc_tunnel

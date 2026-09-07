@@ -15,7 +15,7 @@ end
 defop :posture, _ do
   footprint owned: file("/etc/a")
   do: write(file("/etc/a"), content: "x")
-  undo: run("restore-from #{controller_backup}")   # a controller value inside a :target undo
+  undo: run("restore-from #{controller_backup}", idempotent: true)   # a controller value inside a :target undo
   undo_pre file("/etc/a")   # so that E0207 does not fire first; Phase 0's text omitted it
   undo_locus: :target
 end

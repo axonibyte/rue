@@ -32,9 +32,9 @@ fn shed_load_op(drift: Drift) -> Op {
         ..Op::new(
             "shed_load",
             vec![
-                FootprintEntry::entry(Kind::Modified, "actuator:hvac-1:state"),
-                FootprintEntry::entry(Kind::Modified, "actuator:hvac-2:state"),
-                FootprintEntry::entry(Kind::Modified, "actuator:pump-1:state"),
+                FootprintEntry::entry(Kind::Modified, "actuator:state:hvac-1"),
+                FootprintEntry::entry(Kind::Modified, "actuator:state:hvac-2"),
+                FootprintEntry::entry(Kind::Modified, "actuator:state:pump-1"),
             ],
         )
     }
@@ -46,7 +46,10 @@ pub fn shed_load() -> Plan {
         ..Plan::new(
             "shed_load",
             "site-ctl",
-            vec![s(shed_load_op(Drift::Clobber))],
+            vec![with_args(
+                shed_load_op(Drift::Clobber),
+                &["drift: :clobber"],
+            )],
         )
     }
 }
@@ -57,7 +60,7 @@ pub fn shed_load_deferring() -> Plan {
         ..Plan::new(
             "shed_load_deferring",
             "site-ctl",
-            vec![s(shed_load_op(Drift::Defer))],
+            vec![with_args(shed_load_op(Drift::Defer), &["drift: :defer"])],
         )
     }
 }

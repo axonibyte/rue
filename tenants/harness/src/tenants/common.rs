@@ -84,6 +84,14 @@ pub fn s(o: Op) -> Item {
     Item::Step(StepI::new(o))
 }
 
+/// A step with its call's keyword arguments as the text spells them.
+pub fn with_args(o: Op, args: &[&str]) -> Item {
+    Item::Step(StepI {
+        args: strings(args),
+        ..StepI::new(o)
+    })
+}
+
 pub fn knell(o: Op) -> Item {
     Item::Knell(StepI::new(o))
 }
