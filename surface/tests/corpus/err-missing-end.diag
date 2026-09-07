@@ -1,0 +1,1 @@
+err-missing-end.rue:6:1: E0101: parse error to close the block before this definition; expected `end`, found `defplan`

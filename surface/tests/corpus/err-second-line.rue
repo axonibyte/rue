@@ -1,0 +1,8 @@
+rue 0
+defplan :p, %{name: "db-01"} do
+  wane 1h
+  posture(
+  assert a == == b
+  other() as
+  ~
+end

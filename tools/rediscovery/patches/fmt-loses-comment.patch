@@ -1,0 +1,13 @@
+# Reverts: fmt keeps every comment where it was (section 6.9) -- a formatter that drops a comment rewrites what the author said.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/fmt.rs
++++ b/surface/src/fmt.rs
+@@ -65,7 +65,7 @@
+         };
+         match tok.kind() {
+             WHITESPACE => {}
+-            COMMENT => comment = Some(tok.text().to_string()),
++            COMMENT => {}
+             NEWLINE => flush(&mut out, &mut line, &mut comment, &mut depth),
+             k => {
+                 let parent = tok.parent().map(|p| p.kind());

@@ -1,0 +1,4 @@
+rue zero
+defplan :p, %{name: "db-01"} do
+  wane 1h
+end

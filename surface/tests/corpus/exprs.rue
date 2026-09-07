@@ -1,0 +1,15 @@
+rue 0
+defplan :exprs, %{name: "db-01"} do
+  wane 1h
+  assert a or b and not c
+  assert not (a == b) and 1 + 2 * 3 - -4 / 5 % 6 < 7
+  assert x != y or p > q or r >= s
+  assert if(defined?(x), x, 0) == 1.5
+  assert host.address == "10.0.0.1" and len(guests) <= 16 and member?(:a, [:a, :b])
+  assert all_eq?(%{"hvac-1": :off, "hvac-2": :off, BMC_PW: secret(:pw), plain: [1, 2, [3]]}, other)
+  assert to_s(port, 8) == "8443" and abs(-3) == 3 and min(1, 2) < max(1, 2) and count_eq(xs, :x) == 0
+  assert unknown?(f) or "it's #{a.b.c} and #{len(x)} #{secret(:pw)}" == ""
+  assert 30m + 2h > 90s and 1d == 24h and 500ms < 1s
+  assert true and not false
+  do_it(name: alias.output, list: [], record: %{}, atom: :"quoted atom")
+end

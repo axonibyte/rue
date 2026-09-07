@@ -1,0 +1,1 @@
+err-bad-version.rue:1:5: E0101: parse error after `rue`; expected an integer, found `zero`

@@ -1,0 +1,438 @@
+FILE@0..1050
+  VERSION@0..6
+    NAME@0..3 "rue"
+    INT@4..5 "0"
+    NEWLINE@5..6 "\n"
+  DEF@6..853
+    NAME@6..13 "defplan"
+    HEADER@14..38
+      ATOM@14..20 ":items"
+      COMMA@20..21 ","
+      PATTERN@22..38
+        RECORD@22..38
+          PERCENT_BRACE@22..24 "%{"
+          RECORD_ENTRY@24..37
+            NAME@24..28 "name"
+            COLON@28..29 ":"
+            LITERAL@30..37
+              STRING@30..37 "\"db-01\""
+          R_BRACE@37..38 "}"
+    NAME@39..41 "do"
+    NEWLINE@41..42 "\n"
+    BODY@44..849
+      LINE@44..52
+        NAME@44..48 "wane"
+        ARGS@49..51
+          LITERAL@49..51
+            DURATION@49..51 "1h"
+        NEWLINE@51..52 "\n"
+      BLOCK@54..119
+        NAME@54..63 "preflight"
+        NAME@64..66 "do"
+        NEWLINE@66..67 "\n"
+        BODY@71..115
+          LINE@71..97
+            NAME@71..96 "written_bytes_since_split"
+            NEWLINE@96..97 "\n"
+          STEP@101..112
+            CALL@101..112
+              REF@101..109
+                NAME@101..109 "defined?"
+              L_PAREN@109..110 "("
+              ARGS@110..111
+                REF@110..111
+                  NAME@110..111 "x"
+              R_PAREN@111..112 ")"
+          NEWLINE@112..113 "\n"
+        NAME@115..118 "end"
+        NEWLINE@118..119 "\n"
+      ASSERT@121..168
+        NAME@121..127 "assert"
+        ARGS@128..167
+          REF@128..137
+            NAME@128..137 "peer_dead"
+          COMMA@137..138 ","
+          KW@139..150
+            NAME@139..145 "window"
+            COLON@145..146 ":"
+            LITERAL@147..150
+              DURATION@147..150 "30s"
+          COMMA@150..151 ","
+          KW@152..167
+            NAME@152..160 "on_lapse"
+            COLON@160..161 ":"
+            LITERAL@162..167
+              ATOM@162..167 ":hold"
+        NEWLINE@167..168 "\n"
+      ASSERT@170..204
+        NAME@170..176 "assert"
+        ARGS@177..203
+          KW@177..189
+            NAME@177..182 "force"
+            COLON@182..183 ":"
+            REF@184..189
+              NAME@184..189 "never"
+          COMMA@189..190 ","
+          REF@191..203
+            NAME@191..203 "probes_agree"
+        NEWLINE@203..204 "\n"
+      KNELL@206..301
+        NAME@206..211 "knell"
+        STEP@212..300
+          CALL@212..271
+            REF@212..224
+              NAME@212..224 "fence_corpse"
+            L_PAREN@224..225 "("
+            ARGS@225..270
+              KW@225..235
+                NAME@225..228 "ack"
+                COLON@228..229 ":"
+                LITERAL@230..235
+                  ATOM@230..235 ":none"
+              COMMA@235..236 ","
+              KW@237..270
+                NAME@237..243 "reason"
+                COLON@243..244 ":"
+                LITERAL@245..270
+                  STRING@245..270 "\"the driver verified off\""
+            R_PAREN@270..271 ")"
+          COMMA@271..272 ","
+          KW@273..288
+            NAME@273..277 "gate"
+            COLON@277..278 ":"
+            CALL@279..288
+              REF@279..283
+                NAME@279..283 "wait"
+              L_PAREN@283..284 "("
+              ARGS@284..287
+                LITERAL@284..287
+                  DURATION@284..287 "30m"
+              R_PAREN@287..288 ")"
+          COMMA@288..289 ","
+          KW@290..300
+            NAME@290..296 "window"
+            COLON@296..297 ":"
+            LITERAL@298..300
+              DURATION@298..300 "1h"
+        NEWLINE@300..301 "\n"
+      WHEN@303..431
+        NAME@303..307 "when"
+        ARGS@308..354
+          REF@308..322
+            NAME@308..322 "datasets_ahead"
+          COMMA@322..323 ","
+          KW@324..335
+            NAME@324..330 "window"
+            COLON@330..331 ":"
+            LITERAL@332..335
+              DURATION@332..335 "10m"
+          COMMA@335..336 ","
+          KW@337..354
+            NAME@337..345 "on_lapse"
+            COLON@345..346 ":"
+            LITERAL@347..354
+              ATOM@347..354 ":revert"
+        NAME@355..357 "do"
+        NEWLINE@357..358 "\n"
+        BODY@362..396
+          KNELL@362..394
+            NAME@362..367 "knell"
+            STEP@368..393
+              CALL@368..393
+                REF@368..391
+                  NAME@368..391 "rollback_ahead_datasets"
+                L_PAREN@391..392 "("
+                R_PAREN@392..393 ")"
+            NEWLINE@393..394 "\n"
+        ELSE_ARM@396..427
+          NAME@396..400 "else"
+          NEWLINE@400..401 "\n"
+          BODY@405..427
+            STEP@405..424
+              CALL@405..424
+                REF@405..422
+                  NAME@405..422 "resurrection_gate"
+                L_PAREN@422..423 "("
+                R_PAREN@423..424 ")"
+            NEWLINE@424..425 "\n"
+        NAME@427..430 "end"
+        NEWLINE@430..431 "\n"
+      REPEAT@433..499
+        NAME@433..439 "repeat"
+        KW@440..452
+          NAME@440..444 "over"
+          COLON@444..445 ":"
+          REF@446..452
+            NAME@446..452 "guests"
+        COMMA@452..453 ","
+        NAME@454..456 "as"
+        NAME@457..458 "g"
+        COMMA@458..459 ","
+        KW@460..467
+          NAME@460..463 "max"
+          COLON@463..464 ":"
+          LITERAL@465..467
+            INT@465..467 "16"
+        NAME@468..470 "do"
+        NEWLINE@470..471 "\n"
+        BODY@475..495
+          STEP@475..492
+            CALL@475..492
+              REF@475..486
+                NAME@475..486 "start_guest"
+              L_PAREN@486..487 "("
+              ARGS@487..491
+                KW@487..491
+                  NAME@487..488 "g"
+                  COLON@488..489 ":"
+                  REF@490..491
+                    NAME@490..491 "g"
+              R_PAREN@491..492 ")"
+          NEWLINE@492..493 "\n"
+        NAME@495..498 "end"
+        NEWLINE@498..499 "\n"
+      REPEAT@501..539
+        NAME@501..507 "repeat"
+        LITERAL@508..509
+          INT@508..509 "3"
+        NAME@510..512 "as"
+        NAME@513..514 "i"
+        NAME@515..517 "do"
+        NEWLINE@517..518 "\n"
+        BODY@522..535
+          STEP@522..532
+            CALL@522..532
+              REF@522..526
+                NAME@522..526 "poke"
+              L_PAREN@526..527 "("
+              ARGS@527..531
+                KW@527..531
+                  NAME@527..528 "i"
+                  COLON@528..529 ":"
+                  REF@530..531
+                    NAME@530..531 "i"
+              R_PAREN@531..532 ")"
+          NEWLINE@532..533 "\n"
+        NAME@535..538 "end"
+        NEWLINE@538..539 "\n"
+      BLOCK@541..609
+        NAME@541..544 "par"
+        NAME@545..547 "do"
+        NEWLINE@547..548 "\n"
+        BODY@552..605
+          STEP@552..555
+            CALL@552..555
+              REF@552..553
+                NAME@552..553 "a"
+              L_PAREN@553..554 "("
+              R_PAREN@554..555 ")"
+          NEWLINE@555..556 "\n"
+          STEP@560..602
+            CALL@560..563
+              REF@560..561
+                NAME@560..561 "b"
+              L_PAREN@561..562 "("
+              R_PAREN@562..563 ")"
+            COMMA@563..564 ","
+            KW@565..602
+              NAME@565..570 "force"
+              COLON@570..571 ":"
+              LIST@572..602
+                L_BRACK@572..573 "["
+                REF@573..580
+                  NAME@573..580 "unknown"
+                COMMA@580..581 ","
+                REF@582..587
+                  NAME@582..587 "drift"
+                COMMA@587..588 ","
+                LITERAL@589..601
+                  ATOM@589..601 ":stale_guard"
+                R_BRACK@601..602 "]"
+          NEWLINE@602..603 "\n"
+        NAME@605..608 "end"
+        NEWLINE@608..609 "\n"
+      SLOT@611..631
+        NAME@611..615 "slot"
+        ATOM@616..630 ":before_commit"
+        NEWLINE@630..631 "\n"
+      OBSERVE@633..665
+        NAME@633..640 "observe"
+        CALL@641..655
+          REF@641..653
+            NAME@641..653 "verify_reach"
+          L_PAREN@653..654 "("
+          R_PAREN@654..655 ")"
+        NAME@656..658 "as"
+        NAME@659..664 "reach"
+        NEWLINE@664..665 "\n"
+      STEP@667..748
+        CALL@667..690
+          REF@667..678
+            NAME@667..669 "t3"
+            DOT@669..670 "."
+            NAME@670..678 "pf_allow"
+          L_PAREN@678..679 "("
+          ARGS@679..689
+            KW@679..689
+              NAME@679..683 "port"
+              COLON@683..684 ":"
+              LITERAL@685..689
+                INT@685..689 "8443"
+          R_PAREN@689..690 ")"
+        COMMA@690..691 ","
+        KW@692..711
+          NAME@692..696 "gate"
+          COLON@696..697 ":"
+          CALL@698..711
+            REF@698..702
+              NAME@698..702 "auth"
+            L_PAREN@702..703 "("
+            ARGS@703..710
+              LITERAL@703..710
+                ATOM@703..710 ":netops"
+            R_PAREN@710..711 ")"
+        COMMA@711..712 ","
+        KW@713..723
+          NAME@713..719 "window"
+          COLON@719..720 ":"
+          LITERAL@721..723
+            DURATION@721..723 "5m"
+        COMMA@723..724 ","
+        KW@725..742
+          NAME@725..733 "on_lapse"
+          COLON@733..734 ":"
+          LITERAL@735..742
+            ATOM@735..742 ":revert"
+        NAME@743..745 "as"
+        NAME@746..748 "pf"
+      NEWLINE@748..749 "\n"
+      PIPELINE@751..795
+        STEP@751..761
+          CALL@751..761
+            REF@751..759
+              NAME@751..759 "step_one"
+            L_PAREN@759..760 "("
+            R_PAREN@760..761 ")"
+        PIPE_GT@762..764 "|>"
+        STEP@765..779
+          CALL@765..779
+            REF@765..773
+              NAME@765..773 "step_two"
+            L_PAREN@773..774 "("
+            ARGS@774..778
+              KW@774..778
+                NAME@774..775 "x"
+                COLON@775..776 ":"
+                LITERAL@777..778
+                  INT@777..778 "1"
+            R_PAREN@778..779 ")"
+        PIPE_GT@780..782 "|>"
+        STEP@783..795
+          CALL@783..795
+            REF@783..793
+              NAME@783..793 "step_three"
+            L_PAREN@793..794 "("
+            R_PAREN@794..795 ")"
+      NEWLINE@795..796 "\n"
+      STEP@798..825
+        CALL@798..818
+          REF@798..816
+            NAME@798..816 "bmc_account_enable"
+          L_PAREN@816..817 "("
+          R_PAREN@817..818 ")"
+        NAME@819..821 "as"
+        NAME@822..825 "bmc"
+      NEWLINE@825..826 "\n"
+      STEP@828..837
+        CALL@828..837
+          REF@828..835
+            NAME@828..835 "confirm"
+          L_PAREN@835..836 "("
+          R_PAREN@836..837 ")"
+      NEWLINE@837..838 "\n"
+      STEP@840..848
+        CALL@840..848
+          REF@840..846
+            NAME@840..846 "commit"
+          L_PAREN@846..847 "("
+          R_PAREN@847..848 ")"
+      NEWLINE@848..849 "\n"
+    NAME@849..852 "end"
+    NEWLINE@852..853 "\n"
+  NEWLINE@853..854 "\n"
+  DEF@854..929
+    NAME@854..861 "defrole"
+    HEADER@862..865
+      ATOM@862..865 ":db"
+    NAME@866..868 "do"
+    NEWLINE@868..869 "\n"
+    BODY@871..925
+      CONTRIBUTION@871..900
+        ATOM@871..885 ":before_commit"
+        INT@886..888 "10"
+        STEP@889..899
+          CALL@889..899
+            REF@889..897
+              NAME@889..897 "snapshot"
+            L_PAREN@897..898 "("
+            R_PAREN@898..899 ")"
+        NEWLINE@899..900 "\n"
+      CONTRIBUTION@902..925
+        ATOM@902..916 ":before_commit"
+        STEP@917..924
+          CALL@917..924
+            REF@917..922
+              NAME@917..922 "fence"
+            L_PAREN@922..923 "("
+            R_PAREN@923..924 ")"
+        NEWLINE@924..925 "\n"
+    NAME@925..928 "end"
+    NEWLINE@928..929 "\n"
+  NEWLINE@929..930 "\n"
+  DEF@930..1000
+    NAME@930..941 "defprotocol"
+    HEADER@942..968
+      ATOM@942..950 ":quiesce"
+      COMMA@950..951 ","
+      KW@952..968
+        NAME@952..959 "inverse"
+        COLON@959..960 ":"
+        LITERAL@961..968
+          ATOM@961..968 ":resume"
+    NAME@969..971 "do"
+    NEWLINE@971..972 "\n"
+    BODY@974..996
+      LINE@974..996
+        NAME@974..981 "default"
+        ARGS@982..995
+          CALL@982..995
+            REF@982..993
+              NAME@982..993 "run_quiesce"
+            L_PAREN@993..994 "("
+            R_PAREN@994..995 ")"
+        NEWLINE@995..996 "\n"
+    NAME@996..999 "end"
+    NEWLINE@999..1000 "\n"
+  NEWLINE@1000..1001 "\n"
+  DEF@1001..1050
+    NAME@1001..1008 "defimpl"
+    HEADER@1009..1027
+      ATOM@1009..1017 ":quiesce"
+      COMMA@1017..1018 ","
+      KW@1019..1027
+        NAME@1019..1022 "for"
+        COLON@1022..1023 ":"
+        LITERAL@1024..1027
+          ATOM@1024..1027 ":db"
+    NAME@1028..1030 "do"
+    NEWLINE@1030..1031 "\n"
+    BODY@1033..1046
+      STEP@1033..1045
+        CALL@1033..1045
+          REF@1033..1043
+            NAME@1033..1043 "pg_quiesce"
+          L_PAREN@1043..1044 "("
+          R_PAREN@1044..1045 ")"
+      NEWLINE@1045..1046 "\n"
+    NAME@1046..1049 "end"
+    NEWLINE@1049..1050 "\n"

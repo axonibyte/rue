@@ -16,7 +16,7 @@ end
 defop :posture, _ do
   footprint owned: file("/etc/a")
   do: write(file("/etc/a"), content: "x")
-  undo: run("db-restore /etc/a", stdin: {:secret, :db_pw})   # on stdin, so that E0209 does not also fire
+  undo: run("db-restore /etc/a", stdin: secret(:db_pw))   # on stdin, so that E0209 does not also fire
   undo_pre file("/etc/a")
   undo_locus: :target
 end

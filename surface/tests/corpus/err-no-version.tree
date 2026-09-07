@@ -1,0 +1,28 @@
+FILE@0..78
+  COMMENT@0..31 "# a file that forgot its marker"
+  NEWLINE@31..32 "\n"
+  DEF@32..78
+    NAME@32..39 "defplan"
+    HEADER@40..60
+      ATOM@40..42 ":p"
+      COMMA@42..43 ","
+      PATTERN@44..60
+        RECORD@44..60
+          PERCENT_BRACE@44..46 "%{"
+          RECORD_ENTRY@46..59
+            NAME@46..50 "name"
+            COLON@50..51 ":"
+            LITERAL@52..59
+              STRING@52..59 "\"db-01\""
+          R_BRACE@59..60 "}"
+    NAME@61..63 "do"
+    NEWLINE@63..64 "\n"
+    BODY@66..74
+      LINE@66..74
+        NAME@66..70 "wane"
+        ARGS@71..73
+          LITERAL@71..73
+            DURATION@71..73 "1h"
+        NEWLINE@73..74 "\n"
+    NAME@74..77 "end"
+    NEWLINE@77..78 "\n"

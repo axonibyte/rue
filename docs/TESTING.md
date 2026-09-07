@@ -54,8 +54,8 @@ prototype's under one tasty suite, and both inside the gate:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `cli/tests/cli.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); the CLI's verbs and exit codes |
-| 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse |
+| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the CLI's verbs and exit codes |
+| 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
 
@@ -84,6 +84,22 @@ diffing.
 
 Regenerating goldens is a decision, not a fix. Read the diff. If the change
 is intended, the commit body says why the verdict changed.
+
+## The parser corpus
+
+`surface/tests/corpus/` holds one `.rue` snippet per construct of the
+surface (the site block, every definition and body line, every item,
+every expression form) and one per recovery (a missing `end`, a stray
+token, an unterminated string, a tuple, several errors on separate lines,
+the version marker missing, newer, malformed), each beside its tree dump
+(`.tree`, every node and token with its range, whitespace elided) and its
+diagnostics (`.diag`, one rendered line each). The test holds the tree's
+text to the source (the tree is lossless), the goldens byte for byte,
+`fmt` the identity and idempotent on every clean snippet, and `fmt`'s
+refusal of every error snippet. The goldens are read-only in the suite;
+`RUE_UPDATE_GOLDENS=1 cargo test -p rue-surface --test corpus` rewrites
+them, the same variable as the tenants' writer, and the diff is read the
+same way.
 
 ## The artifacts run
 

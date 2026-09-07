@@ -1,0 +1,4 @@
+# a file that forgot its marker
+defplan :p, %{name: "db-01"} do
+  wane 1h
+end

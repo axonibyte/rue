@@ -67,3 +67,5 @@ defer-clobbers-core.patch	1	-	cargo	drift_defer_leaves	-
 foreign-region-fallback-core.patch	1	-	cargo	damaged_region_markers	-
 fuzz-check-panics-core.patch	4	-	cargo	check_never_panics	RUE_FUZZ_STEPS=5000
 fuzz-render-panics-core.patch	4	-	cargo	render_never_panics	RUE_FUZZ_STEPS=5000
+fmt-loses-comment.patch	1	-	cargo	fmt_is_the_identity	-
+parse-error-not-recovered.patch	2	-	cargo	every_snippet_matches	-

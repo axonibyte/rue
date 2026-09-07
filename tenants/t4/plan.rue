@@ -10,7 +10,7 @@ rue 0
 site do
   inventory from: hook(:host_world)
   journal to: hook(:host_log)
-  execute via: hook(:host_actuate)
+  execute via: hook(:host_actuate, transport: :actuate)
   operators do
     identity :reactive_host, user: :socket_owner, operator_for: [:shed_load, :shed_load_deferring], admin: true
   end

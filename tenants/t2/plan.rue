@@ -44,7 +44,7 @@ end
 defop :rollback_ahead_datasets, _ do
   footprint
   do: run("zfs rollback -r #{dataset}@split")
-  refusal: knell, guard: datasets_ahead, cost: destroyed_snapshots(), ack: humans(1)
+  refusal: knell, guard: datasets_ahead, cost: destroyed_snapshots(), ack: humans()
   undo_locus: :none
 end
 
@@ -114,7 +114,7 @@ defplan :promote, %{name: "node-b"} do
   end
   assert peer_dead
   assert force: never, probes_agree
-  knell fence_corpse(ack: humans(1))
+  knell fence_corpse(ack: humans())
   when datasets_ahead do
     knell rollback_ahead_datasets()
   end

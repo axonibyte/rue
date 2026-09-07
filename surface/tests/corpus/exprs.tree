@@ -1,0 +1,422 @@
+FILE@0..723
+  VERSION@0..6
+    NAME@0..3 "rue"
+    INT@4..5 "0"
+    NEWLINE@5..6 "\n"
+  DEF@6..723
+    NAME@6..13 "defplan"
+    HEADER@14..38
+      ATOM@14..20 ":exprs"
+      COMMA@20..21 ","
+      PATTERN@22..38
+        RECORD@22..38
+          PERCENT_BRACE@22..24 "%{"
+          RECORD_ENTRY@24..37
+            NAME@24..28 "name"
+            COLON@28..29 ":"
+            LITERAL@30..37
+              STRING@30..37 "\"db-01\""
+          R_BRACE@37..38 "}"
+    NAME@39..41 "do"
+    NEWLINE@41..42 "\n"
+    BODY@44..719
+      LINE@44..52
+        NAME@44..48 "wane"
+        ARGS@49..51
+          LITERAL@49..51
+            DURATION@49..51 "1h"
+        NEWLINE@51..52 "\n"
+      ASSERT@54..78
+        NAME@54..60 "assert"
+        ARGS@61..77
+          BINARY@61..77
+            REF@61..62
+              NAME@61..62 "a"
+            NAME@63..65 "or"
+            BINARY@66..77
+              REF@66..67
+                NAME@66..67 "b"
+              NAME@68..71 "and"
+              UNARY@72..77
+                NAME@72..75 "not"
+                REF@76..77
+                  NAME@76..77 "c"
+        NEWLINE@77..78 "\n"
+      ASSERT@80..131
+        NAME@80..86 "assert"
+        ARGS@87..130
+          BINARY@87..130
+            UNARY@87..99
+              NAME@87..90 "not"
+              PAREN@91..99
+                L_PAREN@91..92 "("
+                BINARY@92..98
+                  REF@92..93
+                    NAME@92..93 "a"
+                  EQ_EQ@94..96 "=="
+                  REF@97..98
+                    NAME@97..98 "b"
+                R_PAREN@98..99 ")"
+            NAME@100..103 "and"
+            BINARY@104..130
+              BINARY@104..126
+                BINARY@104..113
+                  LITERAL@104..105
+                    INT@104..105 "1"
+                  PLUS@106..107 "+"
+                  BINARY@108..113
+                    LITERAL@108..109
+                      INT@108..109 "2"
+                    STAR@110..111 "*"
+                    LITERAL@112..113
+                      INT@112..113 "3"
+                MINUS@114..115 "-"
+                BINARY@116..126
+                  BINARY@116..122
+                    UNARY@116..118
+                      MINUS@116..117 "-"
+                      LITERAL@117..118
+                        INT@117..118 "4"
+                    SLASH@119..120 "/"
+                    LITERAL@121..122
+                      INT@121..122 "5"
+                  PERCENT@123..124 "%"
+                  LITERAL@125..126
+                    INT@125..126 "6"
+              LT@127..128 "<"
+              LITERAL@129..130
+                INT@129..130 "7"
+        NEWLINE@130..131 "\n"
+      ASSERT@133..166
+        NAME@133..139 "assert"
+        ARGS@140..165
+          BINARY@140..165
+            BINARY@140..155
+              BINARY@140..146
+                REF@140..141
+                  NAME@140..141 "x"
+                BANG_EQ@142..144 "!="
+                REF@145..146
+                  NAME@145..146 "y"
+              NAME@147..149 "or"
+              BINARY@150..155
+                REF@150..151
+                  NAME@150..151 "p"
+                GT@152..153 ">"
+                REF@154..155
+                  NAME@154..155 "q"
+            NAME@156..158 "or"
+            BINARY@159..165
+              REF@159..160
+                NAME@159..160 "r"
+              GE@161..163 ">="
+              REF@164..165
+                NAME@164..165 "s"
+        NEWLINE@165..166 "\n"
+      ASSERT@168..204
+        NAME@168..174 "assert"
+        ARGS@175..203
+          BINARY@175..203
+            CALL@175..196
+              REF@175..177
+                NAME@175..177 "if"
+              L_PAREN@177..178 "("
+              ARGS@178..195
+                CALL@178..189
+                  REF@178..186
+                    NAME@178..186 "defined?"
+                  L_PAREN@186..187 "("
+                  ARGS@187..188
+                    REF@187..188
+                      NAME@187..188 "x"
+                  R_PAREN@188..189 ")"
+                COMMA@189..190 ","
+                REF@191..192
+                  NAME@191..192 "x"
+                COMMA@192..193 ","
+                LITERAL@194..195
+                  INT@194..195 "0"
+              R_PAREN@195..196 ")"
+            EQ_EQ@197..199 "=="
+            LITERAL@200..203
+              FLOAT@200..203 "1.5"
+        NEWLINE@203..204 "\n"
+      ASSERT@206..288
+        NAME@206..212 "assert"
+        ARGS@213..287
+          BINARY@213..287
+            BINARY@213..261
+              BINARY@213..239
+                REF@213..225
+                  NAME@213..217 "host"
+                  DOT@217..218 "."
+                  NAME@218..225 "address"
+                EQ_EQ@226..228 "=="
+                LITERAL@229..239
+                  STRING@229..239 "\"10.0.0.1\""
+              NAME@240..243 "and"
+              BINARY@244..261
+                CALL@244..255
+                  REF@244..247
+                    NAME@244..247 "len"
+                  L_PAREN@247..248 "("
+                  ARGS@248..254
+                    REF@248..254
+                      NAME@248..254 "guests"
+                  R_PAREN@254..255 ")"
+                LE@256..258 "<="
+                LITERAL@259..261
+                  INT@259..261 "16"
+            NAME@262..265 "and"
+            CALL@266..287
+              REF@266..273
+                NAME@266..273 "member?"
+              L_PAREN@273..274 "("
+              ARGS@274..286
+                LITERAL@274..276
+                  ATOM@274..276 ":a"
+                COMMA@276..277 ","
+                LIST@278..286
+                  L_BRACK@278..279 "["
+                  LITERAL@279..281
+                    ATOM@279..281 ":a"
+                  COMMA@281..282 ","
+                  LITERAL@283..285
+                    ATOM@283..285 ":b"
+                  R_BRACK@285..286 "]"
+              R_PAREN@286..287 ")"
+        NEWLINE@287..288 "\n"
+      ASSERT@290..388
+        NAME@290..296 "assert"
+        ARGS@297..387
+          CALL@297..387
+            REF@297..304
+              NAME@297..304 "all_eq?"
+            L_PAREN@304..305 "("
+            ARGS@305..386
+              RECORD@305..379
+                PERCENT_BRACE@305..307 "%{"
+                RECORD_ENTRY@307..321
+                  STRING@307..315 "\"hvac-1\""
+                  COLON@315..316 ":"
+                  LITERAL@317..321
+                    ATOM@317..321 ":off"
+                COMMA@321..322 ","
+                RECORD_ENTRY@323..337
+                  STRING@323..331 "\"hvac-2\""
+                  COLON@331..332 ":"
+                  LITERAL@333..337
+                    ATOM@333..337 ":off"
+                COMMA@337..338 ","
+                RECORD_ENTRY@339..358
+                  UPPER_NAME@339..345 "BMC_PW"
+                  COLON@345..346 ":"
+                  CALL@347..358
+                    REF@347..353
+                      NAME@347..353 "secret"
+                    L_PAREN@353..354 "("
+                    ARGS@354..357
+                      LITERAL@354..357
+                        ATOM@354..357 ":pw"
+                    R_PAREN@357..358 ")"
+                COMMA@358..359 ","
+                RECORD_ENTRY@360..378
+                  NAME@360..365 "plain"
+                  COLON@365..366 ":"
+                  LIST@367..378
+                    L_BRACK@367..368 "["
+                    LITERAL@368..369
+                      INT@368..369 "1"
+                    COMMA@369..370 ","
+                    LITERAL@371..372
+                      INT@371..372 "2"
+                    COMMA@372..373 ","
+                    LIST@374..377
+                      L_BRACK@374..375 "["
+                      LITERAL@375..376
+                        INT@375..376 "3"
+                      R_BRACK@376..377 "]"
+                    R_BRACK@377..378 "]"
+                R_BRACE@378..379 "}"
+              COMMA@379..380 ","
+              REF@381..386
+                NAME@381..386 "other"
+            R_PAREN@386..387 ")"
+        NEWLINE@387..388 "\n"
+      ASSERT@390..490
+        NAME@390..396 "assert"
+        ARGS@397..489
+          BINARY@397..489
+            BINARY@397..463
+              BINARY@397..437
+                BINARY@397..420
+                  CALL@397..410
+                    REF@397..401
+                      NAME@397..401 "to_s"
+                    L_PAREN@401..402 "("
+                    ARGS@402..409
+                      REF@402..406
+                        NAME@402..406 "port"
+                      COMMA@406..407 ","
+                      LITERAL@408..409
+                        INT@408..409 "8"
+                    R_PAREN@409..410 ")"
+                  EQ_EQ@411..413 "=="
+                  LITERAL@414..420
+                    STRING@414..420 "\"8443\""
+                NAME@421..424 "and"
+                BINARY@425..437
+                  CALL@425..432
+                    REF@425..428
+                      NAME@425..428 "abs"
+                    L_PAREN@428..429 "("
+                    ARGS@429..431
+                      UNARY@429..431
+                        MINUS@429..430 "-"
+                        LITERAL@430..431
+                          INT@430..431 "3"
+                    R_PAREN@431..432 ")"
+                  EQ_EQ@433..435 "=="
+                  LITERAL@436..437
+                    INT@436..437 "3"
+              NAME@438..441 "and"
+              BINARY@442..463
+                CALL@442..451
+                  REF@442..445
+                    NAME@442..445 "min"
+                  L_PAREN@445..446 "("
+                  ARGS@446..450
+                    LITERAL@446..447
+                      INT@446..447 "1"
+                    COMMA@447..448 ","
+                    LITERAL@449..450
+                      INT@449..450 "2"
+                  R_PAREN@450..451 ")"
+                LT@452..453 "<"
+                CALL@454..463
+                  REF@454..457
+                    NAME@454..457 "max"
+                  L_PAREN@457..458 "("
+                  ARGS@458..462
+                    LITERAL@458..459
+                      INT@458..459 "1"
+                    COMMA@459..460 ","
+                    LITERAL@461..462
+                      INT@461..462 "2"
+                  R_PAREN@462..463 ")"
+            NAME@464..467 "and"
+            BINARY@468..489
+              CALL@468..484
+                REF@468..476
+                  NAME@468..476 "count_eq"
+                L_PAREN@476..477 "("
+                ARGS@477..483
+                  REF@477..479
+                    NAME@477..479 "xs"
+                  COMMA@479..480 ","
+                  LITERAL@481..483
+                    ATOM@481..483 ":x"
+                R_PAREN@483..484 ")"
+              EQ_EQ@485..487 "=="
+              LITERAL@488..489
+                INT@488..489 "0"
+        NEWLINE@489..490 "\n"
+      ASSERT@492..565
+        NAME@492..498 "assert"
+        ARGS@499..564
+          BINARY@499..564
+            CALL@499..510
+              REF@499..507
+                NAME@499..507 "unknown?"
+              L_PAREN@507..508 "("
+              ARGS@508..509
+                REF@508..509
+                  NAME@508..509 "f"
+              R_PAREN@509..510 ")"
+            NAME@511..513 "or"
+            BINARY@514..564
+              LITERAL@514..558
+                STRING@514..558 "\"it's #{a.b.c} and #{len(x)} #{secret(:pw)}\""
+              EQ_EQ@559..561 "=="
+              LITERAL@562..564
+                STRING@562..564 "\"\""
+        NEWLINE@564..565 "\n"
+      ASSERT@567..618
+        NAME@567..573 "assert"
+        ARGS@574..617
+          BINARY@574..617
+            BINARY@574..602
+              BINARY@574..588
+                BINARY@574..582
+                  LITERAL@574..577
+                    DURATION@574..577 "30m"
+                  PLUS@578..579 "+"
+                  LITERAL@580..582
+                    DURATION@580..582 "2h"
+                GT@583..584 ">"
+                LITERAL@585..588
+                  DURATION@585..588 "90s"
+              NAME@589..592 "and"
+              BINARY@593..602
+                LITERAL@593..595
+                  DURATION@593..595 "1d"
+                EQ_EQ@596..598 "=="
+                LITERAL@599..602
+                  DURATION@599..602 "24h"
+            NAME@603..606 "and"
+            BINARY@607..617
+              LITERAL@607..612
+                DURATION@607..612 "500ms"
+              LT@613..614 "<"
+              LITERAL@615..617
+                DURATION@615..617 "1s"
+        NEWLINE@617..618 "\n"
+      ASSERT@620..646
+        NAME@620..626 "assert"
+        ARGS@627..645
+          BINARY@627..645
+            LITERAL@627..631
+              NAME@627..631 "true"
+            NAME@632..635 "and"
+            UNARY@636..645
+              NAME@636..639 "not"
+              LITERAL@640..645
+                NAME@640..645 "false"
+        NEWLINE@645..646 "\n"
+      STEP@648..718
+        CALL@648..718
+          REF@648..653
+            NAME@648..653 "do_it"
+          L_PAREN@653..654 "("
+          ARGS@654..717
+            KW@654..672
+              NAME@654..658 "name"
+              COLON@658..659 ":"
+              REF@660..672
+                NAME@660..665 "alias"
+                DOT@665..666 "."
+                NAME@666..672 "output"
+            COMMA@672..673 ","
+            KW@674..682
+              NAME@674..678 "list"
+              COLON@678..679 ":"
+              LIST@680..682
+                L_BRACK@680..681 "["
+                R_BRACK@681..682 "]"
+            COMMA@682..683 ","
+            KW@684..695
+              NAME@684..690 "record"
+              COLON@690..691 ":"
+              RECORD@692..695
+                PERCENT_BRACE@692..694 "%{"
+                R_BRACE@694..695 "}"
+            COMMA@695..696 ","
+            KW@697..717
+              NAME@697..701 "atom"
+              COLON@701..702 ":"
+              LITERAL@703..717
+                ATOM@703..717 ":\"quoted atom\""
+          R_PAREN@717..718 ")"
+      NEWLINE@718..719 "\n"
+    NAME@719..722 "end"
+    NEWLINE@722..723 "\n"

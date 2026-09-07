@@ -1,0 +1,46 @@
+rue 0
+defplan :items, %{name: "db-01"} do
+  wane 1h
+  preflight do
+    written_bytes_since_split
+    defined?(x)
+  end
+  assert peer_dead, window: 30s, on_lapse: :hold
+  assert force: never, probes_agree
+  knell fence_corpse(ack: :none, reason: "the driver verified off"), gate: wait(30m), window: 1h
+  when datasets_ahead, window: 10m, on_lapse: :revert do
+    knell rollback_ahead_datasets()
+  else
+    resurrection_gate()
+  end
+  repeat over: guests, as g, max: 16 do
+    start_guest(g: g)
+  end
+  repeat 3 as i do
+    poke(i: i)
+  end
+  par do
+    a()
+    b(), force: [unknown, drift, :stale_guard]
+  end
+  slot :before_commit
+  observe verify_reach() as reach
+  t3.pf_allow(port: 8443), gate: auth(:netops), window: 5m, on_lapse: :revert as pf
+  step_one() |> step_two(x: 1) |> step_three()
+  bmc_account_enable() as bmc
+  confirm()
+  commit()
+end
+
+defrole :db do
+  :before_commit 10 snapshot()
+  :before_commit fence()
+end
+
+defprotocol :quiesce, inverse: :resume do
+  default run_quiesce()
+end
+
+defimpl :quiesce, for: :db do
+  pg_quiesce()
+end

@@ -696,7 +696,7 @@ top       := site | import | defprobe | defprim | defop | defplan | defrole | de
 comment   := "#" .* NEWLINE                             -- preserved by the lossless tree and `fmt`
 ```
 
-Tokens: `NAME` (`[a-z_][a-z0-9_]*`), `ATOM` (`:` NAME), `INT`, `FLOAT`, `BOOL`, `STRING` (double-quoted, `#{expr}` interpolation), `DURATION` (`INT ("ms"|"s"|"m"|"h"|"d")` — bare tokens, never strings), keywords (§6.6), punctuation `( ) [ ] { } , : | |> = == != < <= > >= + - * / % . do end else`.
+Tokens: `NAME` (`[a-z_][a-z0-9_]*` with an optional trailing `?`, as the builtins `defined?` and `member?` spell it), `UPPER_NAME` (`[A-Z][A-Za-z0-9_]*`, an environment variable's name as a record key), `ATOM` (`:` NAME, or `:"..."` for an atom with characters a NAME cannot carry, such as `:"corpse:node-a"`), `INT`, `FLOAT`, `BOOL`, `STRING` (double-quoted, `#{expr}` interpolation with braces balanced inside it), `DURATION` (`INT ("ms"|"s"|"m"|"h"|"d")` — bare tokens, never strings), keywords (§6.6), punctuation `( ) [ ] { } , : | |> = == != < <= > >= + - * / % . do end else`. Keywords are contextual: a keyword is a NAME the parser reads by position, so `user`, `content` and `window` serve as keyword-argument names too. A comment is trivia anywhere a line ends or begins: trailing a statement, alone inside a body, alone at the top; the lossless tree keeps it and `fmt` writes it back. A newline ends a statement everywhere; brackets close on the line that opened them.
 
 ### 6.3 Statement grammar
 
@@ -704,12 +704,13 @@ Tokens: `NAME` (`[a-z_][a-z0-9_]*`), `ATOM` (`:` NAME), `INT`, `FLOAT`, `BOOL`, 
 site      := "site" "do" sitedecl* "end"
 sitedecl  := ("inventory" "from:" | "journal" "to:" | "approval" "via:" | "secrets" "from:"
             | "secrets" "deliver_to:" | "notify" "via:" | "execute" "via:" | "backstop" "scheduler:")
-              bindexpr ("," kw)* NEWLINE
+              bindexpr ("," kw)* NEWLINE                -- a binding call may carry keywords of its own: hook(:bmc_api, transport: :api)
            | "max_wait" DURATION NEWLINE
            | "skew_tolerance" DURATION NEWLINE
            | "operators" "do" ("identity" ATOM "," "user:" (STRING | ":socket_owner")
-                 ("," "operator_for:" ("[" ATOM* "]" | ":all"))? ("," "admin:" BOOL)? ("," "subscribe:" "[" ATOM* "]")? NEWLINE)* "end"
-           | "hooks" "do" ("registrar" ATOM "," "user:" (STRING | ":socket_owner") "," "may_register:" "[" ATOM* "]" NEWLINE)* "end"
+                 ("," "operator_for:" (atomlist | ":all"))? ("," "admin:" BOOL)? ("," "subscribe:" atomlist)? NEWLINE)* "end"
+           | "hooks" "do" ("registrar" ATOM "," "user:" (STRING | ":socket_owner") "," "may_register:" atomlist NEWLINE)* "end"
+atomlist  := "[" (ATOM ("," ATOM)*)? "]"                -- every list in the surface is comma-separated
 bindexpr  := call | "[" call ("," call)* "]"            -- file("…"), hook(:audit), [local(), ssh()], [requester(), hold(until: :wane), hook(:escrow)]
 
 import    := "import" STRING ("as" NAME)? NEWLINE
@@ -720,8 +721,11 @@ probebody := ("run" STRING | "hook" ATOM) NEWLINE ("locus" ATOM NEWLINE)? ("equi
 
 defprim   := "defprim" ATOM params? "do" "run" STRING ("," "classes:" record)? NEWLINE "end"   -- a run template with declared argument classes
 
-defop     := "defop" ATOM "," pattern ("," kw)* "do" opbody "end"
-opbody    := ("footprint" fpentry ("," fpentry)* NEWLINE)
+defop     := "defop" ATOM "," pattern params "do" opbody "end"
+params    := ("," NAME ":" (NAME | expr))*             -- parameter declarations: `ack: ack` a required parameter, `drift: :defer` one with a default;
+                                                       -- a declared parameter may stand wherever the body grammar names a literal (`drift: drift`, `ack: ack`),
+                                                       -- and an `ack` parameter bound to `:none` at the call takes a sibling `reason:` there, as `refusal:` does
+opbody    := ("footprint" (fpentry ("," fpentry)*)? NEWLINE)   -- empty for a knell that touches nothing
              ("reach" transport ("," transport)* NEWLINE)?
              ("pre" guard ("," guard)* NEWLINE)?
              ("do:" body NEWLINE)
@@ -746,8 +750,9 @@ undo      := ":restore" | body | "compensate:" body
 output    := NAME ("," "secret:" BOOL)?
 locus     := ":controller" | ":target" | "host(" expr ")"
 
-defplan   := "defplan" ATOM "," pattern ("," kw)* "do" planopts item* "end"
-planopts  := ("gate" gateexpr ("," "window:" DURATION)? ("," "allow_zero_human:" BOOL)? NEWLINE)?
+defplan   := "defplan" ATOM "," pattern params "do" planopts item* "end"
+planopts  := -- an unordered set of the following lines, each at most once
+             ("gate" gateexpr ("," "window:" DURATION)? ("," "allow_zero_human:" BOOL)? NEWLINE)?
              ("wane" DURATION ("," "renew_within:" DURATION)? NEWLINE)?
              ("backstop" "trigger:" trigger ("," "locus:" ATOM)? ("," "arm_before:" (ATOM | INT))? NEWLINE)?
              ("fires_by_construction:" BOOL NEWLINE)?
@@ -771,7 +776,7 @@ preflight := "preflight" "do" guard* "end"
 observe   := "observe" call "as" NAME NEWLINE
 assert    := "assert" guard ("," "window:" DURATION)? ("," "on_lapse:" ATOM)? NEWLINE
 repeat    := "repeat" INT "as" NAME "do" item* "end"
-           | "repeat" "over:" expr "as" NAME "," "max:" INT "do" item* "end"
+           | "repeat" "over:" expr ","? "as" NAME "," "max:" INT "do" item* "end"   -- `fmt` writes the comma
 whenblock := "when" guard ("," "window:" DURATION)? ("," "on_lapse:" ATOM)? "do" item* ("else" item*)? "end"
 
 defrole   := "defrole" ATOM "do" contribution* "end"
@@ -780,7 +785,7 @@ defprotocol := "defprotocol" ATOM ("," "inverse:" ATOM)? "do" ("default" item)? 
 defimpl   := "defimpl" ATOM "," "for:" ATOM "do" item* "end"
 
 pattern   := NAME | "%{" (NAME ":" pat) ("," NAME ":" pat)* "}" ("=" NAME)?
-pat       := ATOM | STRING | INT | NAME | "[" pat* "]" | "_"
+pat       := ATOM | STRING | INT | NAME | "[" (pat ("," pat)*)? "]" | "_"   -- a list pattern matches any of its members
 guard     := expr | "force:" "never" "," expr
 kw        := NAME ":" expr
 ```
@@ -822,8 +827,9 @@ cmp    := add (("<"|"<="|">"|">="|"=="|"!=") add)?
 add    := mul (("+"|"-") mul)*     mul := unary (("*"|"/"|"%") unary)*     unary := "-" unary | atom
 atom   := INT | FLOAT | STRING | ATOM | DURATION | BOOL | ref | call | "(" expr ")" | record | list
 ref    := NAME ("." NAME)*          -- a fact path, a plan param, host.<field>, or <alias>.<output>
-call   := NAME "(" (expr ("," expr)* ("," kw)*)? ")"
-record := "%{" (NAME ":" expr) ("," NAME ":" expr)* "}"       list := "[" (expr ("," expr)*)? "]"
+call   := (NAME ".")* NAME "(" (expr ("," expr)* ("," kw)*)? ")"   -- qualified: an imported name (t3.pf_allow(...)) or a dotted fact shape (bmc.account("bg"))
+record := "%{" (key ":" expr) ("," key ":" expr)* "}"         list := "[" (expr ("," expr)*)? "]"
+key    := NAME | UPPER_NAME | STRING                          -- %{"hvac-1": :off}, %{BMC_PW: secret(:pw)}
 STRING := '"' (char | "#{" expr "}")* '"'                    -- Secret if any part is Secret
 ```
 
@@ -931,7 +937,7 @@ Exit codes: `0` applied / ok; `1` refused, check failed, diagnostics; `2` usage,
 
 ### 6.9 Front-end stack
 
-Lexer `logos`; parser `chumsky` (error recovery is required; parse errors are E0101, unknown names E0102 with the nearest-name suggestion, import cycles E0104); tree `rowan` (lossless, so `explain`, `fmt` and editor tooling round-trip source); diagnostics `miette`; resolver producing one `core::Plan` per host. `rue fmt` is idempotent and byte-preserves every tenant file.
+Lexer `logos`; a hand-written recursive-descent parser with statement-level recovery emitting `rowan`'s lossless green tree directly (error recovery is required; parse errors are E0101 with expected and found, one per line at most so a recovered line cannot cascade, unknown names E0102 with the nearest-name suggestion, import cycles E0104; `chumsky`, named here before Phase 2, is still an alpha and would need a second pass to reach a lossless tree); tree `rowan` (lossless, so `explain`, `fmt` and editor tooling round-trip source); diagnostics `miette`; resolver producing one `core::Plan` per host. A file's site is its own `site do` when present, else the site of exactly one imported file (two imported sites and none local is E0103), and a path in a site resolves relative to the file that declares it. `rue fmt` is idempotent and byte-preserves every tenant file; it refuses a file with parse errors rather than rewrite it.
 
 ---
 ## 7. The engine (rue-engine, rued)

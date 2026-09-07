@@ -1,0 +1,89 @@
+FILE@0..162
+  VERSION@0..6
+    NAME@0..3 "rue"
+    INT@4..5 "0"
+    NEWLINE@5..6 "\n"
+  DEF@6..104
+    NAME@6..11 "defop"
+    HEADER@12..23
+      ATOM@12..20 ":posture"
+      COMMA@20..21 ","
+      PATTERN@22..23
+        REF@22..23
+          NAME@22..23 "_"
+    NAME@24..26 "do"
+    NEWLINE@26..27 "\n"
+    BODY@29..104
+      LINE@29..61
+        NAME@29..38 "footprint"
+        ARGS@39..60
+          KW@39..60
+            NAME@39..44 "owned"
+            COLON@44..45 ":"
+            CALL@46..60
+              REF@46..50
+                NAME@46..50 "file"
+              L_PAREN@50..51 "("
+              ARGS@51..59
+                LITERAL@51..59
+                  STRING@51..59 "\"/etc/x\""
+              R_PAREN@59..60 ")"
+        NEWLINE@60..61 "\n"
+      LINE@63..103
+        NAME@63..65 "do"
+        COLON@65..66 ":"
+        ARGS@67..102
+          CALL@67..102
+            REF@67..72
+              NAME@67..72 "write"
+            L_PAREN@72..73 "("
+            ARGS@73..101
+              CALL@73..87
+                REF@73..77
+                  NAME@73..77 "file"
+                L_PAREN@77..78 "("
+                ARGS@78..86
+                  LITERAL@78..86
+                    STRING@78..86 "\"/etc/x\""
+                R_PAREN@86..87 ")"
+              COMMA@87..88 ","
+              KW@89..101
+                NAME@89..96 "content"
+                COLON@96..97 ":"
+                LITERAL@98..101
+                  STRING@98..101 "\"x\""
+            R_PAREN@101..102 ")"
+        NEWLINE@102..103 "\n"
+      NEWLINE@103..104 "\n"
+  DEF@104..162
+    NAME@104..111 "defplan"
+    HEADER@112..132
+      ATOM@112..114 ":p"
+      COMMA@114..115 ","
+      PATTERN@116..132
+        RECORD@116..132
+          PERCENT_BRACE@116..118 "%{"
+          RECORD_ENTRY@118..131
+            NAME@118..122 "name"
+            COLON@122..123 ":"
+            LITERAL@124..131
+              STRING@124..131 "\"db-01\""
+          R_BRACE@131..132 "}"
+    NAME@133..135 "do"
+    NEWLINE@135..136 "\n"
+    BODY@138..158
+      LINE@138..146
+        NAME@138..142 "wane"
+        ARGS@143..145
+          LITERAL@143..145
+            DURATION@143..145 "1h"
+        NEWLINE@145..146 "\n"
+      STEP@148..157
+        CALL@148..157
+          REF@148..155
+            NAME@148..155 "posture"
+          L_PAREN@155..156 "("
+          R_PAREN@156..157 ")"
+      NEWLINE@157..158 "\n"
+    NAME@158..161 "end"
+    NEWLINE@161..162 "\n"

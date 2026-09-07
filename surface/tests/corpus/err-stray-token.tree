@@ -1,0 +1,67 @@
+FILE@0..131
+  VERSION@0..6
+    NAME@0..3 "rue"
+    INT@4..5 "0"
+    NEWLINE@5..6 "\n"
+  DEF@6..131
+    NAME@6..11 "defop"
+    HEADER@12..23
+      ATOM@12..20 ":posture"
+      COMMA@20..21 ","
+      PATTERN@22..23
+        REF@22..23
+          NAME@22..23 "_"
+    NAME@24..26 "do"
+    NEWLINE@26..27 "\n"
+    BODY@29..127
+      LINE@29..63
+        NAME@29..38 "footprint"
+        ARGS@39..60
+          KW@39..60
+            NAME@39..44 "owned"
+            COLON@44..45 ":"
+            CALL@46..60
+              REF@46..50
+                NAME@46..50 "file"
+              L_PAREN@50..51 "("
+              ARGS@51..59
+                LITERAL@51..59
+                  STRING@51..59 "\"/etc/x\""
+              R_PAREN@59..60 ")"
+        ERROR@61..62
+          R_PAREN@61..62 ")"
+        NEWLINE@62..63 "\n"
+      LINE@65..105
+        NAME@65..67 "do"
+        COLON@67..68 ":"
+        ARGS@69..104
+          CALL@69..104
+            REF@69..74
+              NAME@69..74 "write"
+            L_PAREN@74..75 "("
+            ARGS@75..103
+              CALL@75..89
+                REF@75..79
+                  NAME@75..79 "file"
+                L_PAREN@79..80 "("
+                ARGS@80..88
+                  LITERAL@80..88
+                    STRING@80..88 "\"/etc/x\""
+                R_PAREN@88..89 ")"
+              COMMA@89..90 ","
+              KW@91..103
+                NAME@91..98 "content"
+                COLON@98..99 ":"
+                LITERAL@100..103
+                  STRING@100..103 "\"x\""
+            R_PAREN@103..104 ")"
+        NEWLINE@104..105 "\n"
+      LINE@107..127
+        NAME@107..117 "undo_locus"
+        COLON@117..118 ":"
+        ARGS@119..126
+          LITERAL@119..126
+            ATOM@119..126 ":target"
+        NEWLINE@126..127 "\n"
+    NAME@127..130 "end"
+    NEWLINE@130..131 "\n"

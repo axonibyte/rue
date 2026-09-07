@@ -17,7 +17,7 @@ end
 # preamble, so env:/stdin: have no carrier.
 defop :bmc_login, %{os: :appliance} do
   footprint modified: bmc.session
-  do: run("bmc login", env: %{BMC_PW: {:secret, :bmc_pw}})
+  do: run("bmc login", env: %{BMC_PW: secret(:bmc_pw)})
   undo: :restore
   locus: host("api-01")
 end

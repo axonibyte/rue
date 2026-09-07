@@ -1,0 +1,1 @@
+err-newer-version.rue:1:1: E0105: language version 7 is newer than this compiler reads (0); expected `rue 0`, found `rue 7`

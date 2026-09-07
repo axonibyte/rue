@@ -1,0 +1,862 @@
+FILE@0..2108
+  VERSION@0..6
+    NAME@0..3 "rue"
+    INT@4..5 "0"
+    NEWLINE@5..6 "\n"
+  IMPORT@6..36
+    NAME@6..12 "import"
+    STRING@13..29 "\"../t3/plan.rue\""
+    NAME@30..32 "as"
+    NAME@33..35 "t3"
+    NEWLINE@35..36 "\n"
+  IMPORT@36..53
+    NAME@36..42 "import"
+    STRING@43..52 "\"lib.rue\""
+    NEWLINE@52..53 "\n"
+  NEWLINE@53..54 "\n"
+  DEF@54..189
+    NAME@54..62 "defprobe"
+    HEADER@63..76
+      ATOM@63..76 ":sshd_posture"
+    NAME@77..79 "do"
+    NEWLINE@79..80 "\n"
+    BODY@82..185
+      LINE@82..96
+        NAME@82..85 "run"
+        ARGS@86..95
+          LITERAL@86..95
+            STRING@86..95 "\"sshd -T\""
+        NEWLINE@95..96 "\n"
+      LINE@98..112
+        NAME@98..103 "locus"
+        ARGS@104..111
+          LITERAL@104..111
+            ATOM@104..111 ":target"
+        NEWLINE@111..112 "\n"
+      LINE@114..136
+        NAME@114..125 "equivalence"
+        ARGS@126..135
+          LITERAL@126..135
+            ATOM@126..135 ":line_set"
+        NEWLINE@135..136 "\n"
+      LINE@138..170
+        NAME@138..146 "produces"
+        ARGS@147..169
+          REF@147..159
+            NAME@147..159 "sshd_posture"
+          COMMA@159..160 ","
+          REF@161..169
+            NAME@161..169 "sshd_pid"
+        NEWLINE@169..170 "\n"
+      LINE@172..185
+        NAME@172..178 "static"
+        ARGS@179..184
+          LITERAL@179..184
+            NAME@179..184 "false"
+        NEWLINE@184..185 "\n"
+    NAME@185..188 "end"
+    NEWLINE@188..189 "\n"
+  NEWLINE@189..190 "\n"
+  DEF@190..267
+    NAME@190..198 "defprobe"
+    HEADER@199..218
+      ATOM@199..218 ":fence_verified_off"
+    NAME@219..221 "do"
+    NEWLINE@221..222 "\n"
+    BODY@224..263
+      LINE@224..243
+        NAME@224..228 "hook"
+        ARGS@229..242
+          LITERAL@229..242
+            ATOM@229..242 ":fence_driver"
+        NEWLINE@242..243 "\n"
+      LINE@245..263
+        NAME@245..250 "locus"
+        ARGS@251..262
+          LITERAL@251..262
+            ATOM@251..262 ":controller"
+        NEWLINE@262..263 "\n"
+    NAME@263..266 "end"
+    NEWLINE@266..267 "\n"
+  NEWLINE@267..268 "\n"
+  DEF@268..365
+    NAME@268..275 "defprim"
+    HEADER@276..292
+      ATOM@276..280 ":svc"
+      COMMA@280..281 ","
+      KW@282..292
+        NAME@282..286 "name"
+        COLON@286..287 ":"
+        REF@288..292
+          NAME@288..292 "name"
+    NAME@293..295 "do"
+    NEWLINE@295..296 "\n"
+    BODY@298..361
+      LINE@298..361
+        NAME@298..301 "run"
+        ARGS@302..360
+          LITERAL@302..327
+            STRING@302..327 "\"service #{name} restart\""
+          COMMA@327..328 ","
+          KW@329..360
+            NAME@329..336 "classes"
+            COLON@336..337 ":"
+            RECORD@338..360
+              PERCENT_BRACE@338..340 "%{"
+              RECORD_ENTRY@340..359
+                NAME@340..344 "name"
+                COLON@344..345 ":"
+                LITERAL@346..359
+                  ATOM@346..359 ":target_local"
+              R_BRACE@359..360 "}"
+        NEWLINE@360..361 "\n"
+    NAME@361..364 "end"
+    NEWLINE@364..365 "\n"
+  NEWLINE@365..366 "\n"
+  DEF@366..1570
+    NAME@366..371 "defop"
+    HEADER@372..450
+      ATOM@372..380 ":posture"
+      COMMA@380..381 ","
+      PATTERN@382..425
+        RECORD@382..421
+          PERCENT_BRACE@382..384 "%{"
+          RECORD_ENTRY@384..406
+            NAME@384..386 "os"
+            COLON@386..387 ":"
+            LIST@388..406
+              L_BRACK@388..389 "["
+              LITERAL@389..397
+                ATOM@389..397 ":freebsd"
+              COMMA@397..398 ","
+              LITERAL@399..405
+                ATOM@399..405 ":macos"
+              R_BRACK@405..406 "]"
+          COMMA@406..407 ","
+          RECORD_ENTRY@408..420
+            NAME@408..413 "roles"
+            COLON@413..414 ":"
+            LIST@415..420
+              L_BRACK@415..416 "["
+              LITERAL@416..419
+                ATOM@416..419 ":db"
+              R_BRACK@419..420 "]"
+          R_BRACE@420..421 "}"
+        EQ@422..423 "="
+        NAME@424..425 "h"
+      COMMA@425..426 ","
+      KW@427..435
+        NAME@427..430 "ack"
+        COLON@430..431 ":"
+        REF@432..435
+          NAME@432..435 "ack"
+      COMMA@435..436 ","
+      KW@437..450
+        NAME@437..442 "drift"
+        COLON@442..443 ":"
+        LITERAL@444..450
+          ATOM@444..450 ":defer"
+    NAME@451..453 "do"
+    NEWLINE@453..454 "\n"
+    BODY@456..1566
+      LINE@456..635
+        NAME@456..465 "footprint"
+        ARGS@466..634
+          KW@466..487
+            NAME@466..471 "owned"
+            COLON@471..472 ":"
+            CALL@473..487
+              REF@473..477
+                NAME@473..477 "file"
+              L_PAREN@477..478 "("
+              ARGS@478..486
+                LITERAL@478..486
+                  STRING@478..486 "\"/etc/x\""
+              R_PAREN@486..487 ")"
+          COMMA@487..488 ","
+          KW@489..532
+            NAME@489..495 "region"
+            COLON@495..496 ":"
+            CALL@497..532
+              REF@497..501
+                NAME@497..501 "file"
+              L_PAREN@501..502 "("
+              ARGS@502..531
+                LITERAL@502..516
+                  STRING@502..516 "\"/etc/pf.conf\""
+                COMMA@516..517 ","
+                KW@518..531
+                  NAME@518..524 "anchor"
+                  COLON@524..525 ":"
+                  LITERAL@526..531
+                    STRING@526..531 "\"rue\""
+              R_PAREN@531..532 ")"
+          COMMA@532..533 ","
+          KW@534..561
+            NAME@534..542 "modified"
+            COLON@542..543 ":"
+            CALL@544..561
+              REF@544..555
+                NAME@544..547 "bmc"
+                DOT@547..548 "."
+                NAME@548..555 "account"
+              L_PAREN@555..556 "("
+              ARGS@556..560
+                LITERAL@556..560
+                  STRING@556..560 "\"bg\""
+              R_PAREN@560..561 ")"
+          COMMA@561..562 ","
+          KW@563..584
+            NAME@563..570 "derived"
+            COLON@570..571 ":"
+            REF@572..584
+              NAME@572..584 "sshd_posture"
+          COMMA@584..585 ","
+          KW@586..615
+            NAME@586..597 "append_only"
+            COLON@597..598 ":"
+            REF@599..615
+              NAME@599..605 "record"
+              DOT@605..606 "."
+              NAME@606..615 "placement"
+          COMMA@615..616 ","
+          KW@617..634
+            NAME@617..621 "held"
+            COLON@621..622 ":"
+            REF@623..634
+              NAME@623..627 "proc"
+              DOT@627..628 "."
+              NAME@628..634 "tunnel"
+        NEWLINE@634..635 "\n"
+      LINE@637..653
+        NAME@637..642 "reach"
+        ARGS@643..652
+          CALL@643..652
+            REF@643..646
+              NAME@643..646 "ssh"
+            L_PAREN@646..647 "("
+            ARGS@647..651
+              REF@647..651
+                NAME@647..651 "host"
+            R_PAREN@651..652 ")"
+        NEWLINE@652..653 "\n"
+      LINE@655..683
+        NAME@655..658 "pre"
+        ARGS@659..682
+          REF@659..666
+            NAME@659..666 "sshd_ok"
+          COMMA@666..667 ","
+          CALL@668..682
+            REF@668..676
+              NAME@668..676 "defined?"
+            L_PAREN@676..677 "("
+            ARGS@677..681
+              REF@677..681
+                NAME@677..681 "port"
+            R_PAREN@681..682 ")"
+        NEWLINE@682..683 "\n"
+      LINE@685..982
+        NAME@685..687 "do"
+        COLON@687..688 ":"
+        ARGS@689..981
+          LIST@689..981
+            L_BRACK@689..690 "["
+            CALL@690..729
+              REF@690..695
+                NAME@690..695 "write"
+              L_PAREN@695..696 "("
+              ARGS@696..728
+                CALL@696..710
+                  REF@696..700
+                    NAME@696..700 "file"
+                  L_PAREN@700..701 "("
+                  ARGS@701..709
+                    LITERAL@701..709
+                      STRING@701..709 "\"/etc/x\""
+                  R_PAREN@709..710 ")"
+                COMMA@710..711 ","
+                KW@712..728
+                  NAME@712..719 "content"
+                  COLON@719..720 ":"
+                  REF@721..728
+                    NAME@721..728 "posture"
+              R_PAREN@728..729 ")"
+            COMMA@729..730 ","
+            CALL@731..806
+              REF@731..734
+                NAME@731..734 "run"
+              L_PAREN@734..735 "("
+              ARGS@735..805
+                LITERAL@735..756
+                  STRING@735..756 "\"service sshd reload\""
+                COMMA@756..757 ","
+                KW@758..785
+                  NAME@758..761 "env"
+                  COLON@761..762 ":"
+                  RECORD@763..785
+                    PERCENT_BRACE@763..765 "%{"
+                    RECORD_ENTRY@765..784
+                      UPPER_NAME@765..770 "TOKEN"
+                      COLON@770..771 ":"
+                      CALL@772..784
+                        REF@772..778
+                          NAME@772..778 "secret"
+                        L_PAREN@778..779 "("
+                        ARGS@779..783
+                          LITERAL@779..783
+                            ATOM@779..783 ":tok"
+                        R_PAREN@783..784 ")"
+                    R_BRACE@784..785 "}"
+                COMMA@785..786 ","
+                KW@787..805
+                  NAME@787..792 "stdin"
+                  COLON@792..793 ":"
+                  CALL@794..805
+                    REF@794..800
+                      NAME@794..800 "secret"
+                    L_PAREN@800..801 "("
+                    ARGS@801..804
+                      LITERAL@801..804
+                        ATOM@801..804 ":pw"
+                    R_PAREN@804..805 ")"
+              R_PAREN@805..806 ")"
+            COMMA@806..807 ","
+            CALL@808..846
+              REF@808..813
+                NAME@808..813 "stage"
+              L_PAREN@813..814 "("
+              ARGS@814..845
+                REF@814..820
+                  NAME@814..820 "script"
+                COMMA@820..821 ","
+                KW@822..834
+                  NAME@822..829 "content"
+                  COLON@829..830 ":"
+                  LITERAL@831..834
+                    STRING@831..834 "\"x\""
+                COMMA@834..835 ","
+                KW@836..845
+                  NAME@836..840 "mode"
+                  COLON@840..841 ":"
+                  LITERAL@842..845
+                    INT@842..845 "493"
+              R_PAREN@845..846 ")"
+            COMMA@846..847 ","
+            CALL@848..866
+              REF@848..855
+                NAME@848..855 "install"
+              L_PAREN@855..856 "("
+              ARGS@856..865
+                LITERAL@856..865
+                  ATOM@856..865 ":backstop"
+              R_PAREN@865..866 ")"
+            COMMA@866..867 ","
+            CALL@868..886
+              REF@868..875
+                NAME@868..875 "release"
+              L_PAREN@875..876 "("
+              ARGS@876..885
+                LITERAL@876..885
+                  ATOM@876..885 ":backstop"
+              R_PAREN@885..886 ")"
+            COMMA@886..887 ","
+            CALL@888..910
+              REF@888..894
+                NAME@888..894 "remove"
+              L_PAREN@894..895 "("
+              ARGS@895..909
+                CALL@895..909
+                  REF@895..899
+                    NAME@895..899 "file"
+                  L_PAREN@899..900 "("
+                  ARGS@900..908
+                    LITERAL@900..908
+                      STRING@900..908 "\"/etc/y\""
+                  R_PAREN@908..909 ")"
+              R_PAREN@909..910 ")"
+            COMMA@910..911 ","
+            CALL@912..961
+              REF@912..924
+                NAME@912..924 "region_clear"
+              L_PAREN@924..925 "("
+              ARGS@925..960
+                CALL@925..960
+                  REF@925..929
+                    NAME@925..929 "file"
+                  L_PAREN@929..930 "("
+                  ARGS@930..959
+                    LITERAL@930..944
+                      STRING@930..944 "\"/etc/pf.conf\""
+                    COMMA@944..945 ","
+                    KW@946..959
+                      NAME@946..952 "anchor"
+                      COLON@952..953 ":"
+                      LITERAL@954..959
+                        STRING@954..959 "\"rue\""
+                  R_PAREN@959..960 ")"
+              R_PAREN@960..961 ")"
+            COMMA@961..962 ","
+            CALL@963..980
+              REF@963..966
+                NAME@963..966 "svc"
+              L_PAREN@966..967 "("
+              ARGS@967..979
+                KW@967..979
+                  NAME@967..971 "name"
+                  COLON@971..972 ":"
+                  LITERAL@973..979
+                    STRING@973..979 "\"sshd\""
+              R_PAREN@979..980 ")"
+            R_BRACK@980..981 "]"
+        NEWLINE@981..982 "\n"
+      LINE@984..1080
+        NAME@984..988 "undo"
+        COLON@988..989 ":"
+        ARGS@990..1079
+          KW@990..1079
+            NAME@990..1000 "compensate"
+            COLON@1000..1001 ":"
+            LIST@1002..1079
+              L_BRACK@1002..1003 "["
+              CALL@1003..1045
+                REF@1003..1009
+                  NAME@1003..1009 "append"
+                L_PAREN@1009..1010 "("
+                ARGS@1010..1044
+                  CALL@1010..1028
+                    REF@1010..1014
+                      NAME@1010..1014 "file"
+                    L_PAREN@1014..1015 "("
+                    ARGS@1015..1027
+                      LITERAL@1015..1027
+                        STRING@1015..1027 "\"/var/log/x\""
+                    R_PAREN@1027..1028 ")"
+                  COMMA@1028..1029 ","
+                  KW@1030..1044
+                    NAME@1030..1034 "line"
+                    COLON@1034..1035 ":"
+                    REF@1036..1044
+                      NAME@1036..1044 "reversal"
+                R_PAREN@1044..1045 ")"
+              COMMA@1045..1046 ","
+              CALL@1047..1078
+                REF@1047..1051
+                  NAME@1047..1051 "hook"
+                L_PAREN@1051..1052 "("
+                ARGS@1052..1077
+                  LITERAL@1052..1062
+                    ATOM@1052..1062 ":placement"
+                  COMMA@1062..1063 ","
+                  KW@1064..1077
+                    NAME@1064..1067 "set"
+                    COLON@1067..1068 ":"
+                    REF@1069..1077
+                      NAME@1069..1077 "reversal"
+                R_PAREN@1077..1078 ")"
+              R_BRACK@1078..1079 "]"
+        NEWLINE@1079..1080 "\n"
+      LINE@1082..1124
+        NAME@1082..1090 "undo_pre"
+        ARGS@1091..1123
+          CALL@1091..1105
+            REF@1091..1095
+              NAME@1091..1095 "file"
+            L_PAREN@1095..1096 "("
+            ARGS@1096..1104
+              LITERAL@1096..1104
+                STRING@1096..1104 "\"/etc/x\""
+            R_PAREN@1104..1105 ")"
+          COMMA@1105..1106 ","
+          REF@1107..1123
+            NAME@1107..1113 "record"
+            DOT@1113..1114 "."
+            NAME@1114..1123 "placement"
+        NEWLINE@1123..1124 "\n"
+      LINE@1126..1152
+        NAME@1126..1130 "post"
+        ARGS@1131..1151
+          REF@1131..1151
+            NAME@1131..1151 "sshd_posture_applied"
+        NEWLINE@1151..1152 "\n"
+      LINE@1154..1174
+        NAME@1154..1164 "undo_locus"
+        COLON@1164..1165 ":"
+        ARGS@1166..1173
+          LITERAL@1166..1173
+            ATOM@1166..1173 ":target"
+        NEWLINE@1173..1174 "\n"
+      LINE@1176..1350
+        NAME@1176..1183 "refusal"
+        COLON@1183..1184 ":"
+        ARGS@1185..1349
+          REF@1185..1190
+            NAME@1185..1190 "knell"
+          COMMA@1190..1191 ","
+          KW@1192..1211
+            NAME@1192..1197 "guard"
+            COLON@1197..1198 ":"
+            REF@1199..1211
+              NAME@1199..1211 "verified_off"
+          COMMA@1211..1212 ","
+          KW@1213..1224
+            NAME@1213..1217 "cost"
+            COLON@1217..1218 ":"
+            LITERAL@1219..1224
+              ATOM@1219..1224 ":none"
+          COMMA@1224..1225 ","
+          KW@1226..1256
+            NAME@1226..1232 "reason"
+            COLON@1232..1233 ":"
+            LITERAL@1234..1256
+              STRING@1234..1256 "\"nothing is destroyed\""
+          COMMA@1256..1257 ","
+          KW@1258..1349
+            NAME@1258..1261 "ack"
+            COLON@1261..1262 ":"
+            CALL@1263..1349
+              REF@1263..1269
+                NAME@1263..1269 "thresh"
+              L_PAREN@1269..1270 "("
+              ARGS@1270..1348
+                LITERAL@1270..1271
+                  INT@1270..1271 "2"
+                COMMA@1271..1272 ","
+                CALL@1273..1297
+                  REF@1273..1277
+                    NAME@1273..1277 "auth"
+                  L_PAREN@1277..1278 "("
+                  ARGS@1278..1296
+                    LITERAL@1278..1285
+                      ATOM@1278..1285 ":oncall"
+                    COMMA@1285..1286 ","
+                    KW@1287..1296
+                      NAME@1287..1293 "weight"
+                      COLON@1293..1294 ":"
+                      LITERAL@1295..1296
+                        INT@1295..1296 "1"
+                  R_PAREN@1296..1297 ")"
+                COMMA@1297..1298 ","
+                CALL@1299..1316
+                  REF@1299..1305
+                    NAME@1299..1305 "humans"
+                  L_PAREN@1305..1306 "("
+                  ARGS@1306..1315
+                    KW@1306..1315
+                      NAME@1306..1312 "weight"
+                      COLON@1312..1313 ":"
+                      LITERAL@1314..1315
+                        INT@1314..1315 "1"
+                  R_PAREN@1315..1316 ")"
+                COMMA@1316..1317 ","
+                CALL@1318..1337
+                  REF@1318..1323
+                    NAME@1318..1323 "group"
+                  L_PAREN@1323..1324 "("
+                  ARGS@1324..1336
+                    CALL@1324..1336
+                      REF@1324..1328
+                        NAME@1324..1328 "auth"
+                      L_PAREN@1328..1329 "("
+                      ARGS@1329..1335
+                        LITERAL@1329..1335
+                          ATOM@1329..1335 ":alice"
+                      R_PAREN@1335..1336 ")"
+                  R_PAREN@1336..1337 ")"
+                COMMA@1337..1338 ","
+                CALL@1339..1348
+                  REF@1339..1343
+                    NAME@1339..1343 "wait"
+                  L_PAREN@1343..1344 "("
+                  ARGS@1344..1347
+                    LITERAL@1344..1347
+                      DURATION@1344..1347 "30m"
+                  R_PAREN@1347..1348 ")"
+              R_PAREN@1348..1349 ")"
+        NEWLINE@1349..1350 "\n"
+      LINE@1352..1365
+        NAME@1352..1357 "drift"
+        COLON@1357..1358 ":"
+        ARGS@1359..1364
+          REF@1359..1364
+            NAME@1359..1364 "drift"
+        NEWLINE@1364..1365 "\n"
+      LINE@1367..1401
+        NAME@1367..1374 "outputs"
+        ARGS@1375..1400
+          REF@1375..1380
+            NAME@1375..1380 "token"
+          COMMA@1380..1381 ","
+          KW@1382..1394
+            NAME@1382..1388 "secret"
+            COLON@1388..1389 ":"
+            LITERAL@1390..1394
+              NAME@1390..1394 "true"
+          COMMA@1394..1395 ","
+          REF@1396..1400
+            NAME@1396..1400 "port"
+        NEWLINE@1400..1401 "\n"
+      LINE@1403..1433
+        NAME@1403..1414 "exclusivity"
+        COLON@1414..1415 ":"
+        ARGS@1416..1432
+          LITERAL@1416..1432
+            ATOM@1416..1432 ":\"corpse:node-a\""
+        NEWLINE@1432..1433 "\n"
+      LINE@1435..1457
+        NAME@1435..1440 "locus"
+        COLON@1440..1441 ":"
+        ARGS@1442..1456
+          CALL@1442..1456
+            REF@1442..1446
+              NAME@1442..1446 "host"
+            L_PAREN@1446..1447 "("
+            ARGS@1447..1455
+              LITERAL@1447..1455
+                STRING@1447..1455 "\"bmc-01\""
+            R_PAREN@1455..1456 ")"
+        NEWLINE@1456..1457 "\n"
+      LINE@1459..1488
+        NAME@1459..1471 "handoff_done"
+        COLON@1471..1472 ":"
+        ARGS@1473..1487
+          CALL@1473..1487
+            REF@1473..1485
+              NAME@1473..1485 "heir_running"
+            L_PAREN@1485..1486 "("
+            R_PAREN@1486..1487 ")"
+        NEWLINE@1487..1488 "\n"
+      LINE@1490..1521
+        NAME@1490..1497 "suspend"
+        COLON@1497..1498 ":"
+        ARGS@1499..1520
+          CALL@1499..1520
+            REF@1499..1502
+              NAME@1499..1502 "run"
+            L_PAREN@1502..1503 "("
+            ARGS@1503..1519
+              LITERAL@1503..1519
+                STRING@1503..1519 "\"tunnel suspend\""
+            R_PAREN@1519..1520 ")"
+        NEWLINE@1520..1521 "\n"
+      LINE@1523..1566
+        NAME@1523..1534 "reestablish"
+        COLON@1534..1535 ":"
+        ARGS@1536..1565
+          CALL@1536..1565
+            REF@1536..1539
+              NAME@1536..1539 "run"
+            L_PAREN@1539..1540 "("
+            ARGS@1540..1564
+              LITERAL@1540..1564
+                STRING@1540..1564 "\"tunnel resume --rotate\""
+            R_PAREN@1564..1565 ")"
+        NEWLINE@1565..1566 "\n"
+    NAME@1566..1569 "end"
+    NEWLINE@1569..1570 "\n"
+  NEWLINE@1570..1571 "\n"
+  DEF@1571..1693
+    NAME@1571..1576 "defop"
+    HEADER@1577..1585
+      ATOM@1577..1582 ":bare"
+      COMMA@1582..1583 ","
+      PATTERN@1584..1585
+        REF@1584..1585
+          NAME@1584..1585 "_"
+    NAME@1586..1588 "do"
+    NEWLINE@1588..1589 "\n"
+    BODY@1591..1689
+      LINE@1591..1601
+        NAME@1591..1600 "footprint"
+        NEWLINE@1600..1601 "\n"
+      LINE@1603..1634
+        NAME@1603..1605 "do"
+        COLON@1605..1606 ":"
+        ARGS@1607..1633
+          CALL@1607..1633
+            REF@1607..1611
+              NAME@1607..1611 "hook"
+            L_PAREN@1611..1612 "("
+            ARGS@1612..1632
+              LITERAL@1612..1618
+                ATOM@1612..1618 ":fence"
+              COMMA@1618..1619 ","
+              KW@1620..1632
+                NAME@1620..1624 "node"
+                COLON@1624..1625 ":"
+                REF@1626..1632
+                  NAME@1626..1632 "corpse"
+            R_PAREN@1632..1633 ")"
+        NEWLINE@1633..1634 "\n"
+      LINE@1636..1669
+        NAME@1636..1643 "refusal"
+        COLON@1643..1644 ":"
+        ARGS@1645..1668
+          LITERAL@1645..1650
+            ATOM@1645..1650 ":hold"
+          COMMA@1650..1651 ","
+          KW@1652..1668
+            NAME@1652..1655 "via"
+            COLON@1655..1656 ":"
+            LITERAL@1657..1668
+              ATOM@1657..1668 ":slave_mode"
+        NEWLINE@1668..1669 "\n"
+      LINE@1671..1689
+        NAME@1671..1681 "undo_locus"
+        COLON@1681..1682 ":"
+        ARGS@1683..1688
+          LITERAL@1683..1688
+            ATOM@1683..1688 ":none"
+        NEWLINE@1688..1689 "\n"
+    NAME@1689..1692 "end"
+    NEWLINE@1692..1693 "\n"
+  NEWLINE@1693..1694 "\n"
+  DEF@1694..2108
+    NAME@1694..1701 "defplan"
+    HEADER@1702..1729
+      ATOM@1702..1710 ":promote"
+      COMMA@1710..1711 ","
+      PATTERN@1712..1729
+        RECORD@1712..1729
+          PERCENT_BRACE@1712..1714 "%{"
+          RECORD_ENTRY@1714..1728
+            NAME@1714..1718 "name"
+            COLON@1718..1719 ":"
+            LITERAL@1720..1728
+              STRING@1720..1728 "\"node-b\""
+          R_BRACE@1728..1729 "}"
+    NAME@1730..1732 "do"
+    NEWLINE@1732..1733 "\n"
+    BODY@1735..2104
+      LINE@1735..1792
+        NAME@1735..1739 "gate"
+        ARGS@1740..1791
+          CALL@1740..1753
+            REF@1740..1744
+              NAME@1740..1744 "auth"
+            L_PAREN@1744..1745 "("
+            ARGS@1745..1752
+              LITERAL@1745..1752
+                ATOM@1745..1752 ":oncall"
+            R_PAREN@1752..1753 ")"
+          COMMA@1753..1754 ","
+          KW@1755..1766
+            NAME@1755..1761 "window"
+            COLON@1761..1762 ":"
+            LITERAL@1763..1766
+              DURATION@1763..1766 "30m"
+          COMMA@1766..1767 ","
+          KW@1768..1791
+            NAME@1768..1784 "allow_zero_human"
+            COLON@1784..1785 ":"
+            LITERAL@1786..1791
+              NAME@1786..1791 "false"
+        NEWLINE@1791..1792 "\n"
+      LINE@1794..1821
+        NAME@1794..1798 "wane"
+        ARGS@1799..1820
+          LITERAL@1799..1801
+            DURATION@1799..1801 "4h"
+          COMMA@1801..1802 ","
+          KW@1803..1820
+            NAME@1803..1815 "renew_within"
+            COLON@1815..1816 ":"
+            LITERAL@1817..1820
+              DURATION@1817..1820 "30m"
+        NEWLINE@1820..1821 "\n"
+      LINE@1823..1945
+        NAME@1823..1831 "backstop"
+        ARGS@1832..1944
+          KW@1832..1913
+            NAME@1832..1839 "trigger"
+            COLON@1839..1840 ":"
+            LIST@1841..1913
+              L_BRACK@1841..1842 "["
+              KW@1842..1851
+                NAME@1842..1847 "after"
+                COLON@1847..1848 ":"
+                LITERAL@1849..1851
+                  DURATION@1849..1851 "4h"
+              COMMA@1851..1852 ","
+              KW@1853..1874
+                NAME@1853..1869 "unless_heartbeat"
+                COLON@1869..1870 ":"
+                LITERAL@1871..1874
+                  DURATION@1871..1874 "60s"
+              COMMA@1874..1875 ","
+              KW@1876..1889
+                NAME@1876..1884 "interval"
+                COLON@1884..1885 ":"
+                LITERAL@1886..1889
+                  DURATION@1886..1889 "20s"
+              COMMA@1889..1890 ","
+              KW@1891..1912
+                NAME@1891..1907 "unless_confirmed"
+                COLON@1907..1908 ":"
+                LITERAL@1909..1912
+                  DURATION@1909..1912 "10m"
+              R_BRACK@1912..1913 "]"
+          COMMA@1913..1914 ","
+          KW@1915..1929
+            NAME@1915..1920 "locus"
+            COLON@1920..1921 ":"
+            LITERAL@1922..1929
+              ATOM@1922..1929 ":target"
+          COMMA@1929..1930 ","
+          KW@1931..1944
+            NAME@1931..1941 "arm_before"
+            COLON@1941..1942 ":"
+            LITERAL@1943..1944
+              INT@1943..1944 "3"
+        NEWLINE@1944..1945 "\n"
+      LINE@1947..1976
+        NAME@1947..1968 "fires_by_construction"
+        COLON@1968..1969 ":"
+        ARGS@1970..1975
+          LITERAL@1970..1975
+            NAME@1970..1975 "false"
+        NEWLINE@1975..1976 "\n"
+      LINE@1978..1996
+        NAME@1978..1988 "strictness"
+        COLON@1988..1989 ":"
+        ARGS@1990..1995
+          LITERAL@1990..1995
+            ATOM@1990..1995 ":warn"
+        NEWLINE@1995..1996 "\n"
+      LINE@1998..2010
+        NAME@1998..2002 "mode"
+        COLON@2002..2003 ":"
+        ARGS@2004..2009
+          LITERAL@2004..2009
+            ATOM@2004..2009 ":auto"
+        NEWLINE@2009..2010 "\n"
+      LINE@2012..2034
+        NAME@2012..2023 "exclusivity"
+        COLON@2023..2024 ":"
+        ARGS@2025..2033
+          LITERAL@2025..2033
+            ATOM@2025..2033 ":promote"
+        NEWLINE@2033..2034 "\n"
+      LINE@2036..2062
+        NAME@2036..2043 "require"
+        ARGS@2044..2061
+          KW@2044..2061
+            NAME@2044..2051 "journal"
+            COLON@2051..2052 ":"
+            LITERAL@2053..2061
+              ATOM@2053..2061 ":chained"
+        NEWLINE@2061..2062 "\n"
+      STEP@2064..2103
+        CALL@2064..2103
+          REF@2064..2071
+            NAME@2064..2071 "posture"
+          L_PAREN@2071..2072 "("
+          ARGS@2072..2102
+            KW@2072..2102
+              NAME@2072..2079 "posture"
+              COLON@2079..2080 ":"
+              LITERAL@2081..2102
+                STRING@2081..2102 "\"PermitRootLogin yes\""
+          R_PAREN@2102..2103 ")"
+      NEWLINE@2103..2104 "\n"
+    NAME@2104..2107 "end"
+    NEWLINE@2107..2108 "\n"

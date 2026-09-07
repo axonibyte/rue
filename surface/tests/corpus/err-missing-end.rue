@@ -1,0 +1,9 @@
+rue 0
+defop :posture, _ do
+  footprint owned: file("/etc/x")
+  do: write(file("/etc/x"), content: "x")
+
+defplan :p, %{name: "db-01"} do
+  wane 1h
+  posture()
+end

@@ -15,7 +15,7 @@ end
 
 defop :posture, _ do
   footprint owned: file("/etc/a")
-  do: run("curl -u admin:#{{:secret, :db_pw}} https://db/posture")   # a secret in shell text
+  do: run("curl -u admin:#{secret(:db_pw)} https://db/posture")   # a secret in shell text
 end
 
 defplan :posture, %{name: "db-01"} do

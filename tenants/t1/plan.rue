@@ -10,6 +10,9 @@ site do
   journal to: local()
   approval via: hook(:authority)
   secrets deliver_to: [requester(), hook(:escrow)]
+  # The executors the site serves: ssh for the database host, the bmc's API
+  # through a hook. Phase 0 chose these transports by hand; the text says so.
+  execute via: [ssh(), hook(:bmc_api, transport: :api)]
   backstop scheduler: cron()
   operators do
     identity :ops_requester, user: "ops", operator_for: :all, admin: true

@@ -1,0 +1,30 @@
+FILE@0..52
+  VERSION@0..6
+    NAME@0..3 "rue"
+    INT@4..5 "7"
+    NEWLINE@5..6 "\n"
+  DEF@6..52
+    NAME@6..13 "defplan"
+    HEADER@14..34
+      ATOM@14..16 ":p"
+      COMMA@16..17 ","
+      PATTERN@18..34
+        RECORD@18..34
+          PERCENT_BRACE@18..20 "%{"
+          RECORD_ENTRY@20..33
+            NAME@20..24 "name"
+            COLON@24..25 ":"
+            LITERAL@26..33
+              STRING@26..33 "\"db-01\""
+          R_BRACE@33..34 "}"
+    NAME@35..37 "do"
+    NEWLINE@37..38 "\n"
+    BODY@40..48
+      LINE@40..48
+        NAME@40..44 "wane"
+        ARGS@45..47
+          LITERAL@45..47
+            DURATION@45..47 "1h"
+        NEWLINE@47..48 "\n"
+    NAME@48..51 "end"
+    NEWLINE@51..52 "\n"

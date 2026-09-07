@@ -1,0 +1,58 @@
+rue 0
+import "../t3/plan.rue" as t3
+import "lib.rue"
+
+defprobe :sshd_posture do
+  run "sshd -T"
+  locus :target
+  equivalence :line_set
+  produces sshd_posture, sshd_pid
+  static false
+end
+
+defprobe :fence_verified_off do
+  hook :fence_driver
+  locus :controller
+end
+
+defprim :svc, name: name do
+  run "service #{name} restart", classes: %{name: :target_local}
+end
+
+defop :posture, %{os: [:freebsd, :macos], roles: [:db]} = h, ack: ack, drift: :defer do
+  footprint owned: file("/etc/x"), region: file("/etc/pf.conf", anchor: "rue"), modified: bmc.account("bg"), derived: sshd_posture, append_only: record.placement, held: proc.tunnel
+  reach ssh(host)
+  pre sshd_ok, defined?(port)
+  do: [write(file("/etc/x"), content: posture), run("service sshd reload", env: %{TOKEN: secret(:tok)}, stdin: secret(:pw)), stage(script, content: "x", mode: 493), install(:backstop), release(:backstop), remove(file("/etc/y")), region_clear(file("/etc/pf.conf", anchor: "rue")), svc(name: "sshd")]
+  undo: compensate: [append(file("/var/log/x"), line: reversal), hook(:placement, set: reversal)]
+  undo_pre file("/etc/x"), record.placement
+  post sshd_posture_applied
+  undo_locus: :target
+  refusal: knell, guard: verified_off, cost: :none, reason: "nothing is destroyed", ack: thresh(2, auth(:oncall, weight: 1), humans(weight: 1), group(auth(:alice)), wait(30m))
+  drift: drift
+  outputs token, secret: true, port
+  exclusivity: :"corpse:node-a"
+  locus: host("bmc-01")
+  handoff_done: heir_running()
+  suspend: run("tunnel suspend")
+  reestablish: run("tunnel resume --rotate")
+end
+
+defop :bare, _ do
+  footprint
+  do: hook(:fence, node: corpse)
+  refusal: :hold, via: :slave_mode
+  undo_locus: :none
+end
+
+defplan :promote, %{name: "node-b"} do
+  gate auth(:oncall), window: 30m, allow_zero_human: false
+  wane 4h, renew_within: 30m
+  backstop trigger: [after: 4h, unless_heartbeat: 60s, interval: 20s, unless_confirmed: 10m], locus: :target, arm_before: 3
+  fires_by_construction: false
+  strictness: :warn
+  mode: :auto
+  exclusivity: :promote
+  require journal: :chained
+  posture(posture: "PermitRootLogin yes")
+end

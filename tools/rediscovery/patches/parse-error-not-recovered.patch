@@ -1,0 +1,16 @@
+# Reverts: a parse error recovers at the next line (section 6.9) -- without recovery the second error in a file is never reported and the tree after the first is lost.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/parser.rs
++++ b/surface/src/parser.rs
+@@ -213,10 +213,7 @@
+             message: format!("parse error {context}"),
+         });
+         self.start(ERROR);
+-        while let Some(t) = self.peek() {
+-            if t.kind == NEWLINE {
+-                break;
+-            }
++        while self.peek().is_some() {
+             self.bump();
+         }
+         self.finish();

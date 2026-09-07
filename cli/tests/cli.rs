@@ -225,3 +225,49 @@ fn artifact_prints_the_golden_and_reports_refusals_by_exit_code() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("NAME=VALUE"));
 }
+
+#[test]
+fn fmt_prints_the_canonical_text_checks_it_and_refuses_a_file_with_errors() {
+    let root = repo_root().unwrap();
+    let t1 = root.join("tenants/t1/plan.rue");
+    let out = rue(&["fmt", t1.to_str().unwrap()]);
+    assert!(out.status.success());
+    assert_eq!(
+        out.stdout,
+        fs::read(&t1).unwrap(),
+        "fmt is the identity on a tenant file"
+    );
+    let out = rue(&["fmt", "--check", t1.to_str().unwrap()]);
+    assert!(out.status.success() && out.stdout.is_empty());
+
+    let tmp = std::env::temp_dir().join(format!("rue-fmt-{}.rue", std::process::id()));
+    fs::write(
+        &tmp,
+        "rue 0\ndefplan :p,%{name: \"db-01\"} do\n    wane  1h\nend\n",
+    )
+    .unwrap();
+    let out = rue(&["fmt", "--check", tmp.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not formatted"));
+    let out = rue(&["fmt", tmp.to_str().unwrap()]);
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "rue 0\ndefplan :p, %{name: \"db-01\"} do\n  wane 1h\nend\n"
+    );
+
+    fs::write(
+        &tmp,
+        "rue 0\ndefplan :p, %{name: \"db-01\"} do\n  wane 1h\n",
+    )
+    .unwrap();
+    let out = rue(&["fmt", tmp.to_str().unwrap()]);
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        out.stdout.is_empty(),
+        "a file with errors is never rewritten"
+    );
+    assert!(String::from_utf8_lossy(&out.stderr)
+        .contains(&rue_core::diagnostics::Code::E0101.to_string()));
+}

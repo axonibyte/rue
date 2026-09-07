@@ -1,6 +1,6 @@
 //! `rue`, the operator CLI (docs/ROADMAP.md section 6.8), as far as Phase 1
-//! takes it: `check`, `explain` and `artifact` over a plan IR document, and
-//! `states`. The surface verbs (`.rue` input, `--host`, `--as`) arrive with
+//! takes it: `check`, `explain` and `artifact` over a plan IR document,
+//! `states`, and `fmt` over a `.rue` file (Phase 2). The surface verbs (`.rue` input, `--host`, `--as`) arrive with
 //! Phase 2; the IR is already one host's plan and carries the requester.
 //!
 //! Exit codes are the roadmap's: 0 ok; 1 refused; 2 usage, an unreadable or
@@ -54,6 +54,15 @@ enum Verb {
     },
     /// Print the runtime state machine's transition table.
     States,
+    /// Format a .rue file (section 6.9): the canonical layout, comments
+    /// kept; the identity on a formatted file.
+    Fmt {
+        /// The .rue file.
+        file: PathBuf,
+        /// Print nothing; exit 1 if the file is not already formatted.
+        #[arg(long)]
+        check: bool,
+    },
     /// Print the backstop artifact a :target backstop installs on the host
     /// (section 7.7): the scheduler-run script that undoes the covered
     /// steps when its trigger is due.
@@ -118,6 +127,31 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
         Verb::States => {
             out.write_all(render_table().as_bytes())?;
             Ok(ExitCode::SUCCESS)
+        }
+        Verb::Fmt { file, check } => {
+            let src = fs::read_to_string(&file)
+                .with_context(|| format!("cannot read {}", file.display()))?;
+            match rue_surface::format(&src, &file.display().to_string()) {
+                Ok(formatted) => {
+                    if check {
+                        if formatted == src {
+                            Ok(ExitCode::SUCCESS)
+                        } else {
+                            eprintln!("rue: {} is not formatted", file.display());
+                            Ok(ExitCode::from(1))
+                        }
+                    } else {
+                        out.write_all(formatted.as_bytes())?;
+                        Ok(ExitCode::SUCCESS)
+                    }
+                }
+                Err(diagnostics) => {
+                    for d in &diagnostics {
+                        eprintln!("{}", d.render());
+                    }
+                    Ok(ExitCode::from(1))
+                }
+            }
         }
         Verb::Artifact {
             plan,

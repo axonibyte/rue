@@ -1,0 +1,24 @@
+rue 0
+# Every site declaration of section 6.3, with a hook binding carrying a
+# keyword and a list of acceptors.
+
+site do
+  inventory from: file("inventory.toml")
+  journal to: local()
+  approval via: hook(:authority)
+  secrets from: file("secrets.toml")
+  secrets deliver_to: [requester(), hold(until: :wane), hook(:escrow)]
+  notify via: hook(:pager)
+  execute via: [local(), ssh(), hook(:bmc_api, transport: :api)]
+  backstop scheduler: cron()
+  max_wait 30m
+  skew_tolerance 120s
+  operators do
+    identity :ops, user: "ops", operator_for: :all, admin: true, subscribe: [:pager]
+    identity :second, user: "ops2", operator_for: [:promote, :shed_load]
+    identity :host, user: :socket_owner, operator_for: [:shed_load]   # the embedding host
+  end
+  hooks do
+    registrar :authority, user: "approvald", may_register: [:authority, :escrow]
+  end
+end

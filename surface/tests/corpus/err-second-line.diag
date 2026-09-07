@@ -1,0 +1,4 @@
+err-second-line.rue:4:11: E0101: parse error here; expected an expression, found end of line
+err-second-line.rue:5:15: E0101: parse error here; expected an expression, found `==`
+err-second-line.rue:6:13: E0101: parse error after `as`; expected a name, found end of line
+err-second-line.rue:7:3: E0101: parse error in a body; expected a statement, found `~`

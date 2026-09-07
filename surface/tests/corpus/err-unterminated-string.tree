@@ -1,0 +1,45 @@
+FILE@0..80
+  VERSION@0..6
+    NAME@0..3 "rue"
+    INT@4..5 "0"
+    NEWLINE@5..6 "\n"
+  DEF@6..80
+    NAME@6..11 "defop"
+    HEADER@12..23
+      ATOM@12..20 ":posture"
+      COMMA@20..21 ","
+      PATTERN@22..23
+        REF@22..23
+          NAME@22..23 "_"
+    NAME@24..26 "do"
+    NEWLINE@26..27 "\n"
+    BODY@29..76
+      LINE@29..60
+        NAME@29..38 "footprint"
+        ARGS@39..59
+          KW@39..59
+            NAME@39..44 "owned"
+            COLON@44..45 ":"
+            CALL@46..59
+              REF@46..50
+                NAME@46..50 "file"
+              L_PAREN@50..51 "("
+              ARGS@51..59
+                ERROR@51..59
+                  STRING@51..59 "\"/etc/x)"
+        NEWLINE@59..60 "\n"
+      LINE@62..76
+        NAME@62..64 "do"
+        COLON@64..65 ":"
+        ARGS@66..75
+          CALL@66..75
+            REF@66..69
+              NAME@66..69 "run"
+            L_PAREN@69..70 "("
+            ARGS@70..74
+              LITERAL@70..74
+                STRING@70..74 "\"ok\""
+            R_PAREN@74..75 ")"
+        NEWLINE@75..76 "\n"
+    NAME@76..79 "end"
+    NEWLINE@79..80 "\n"
