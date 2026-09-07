@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "rue"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "rue-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -234,7 +234,7 @@ dependencies = [
 
 [[package]]
 name = "rue-render"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "rue-core",
  "sha2",
@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "rue-tenants"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "rue-core",
  "rue-render",
