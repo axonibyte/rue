@@ -340,18 +340,20 @@ Dependency direction is downward only. `rue-core` depends on nothing in the work
 
 ### 4.5 Platforms
 
-| Component | FreeBSD | Linux | Windows |
-|---|---|---|---|
-| `rue` CLI | yes | yes | yes |
-| `rued` engine | yes (rc.d) | yes (systemd) | yes (Windows service) |
-| Generic executors | `local()`, `ssh()` | `local()`, `ssh()` | `local()`, `ssh()` (OpenSSH for Windows) |
-| Control channel | unix socket 0660 group `rue`, peer-credential identity | same | named pipe, DACL for group `rue`, client-SID identity |
-| Backstop artifact | POSIX `sh`; scheduler `cron()` | POSIX `sh`; scheduler `cron()` | PowerShell; scheduler `task_scheduler()` |
-| Controller store | `/var/db/rue` | `/var/db/rue` | `%ProgramData%\rue` |
-| Target `rue_root` (bootstrapped once, §7.7) | `/var/db/rue` root:`rue`; `instances/` 2770; `lock` 0664 | same | `%ProgramData%\rue` with group DACL |
-| Build target | `x86_64-`/`aarch64-unknown-freebsd` | `x86_64-`/`aarch64-unknown-linux-gnu` | `x86_64-pc-windows-gnu` (`-msvc` if the service wrapper needs it) |
+| Component | FreeBSD | Linux | Windows | macOS |
+|---|---|---|---|---|
+| `rue` CLI | yes | yes | yes | cross-built; untested until a Mac exists (§11) |
+| `rued` engine | yes (rc.d) | yes (systemd) | yes (Windows service) | cross-built; launchd daemon untested |
+| Generic executors | `local()`, `ssh()` | `local()`, `ssh()` | `local()`, `ssh()` (OpenSSH for Windows) | `local()`, `ssh()` |
+| Control channel | unix socket 0660 group `rue`, peer-credential identity | same | named pipe, DACL for group `rue`, client-SID identity | unix socket, `getpeereid` |
+| Backstop artifact | POSIX `sh` or Python; scheduler `cron()` | POSIX `sh` or Python; scheduler `cron()` | PowerShell or Python; scheduler `task_scheduler()` | POSIX `sh` or Python; scheduler `launchd()` (Phase 3; cron is deprecated and TCC-bound there) |
+| Controller store | `/var/db/rue` | `/var/db/rue` | `%ProgramData%\rue` | `/var/db/rue` |
+| Target `rue_root` (bootstrapped once, §7.7) | `/var/db/rue` root:`rue`; `instances/` 2770; `lock` 0664 | same | `%ProgramData%\rue` with group DACL | same as FreeBSD |
+| Build target | `x86_64-`/`aarch64-unknown-freebsd` | `x86_64-`/`aarch64-unknown-linux-gnu` | `x86_64-pc-windows-gnu` (`-msvc` if the service wrapper needs it) | `x86_64-`/`aarch64-apple-darwin` |
 
-Per-OS knowledge lives in exactly three places: `rue-render`, the OS family's generic executor and scheduler bindings in `rue-bindings`, and `ci/build-target.sh`. The OS family of a host comes from `HostRecord.os`; the renderer refuses an OS it has no template for (E0403).
+Every OS renders both its native shell and Python as artifact languages, per host (`HostRecord.artifact`; the native shell when absent): Python is a standard-library-only script run by `uv run --offline --script` with PEP 723 inline metadata on every OS, so a site whose Windows hosts cannot run PowerShell (execution policy, AppLocker, WDAC) standardizes on one artifact language across its OS mix; `uv` with a cached interpreter is an arm-time precondition wherever a host declares Python (§11).
+
+Per-OS knowledge lives in exactly three places: `rue-render` (templates and quoting), the OS family's generic executor and scheduler bindings in `rue-bindings`, and `ci/build-target.sh`; the one stated exception is `rue-core`'s artifact vocabulary (which shell family an `os` implies, which languages have a template), there because the checker refuses at check time and core cannot depend on render. The OS family of a host comes from `HostRecord.os`; a `:target` backstop on a host whose declared language has no template for its OS is E0403.
 
 ---
 
@@ -799,7 +801,7 @@ prim := "run(" STRING ("," "env:" record)? ("," "stdin:" expr)? ")"
       | call                                     -- a tenant-declared defprim
 ```
 
-`run` strings are the only place shell text exists. Interpolation into a `run` string is quoted by the renderer for the step's OS family (POSIX single-quote with `'\''` escaping; PowerShell single-quote doubling); a value that cannot be safely quoted is E0109.
+`run` strings are the only place shell text exists. Interpolation into a `run` string is quoted by the renderer for the step's OS family (POSIX single-quote with `'\''` escaping; PowerShell single-quote doubling), and the whole string is then embedded per the artifact's language (a Python literal with backslash escapes when the artifact is Python); a value that cannot be safely quoted is E0109 (a NUL anywhere; a control character other than tab, newline and return in a shell family).
 
 Reuse mechanisms and their totality rules:
 
@@ -902,6 +904,7 @@ Golden-tested text with `file:line:col`, expected/found, nearest-name suggestion
 rue check   <plan.rue> [--host H] [--json]           parse, resolve, check; print verdict
 rue explain <plan.rue> [--host H]                    per-host expanded steps with undo lines, loci, policies, gates
 rue render  <plan.rue> [--host H]                    expected end-state facts; touches nothing
+rue artifact <plan> --host H --instance ID [--set k=v]... print the backstop artifact a :target backstop installs on H (Phase 1: over the plan IR)
 rue apply   <plan.rue> --host H [--set k=v]... [--mode auto] [--ack N:"reason"]... [--dry-run]
 rue reveal  <instance>                               fetch a secret held by hold(), exactly once
 rue approve <instance> [--step N] < token            submit a proof for a plan-entry or step gate
@@ -1020,7 +1023,7 @@ Chain and sign in the engine, then deliver to every declared sink synchronously;
 
 **Locks.** `<rue_root>/lock` is a host-wide lock (`flock(LOCK_EX)` on an `O_RDONLY` descriptor, so root and the ssh user share it; a named mutex with a group DACL on Windows), held by anyone reading or writing any instance's region manifest — and held across the *whole* of a region undo, from reading sibling manifests through the write. A per-instance lock in the instance directory protects that instance's markers and undo. Lock order is host, then instance, always. The tier-6 race stage exercises both.
 
-**Backstop rendering.** A `:target` backstop is rendered by `rue-render` from the undo bodies of every covered step, in reverse order, into one standalone artifact for the host's OS family (POSIX `sh`; PowerShell), with every path and value baked in (quoted per family), a deadline file, a fired marker, the trigger logic, and per-step completion markers: the artifact undoes only steps whose marker is present and removes a marker after undoing its step. Installation is via the executor; arming writes the deadline; rearm rewrites only the deadline; disarm removes the artifact. The scheduler entry is the `backstop scheduler` binding's. The fired marker is read on the next engine contact and journaled `BackstopFired` (R0402).
+**Backstop rendering.** A `:target` backstop is rendered by `rue-render` from the undo bodies of every covered step, in reverse order, into one standalone artifact in the host's declared artifact language (POSIX `sh`; PowerShell; Python under `uv` with PEP 723 metadata, on any OS; §4.5), with every path and value baked in (quoted per family), a deadline file, a fired marker, the trigger logic, and per-step completion markers: the artifact undoes only steps whose marker is present and removes a marker after undoing its step. The instance-directory layout the artifact reads and the engine writes (`deadline` and `heartbeat` as epoch seconds in text, `markers/<n>` with one `<kind> <path> <sha256>` line per file fact, `snapshots/<n>/<k>`, `manifest`, and the region marker lines `# rue-region <anchor> begin`/`end`) is the contract stated in `docs/DESIGN.md`. A non-file fact cannot be observed by a script and is undone as if intact. Installation is via the executor; arming writes the deadline; rearm rewrites only the deadline; disarm removes the artifact. The scheduler entry is the `backstop scheduler` binding's, and for PowerShell it invokes the script by `-EncodedCommand` or on stdin so execution policy never applies. The fired marker is read on the next engine contact and journaled `BackstopFired` (R0402).
 
 **Drift.** Undo-time drift is handled by the step's policy (§5.2), identically by the engine and the artifact: `:clobber` restores or strips and leaves a `clobbered` marker the engine journals as `DriftClobbered`; `:defer` leaves the fact and a `drift` marker the engine journals as `DriftHeld`. The race between a fired artifact and an engine revert ends in the same place either way, under both locks, and is a tier-6 stage.
 
@@ -1157,7 +1160,7 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 4. Refusal lattice; intent inference and its checks (E0501–E0505); backstop coverage, triggers by intent, `reach` ordering, install/arm (E0401–E0403, E0406); bounded waits by reachability (E0506); gate satisfiability, minimum humans, requester exclusion, zero-human (E0508, E0509).
 5. The state machine from the five rules with an injected `now`; renewal windows; exclusivity; secret delivery at step completion.
 6. Journal model: entry type, chain, `secret_labels`, signature slot.
-7. `rue-render`: artifact text per OS family for the three triggers, completion markers, per-family quoting (E0109).
+7. `rue-render`: artifact text per OS family and artifact language (`sh`, PowerShell, Python under `uv`) for the three triggers, completion markers, drift as §5.2, per-family quoting (E0109); the `sh` and Python artifacts executed in tests against a temporary instance directory.
 8. Diagnostics type with codes, spans, expected/found, nearest-name.
 9. `tools/lint-seam.sh`, `tools/seam-denylist.txt`, `tools/check.sh` reporting all failures.
 10. Fuzz: a plan generator over random ops/footprints; the laws; `check` never panics.
@@ -1169,7 +1172,7 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Exit criteria.** Acceptance met; schema v1 tagged; "not proven" published.
 
-**Not proven.** Anything about the world: honesty, executors, sinks, arming. Any surface syntax. Positions the crates take where §5 is silent, for the owner: closure (E0202) treats a plan parameter and a host-record field as bakeable into a target-side artifact, and an earlier step's output as never bakeable, since nothing in §7.7 persists an output to the target; E0206 is decided only as a structural re-run (a `reestablish` primitive equal to one of the op's `do`), the "reachable from" rule needing an op reference bodies do not carry; E0211 is decided for static hosts only, a `:controller` step and a bound host being unjudged at check; E0411 is not decided at all, the site not declaring sinks; E0406 cannot arise, installation preceding the first covered step by construction.
+**Not proven.** Anything about the world: honesty, executors, sinks, arming. Any surface syntax. PowerShell artifacts are rendered and golden-tested, executed nowhere (no gate host runs PowerShell); the `sh` and Python artifacts are executed on FreeBSD and Linux gate hosts only. The darwin binaries are cross-built and packaged, executed and signed nowhere. macOS as a host is proven only by an artifact golden. Positions the crates take where §5 is silent, for the owner: the instance-directory layout in `docs/DESIGN.md` (epoch seconds in the deadline and heartbeat files, never an mtime; `<kind> <path> <sha256>` marker lines; the `# rue-region` marker lines; snapshots by footprint index); a non-file fact under a computed `:target` undo is undone as if intact; a fact reference in a covered undo is not bakeable this unit though closure admits it; a control character inside a shell quote is E0109; closure (E0202) treats a plan parameter and a host-record field as bakeable into a target-side artifact, and an earlier step's output as never bakeable, since nothing in §7.7 persists an output to the target; E0206 is decided only as a structural re-run (a `reestablish` primitive equal to one of the op's `do`), the "reachable from" rule needing an op reference bodies do not carry; E0211 is decided for static hosts only, a `:controller` step and a bound host being unjudged at check; E0411 is not decided at all, the site not declaring sinks; E0406 cannot arise, installation preceding the first covered step by construction.
 
 **Rediscovery rows seeded.** `chain-skips-prev-hash`, `expiry-at-boundary-open`, `secret-in-explain`, `knell-reverse-allowed`, `closure-uses-controller-fact`, `secret-in-run-string`, `secret-in-target-undo`, `reach-defer-drift-accepted`, `covered-step-before-install`, `temporary-after-not-wane`, `wait-unbounded`.
 
@@ -1299,6 +1302,8 @@ After every simulated event, the shadow model and the engine must agree on: (1) 
 | `elevate via:` binding (sudo/doas/runas) so `rue bootstrap` could act, not only verify | v1 | v0 is free of elevation |
 | Independent backstop watchdog (separate machine, separate credential; reads deadlines, re-asserts or pages) | v1 | Accepted out of v0 (§7.12) |
 | Editor tooling before or after v0.1.0? | 5 | After; keep the grammar settled first |
+| Python artifacts: `uv` and a cached interpreter as a bootstrap precondition on every OS; `uv run --offline` at fire time on a locked-out host; pre-warming at arm; what `rue bootstrap` prints when they are missing | 3 | The artifact is standard-library-only and the tests run it under `uv run --offline --script`; the target-side preconditions are the scheduler binding's and the bootstrap probe's to check |
+| macOS as a controller: a Mac to execute, smoke-test, sign and notarize the cross-built darwin binaries; the launchd daemon; TCC and Full Disk Access for the scheduler job | 3 | The binaries are cross-built from Linux with zig and no SDK (§12) and ship unexecuted and unsigned until then |
 
 ---
 
@@ -1306,7 +1311,7 @@ After every simulated event, the shadow model and the engine must agree on: (1) 
 
 - **Name sweep**: crates.io, PyPI, npm, GitHub for `rue`, `rued`, `rue-core`; record in `docs/prior-art.md` before anything public.
 - **Repository**: primary on Bitbucket (`axonibyte/rue`), mirrored to GitHub by the `doMirror` pipeline step on every push (`git clone --mirror`, `git push --mirror`; repositories and deploy keys assumed provisioned). GitHub description: `[ Mirror ] A language for provably reversible operations`. License BSD-2-Clause, copyright Axonibyte Innovations, LLC.
-- **Pipeline**: `bitbucket-pipelines.yml` in the sibling projects' shape — pinned `rust:<ver>` image and `rust-version`; `doMirror` first on every branch and tag; `doFetchAndTest` (cargo fetch `--locked`, `fmt --check`, `clippy --workspace --all-targets -- -D warnings`, `test --release`, shellcheck, the seam guard, service-install tests); parallel `build*` steps for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-freebsd`, `aarch64-unknown-freebsd`, `x86_64-pc-windows-gnu` — all binaries on all targets — via `bash ci/build-target.sh <triple>` producing `dist/*`; `doDeploy` on tags only: refuse if the tag disagrees with the workspace version, write `.sha256` sidecars, upload to Bitbucket Downloads with `BB_PUB_SECRET`. FreeBSD targets cross-link with `cargo-zigbuild` (amd64) and a pinned nightly `-Z build-std` (aarch64). `rustls` mandatory, `native-tls` banned. A released FreeBSD or Windows binary is smoke-tested on the oldest release it targets before it is announced.
+- **Pipeline**: `bitbucket-pipelines.yml` in the sibling projects' shape — pinned `rust:<ver>` image and `rust-version`; `doMirror` first on every branch and tag; `doFetchAndTest` (cargo fetch `--locked`, `fmt --check`, `clippy --workspace --all-targets -- -D warnings`, `test --release`, shellcheck, the seam guard, service-install tests); parallel `build*` steps for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-freebsd`, `aarch64-unknown-freebsd`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-gnu` — all binaries on all targets, each arm running `cargo clippy` for its target before building — via `bash ci/build-target.sh <triple>` producing `dist/*`; the darwin targets cross-link with `cargo-zigbuild` against zig's bundled libSystem and no macOS SDK, which holds as long as no crate in the darwin graph links an Apple framework: `tools/lint-darwin-deps.sh` (a gate phase) fails on any such crate, TLS is `rustls` with `ring` and `webpki-roots` (never native certificates), and local-time-zone crates stay out; `doDeploy` on tags only: refuse if the tag disagrees with the workspace version, write `.sha256` sidecars, upload to Bitbucket Downloads with `BB_PUB_SECRET`. FreeBSD targets cross-link with `cargo-zigbuild` (amd64) and a pinned nightly `-Z build-std` (aarch64). `rustls` mandatory, `native-tls` banned. A released FreeBSD or Windows binary is smoke-tested on the oldest release it targets before it is announced.
 - **reaper tenancy**: `.reaper.toml` at the root from Phase 1; guests `freebsd-15.1` and `ubuntu-26.04`, the latter also running the suite on the Windows target under wine (`ci/test-windows.sh`); `[build]` runs `cargo build --locked --workspace --all-targets` and `cargo test` against declared caches; `[run]` is the e2e harness from Phase 3; no pipes in any `cmd`. `reaper test` is the pre-push loop; CI is the independent re-proof.
 - **Docs**: `README.md` (first screen: the claim, the honesty caveat, the prior-art table, which journal configuration gives which guarantee), `DESIGN.md`, `LANGUAGE.md`, `TESTING.md`, `hook-protocol.md`, `control-protocol.md`, `verdict-schema.json`, `prior-art.md`, this file.
 - **Versioning**: SemVer for the crates; verdict schema, hook protocol and control protocol versioned independently; `.rue` and store upgrade vectors from v0.1.0 onward.
@@ -1346,7 +1351,7 @@ Secrets render as `<secret:label>`. Undo lines are printed before the step runs 
 { "name": "db-01", "address": "10.0.4.11", "os": "freebsd", "roles": ["db", "primary"], "reach": ["ssh"], "facts": { } }
 ```
 
-`name` unique and non-empty; `address` non-empty; `os` from a declared vocabulary the site may extend; `roles` a set; `reach` non-empty; `facts` free-form, available to clause dispatch (when `static`) and guards.
+`name` unique and non-empty; `address` non-empty; `os` from a declared vocabulary the site may extend (`windows` is the PowerShell family; every other name is POSIX); `roles` a set; `reach` non-empty; `facts` free-form, available to clause dispatch (when `static`) and guards; `artifact` optional, `sh`, `powershell` or `python`, the language the host's backstop artifact is rendered in, the native shell when absent (§4.5).
 
 ## Appendix D — Runtime codes
 

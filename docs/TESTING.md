@@ -22,6 +22,7 @@ failure, and exits 0 only if every phase ran and passed:
 | `ecodes` | `Rue.Proto.Diagnostics` and the roadmap's section 6.7 table name the same codes, and no `"E0xxx"` literal exists elsewhere |
 | `golden-hygiene` | Every expected file has no CR, no trailing whitespace, exactly one trailing LF; JSON begins with `{` |
 | `rediscovery-patches` | Every row of the rediscovery table names a patch that still applies to the tree, and every patch is listed |
+| `darwin-deps` | No crate in the darwin dependency graph (`cargo tree --target *-apple-darwin`) is in `tools/darwin-denylist.txt`: the darwin binaries cross-link with zig and no macOS SDK, which a framework-linking crate would break |
 | `tier3-selftests` | Each shell guard catches the fault it exists to catch, in a temporary tree |
 | `cargo-fmt` | The workspace is rustfmt-clean |
 | `cargo-clippy` | `cargo clippy --workspace --all-targets --locked -- -D warnings` is clean |
@@ -32,8 +33,10 @@ failure, and exits 0 only if every phase ran and passed:
 
 A phase whose tool is absent exits 77. That is a failure unless the caller
 named the phase in `RUE_CHECK_SKIP_OK`. The FreeBSD reaper guest, which has
-only the base system, declares the bash, shellcheck, cabal and cargo phases in
-`.reaper.toml`; nowhere else is anything skipped. A Rust toolchain that is
+only the base system, declares the bash, shellcheck, cabal, cargo and
+darwin-deps phases in `.reaper.toml`; the pipeline's GHC-image gate step
+declares the cargo phases and darwin-deps, which its Rust-image step
+performs; nowhere else is anything skipped. A Rust toolchain that is
 present but not 1.97 is a failure, not a skip: the workspace's `rust-version`,
 the CI image and the gate say one minor so fmt and clippy output is
 comparable everywhere.
@@ -51,10 +54,10 @@ prototype's under one tasty suite, and both inside the gate:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests |
-| 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields |
+| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `cli/tests/cli.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); the CLI's verbs and exit codes |
+| 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
-| 4 | Rust `core/tests/{states,ledger}.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now |
+| 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
 
 `tenants/harness` (`rue-tenants`) holds the tenants and the negatives as
 Rust terms, the case table as code (`TENANT_CASES`, `NEGATIVES`,
@@ -70,7 +73,10 @@ under `tenants/harness/src/tenants/`, never from a directory listing. A
 missing expected file fails; an expected file no artifact claims fails
 ("orphan"). The suite is read-only: the only writer is
 `RUE_UPDATE_GOLDENS=1 cargo run -p rue-tenants --bin rue-goldens`, which
-refuses without the variable (a test proves it refuses and touches nothing),
+refuses without the variable (a test proves it refuses and touches nothing);
+a case whose plan has a `:target` backstop also yields its artifact
+(`artifact.sh`, `.ps1` or `.py`), rendered for instance `golden` with the
+family's default root and the steps' arguments as parameters,
 and the gate checksums `tenants/` and `docs/` before and after both test runs
 and fails on any change. A mismatch prints the first differing line with
 context and writes the actual bytes under `target/golden-actual/<path>` for
@@ -78,6 +84,40 @@ diffing.
 
 Regenerating goldens is a decision, not a fix. Read the diff. If the change
 is intended, the commit body says why the verdict changed.
+
+## The artifacts run
+
+`render/tests/execute.rs` executes the rendered `sh` and Python artifacts
+the way a scheduler will (`sh artifact.sh`; `uv run --offline --script
+artifact.py`) against a temporary `rue_root` and instance directory built
+by the test: completion markers with real digests, snapshots, a deadline or
+heartbeat file, a sibling manifest where the scenario needs one, and a
+temporary directory of facts the plan's shapes name. Every scenario (not
+due; due, in reverse order, fired once; an unmarked step; drift `:defer`
+and `:clobber`; damaged region markers with and without a sibling; stale,
+fresh and absent heartbeat; a hostile value through the quoting) runs in
+both languages, so the two templates are held to one behavior. The tests
+are `#[cfg(unix)]`: the artifacts they execute are the POSIX ones and the
+windows-gnu suite under wine has neither `sh` nor `uv`. `sh` and `uv` (with
+a cached interpreter: `uv python install 3.12`) are required on a gate
+host, never optional; the pipeline and the reaper run install them. The
+PowerShell artifact is a golden and a quoting unit test only: no gate host
+runs PowerShell.
+
+## Fuzz
+
+`core/tests/common/gen.rs` is a seeded generator over whole sites and
+plans, every item kind, op field, undo form, primitive, reference, gate
+shape and trigger; `render/tests/fuzz.rs` includes it by path. The
+properties (`core/tests/fuzz.rs`, `render/tests/fuzz.rs`): `check` never
+panics and its verdict's JSON survives its canonical bytes; `prose` and
+`explain` never panic; the plan IR round-trips; `render` never panics for
+any host and never bakes a secret label, and at least one plan in twenty
+renders so the property is not vacuous. `RUE_FUZZ_SEED` and
+`RUE_FUZZ_STEPS` (default 500) override the defaults; a failing step is
+reported with the rng state that replays it alone. The rediscovery rows
+that plant a panic run at `RUE_FUZZ_STEPS=5000` through the table's env
+column.
 
 ## Canonical JSON
 
@@ -183,6 +223,12 @@ installed by ghcup into the guest's caches on first use, and the POSIX-sh half
 on the FreeBSD host guest with its skips declared. `reaper up && reaper test`. The manifest validates with
 `reaper-manifest-validate .reaper.toml`.
 
+The Ubuntu run also installs `uv` and a 3.12 interpreter into a `uv` cache
+for the execution tests, and `ci/build-target.sh` runs clippy for each
+target it builds before building it (the Windows script does the same for
+its target), which is how "clippy clean on every target" is proven: on the
+guest for the targets a guest can host, in the pipeline for all seven.
+
 Windows is tested under wine: `ci/test-windows.sh` builds the whole suite for
 `x86_64-pc-windows-gnu`, statically linked against the C runtime
 (`.cargo/config.toml`) so the binaries carry no mingw DLL dependency, and
@@ -199,8 +245,16 @@ Phase 3's to test on a real machine.
 - Nothing about a construct no tenant or negative case uses.
 - Nothing about the `.rue` text: it is unparsed until Phase 2, and only its
   existence per case is asserted; the terms are transcribed from it by hand.
-- Nothing about hosts: no executor, no backstop artifact, no engine exists.
-  Tiers 5 to 7 begin in Phase 3.
+- Nothing about hosts: no executor, no engine exists. The backstop artifact
+  is rendered and, for `sh` and Python, executed against a temporary
+  instance directory the tests build; that the engine writes that directory
+  as `docs/DESIGN.md` states, and that a real scheduler runs the artifact,
+  are Phase 3's. Tiers 5 to 7 begin there.
+- The PowerShell artifact: rendered, golden-tested, quoting unit-tested,
+  executed nowhere. `uv` on a target (present, interpreter cached, offline
+  at fire time) is an arm-time precondition Phase 3 checks.
 - On Windows, only what wine can show: the suite passing on the windows-gnu
   target. Services, named pipes, the Task Scheduler and ACLs are Phase 3's,
   on a real machine.
+- On macOS, only an artifact golden: the darwin binaries are cross-built,
+  clippy-clean and packaged, executed and signed nowhere until a Mac exists.

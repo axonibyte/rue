@@ -16,7 +16,7 @@ export CARGO_HOME="${CARGO_HOME:-$BITBUCKET_CLONE_DIR/.cargo_cache}"
 NIGHTLY="nightly-2026-08-01"
 
 # Every binary the workspace ships, on every target (D-031: Windows is not a
-# client-only build). A name that does not exist yet is skipped (rued and
+# client-only build; macOS is cross-built the same way). A name that does not exist yet is skipped (rued and
 # rue-hook arrive in Phases 3 and 4); none existing is a failure.
 BINS="rue rued rue-hook"
 
@@ -32,13 +32,23 @@ install_zigbuild() {
     pip3 install --break-system-packages cargo-zigbuild
 }
 
+# Phase 1 acceptance (ROADMAP.md): clippy clean on every target, with the
+# toolchain that builds it. Clippy needs the target's std, not its linker,
+# so it runs on this host for every target that has a rustup std.
+lint() {
+    cargo clippy --workspace --all-targets --target "$TARGET" --locked -- -D warnings
+}
+
 build() { # tries offline first, falls back to online
     cargo build --workspace --target "$TARGET" --release --locked --offline ||
     cargo build --workspace --target "$TARGET" --release --locked
 }
 
+rustup component add clippy
+
 case "$TARGET" in
     x86_64-unknown-linux-gnu)
+        lint
         build
         ;;
 
@@ -49,6 +59,7 @@ case "$TARGET" in
         apt_install gcc-aarch64-linux-gnu libc6-dev-arm64-cross
         rustup target add "$TARGET"
         export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        lint
         build
         ;;
 
@@ -56,13 +67,15 @@ case "$TARGET" in
         # Tier 2: prebuilt std exists; stable toolchain + zig linker.
         install_zigbuild
         rustup target add "$TARGET"
+        lint
         cargo zigbuild --workspace --target "$TARGET" --release --locked
         ;;
 
     aarch64-unknown-freebsd)
         # Tier 3: no prebuilt std, so compile it with nightly -Z build-std.
         install_zigbuild
-        rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src
+        rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src --component clippy
+        cargo "+$NIGHTLY" clippy --workspace --all-targets --target "$TARGET" --locked -Z build-std=std,panic_abort -- -D warnings
         cargo "+$NIGHTLY" zigbuild --workspace --target "$TARGET" --release --locked -Z build-std=std,panic_abort
         ;;
 
@@ -72,7 +85,21 @@ case "$TARGET" in
         apt_install gcc-mingw-w64-x86-64
         rustup target add "$TARGET"
         export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+        lint
         build
+        ;;
+
+    x86_64-apple-darwin|aarch64-apple-darwin)
+        # Tier 1 targets with prebuilt std; zig links Mach-O against its own
+        # bundled libSystem, so no macOS SDK is involved (ROADMAP.md section
+        # 12): the workspace links libSystem alone, and
+        # tools/lint-darwin-deps.sh keeps every framework-linking crate out.
+        # Built and packaged here; executed and signed nowhere until a Mac
+        # exists (section 11).
+        install_zigbuild
+        rustup target add "$TARGET"
+        lint
+        cargo zigbuild --workspace --target "$TARGET" --release --locked
         ;;
 
     *)

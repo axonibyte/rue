@@ -1,0 +1,21 @@
+# Crates that link an Apple framework (CoreFoundation, Security,
+# SystemConfiguration, AppKit). The darwin targets are cross-linked from
+# Linux against zig's bundled libSystem with no macOS SDK (ROADMAP.md
+# section 12), which every std-only crate allows and any of these breaks.
+# tools/lint-darwin-deps.sh fails when one appears in the darwin dependency
+# graph. Keep TLS on rustls with ring and webpki-roots (never native certs)
+# and keep local-time-zone crates out.
+core-foundation
+core-foundation-sys
+security-framework
+security-framework-sys
+system-configuration
+system-configuration-sys
+rustls-native-certs
+native-tls
+openssl-sys
+iana-time-zone
+objc
+objc2
+cocoa
+core-graphics

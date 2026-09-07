@@ -258,6 +258,7 @@ phase seam             sh tools/lint-seam.sh
 phase ecodes           sh tools/lint-ecodes.sh
 phase golden-hygiene   sh tools/lint-goldens.sh
 phase rediscovery-patches sh tools/rediscovery/check-patches.sh
+phase darwin-deps      sh tools/lint-darwin-deps.sh
 phase tier3-selftests  p_tier3
 phase cargo-fmt        p_cargo_fmt
 phase cargo-clippy     p_cargo_clippy

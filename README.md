@@ -28,12 +28,15 @@ Rust terms under `tenants/harness/src/tenants/`, transcribed body by body
 from the unparsed `.rue` text beside their goldens under `tenants/`, and
 their verdicts -- structured JSON against `docs/verdict-schema.json`, the
 one-sentence prose, and the `explain` listing -- are goldens the test suite
-compares byte for byte. Thirty-five negative cases refuse with exactly their
-named code, one or more for every code the checker can raise. Thirty-two
+compares byte for byte. Thirty-six negative cases refuse with exactly their
+named code, one or more for every code the checker can raise. Forty-three
 rediscovery rows all rediscover. Bodies, closure analysis, secret placement,
-the journal model with its canonical hash encoding, the request digests and
-the injected `now` are in; `rue-render`, fuzzing and the Phase 1 acceptance
-are next. The Phase 0 prototype under `proto/` is the record of what the
+the journal model with its canonical hash encoding, the request digests,
+the injected `now`, the backstop artifact in `sh`, PowerShell and Python
+(`rue-render`, `rue artifact`, the `sh` and Python artifacts executed in
+tests) and the seeded fuzz properties are in; the Phase 1 acceptance is
+met as far as a workstation and a pipeline can prove it, and
+[`docs/DESIGN.md`](docs/DESIGN.md) says how the crates fit. The Phase 0 prototype under `proto/` is the record of what the
 tenants taught ([`proto/README.md`](proto/README.md)); its own tests still
 run in the gate. The falsification sweep is in
 [`docs/prior-art.md`](docs/prior-art.md).
@@ -82,14 +85,17 @@ for the owner to reconcile.
 |---|---|
 | Verdicts on plans the tenants do not exercise | The checker is exercised by four tenants (seven host cases) and thirty-five negatives; nothing is proven about a construct none of them uses |
 | The `.rue` text | Unparsed. The checked form of each tenant is its Rust term under `tenants/harness/src/tenants/`, transcribed from the text body by body; Phase 2's front end must accept the text and produce the same verdict |
-| 31 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205-E0211, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509, E0606 |
-| The other 25 codes | Not modeled: the surface's E01xx (parsing, names, kinds, totality), E0411 (sinks are not declared in the site model), the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0605. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
+| 32 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205-E0211, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509, E0606; E0109 by the renderer on a value it cannot quote, unit-tested |
+| The other 24 codes | Not modeled: the surface's E01xx but E0109 (parsing, names, kinds, totality), E0411 (sinks are not declared in the site model), the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0605. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
+| The backstop artifact | Rendered in `sh`, PowerShell and Python, and the `sh` and Python ones executed against a temporary instance directory in every scenario the tests name; that Phase 3's engine writes that directory as `docs/DESIGN.md` states, and that a real scheduler runs the script, are Phase 3's to prove. PowerShell is executed nowhere: no gate host runs it. A non-file fact under a computed undo is undone as if intact; a fact read in a covered undo is not bakeable this unit |
+| Python artifacts on a target | `uv` present, an interpreter cached, `uv run --offline` viable at fire time: arm-time preconditions Phase 3 checks. The tests prove the invocation with a cached interpreter on the gate hosts |
+| macOS | As a host, one artifact golden (T3's `fw-mac-01`). As a controller, the two darwin binaries are cross-built from Linux with zig and no SDK, clippy-clean and packaged, executed and signed nowhere until a Mac exists |
 | E0202's positions | Closure treats a plan parameter and a host-record field as bakeable (closed) and an earlier step's output as never closed, positions section 5.3 does not state; recorded for the owner |
 | E0206 | Decided only as a structural re-run: a `reestablish` primitive equal to one of the op's `do` primitives. The full rule ("reachable from") needs an op reference bodies do not carry |
 | E0211 | Decided for static hosts only; a `:controller` step and a host bound at runtime are not judged at check |
 | Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md`: thirteen items, from the requester as an input to `check` to the verdict's `mode` field; the Rust crates reproduce each. The roadmap carries the owner's answers where given |
 | Windows beyond wine | The whole suite is built for `x86_64-pc-windows-gnu` and run under wine, on the Ubuntu reaper guest and in the pipeline; that proves the logic and the bytes and nothing about services, named pipes or the Task Scheduler, which Phase 3 tests on a real machine |
-| The five build targets | Built and packaged in the pipeline (`ci/build-target.sh`); only the Linux x86-64 and wine-run Windows binaries execute the suite there, the others are cross-built and unexecuted until Phase 3's real machines |
+| The seven build targets | Built, clippy-clean per target, and packaged in the pipeline (`ci/build-target.sh`); only the Linux x86-64 and wine-run Windows binaries execute the suite there, the others are cross-built and unexecuted until Phase 3's real machines |
 | Deploy | Uploads the packaged artifacts on a tag equal to the workspace version, and refuses otherwise; nothing about the artifacts beyond the suite that produced them |
 
 ## Running the checks
@@ -99,14 +105,19 @@ sh tools/check.sh                 # the gate: every phase runs, every failure is
 sh tools/lint-seam.sh             # the seam guard alone
 sh tools/lint-ecodes.sh           # the E-code guard alone
 sh tests/tier3/t_seam.sh          # a guard's self-test
+sh tools/lint-darwin-deps.sh      # the darwin dependency guard alone
 sh tools/rediscovery/run.sh --tier 1   # revert each tier-1 protection in a scratch copy; the suite must fail
 cargo build --workspace --all-targets --locked && cargo test --workspace --locked
+RUE_FUZZ_STEPS=5000 cargo test --workspace --locked --test fuzz   # the seeded properties, longer
 cargo run -q -- check tenants/t1/expected/db-01/plan.json     # the prose verdict; --json, or `explain`, or `states`
+cargo run -q -- artifact tenants/t3/expected/fw-01/plan.json --instance i-1   # the backstop artifact for the owner
 cd proto && cabal build all && cabal test all --test-show-details=direct   # the Phase 0 record's own tests
 ```
 
 The crates need Rust 1.97 (`pkg install rust` on FreeBSD; the gate refuses
-another minor). The prototype needs GHC 9.10.3 and cabal (`pkg install ghc
+another minor) and, for the artifact execution tests, `sh` and `uv` with a
+cached interpreter (`pkg install uv`; `uv python install 3.12` where no
+system Python serves). The prototype needs GHC 9.10.3 and cabal (`pkg install ghc
 hs-cabal-install`). `proto/cabal.project` pins the Hackage index state and
 `proto/cabal.project.freeze` pins every dependency, so the same inputs give
 the same bytes on the workstation, in CI and in a reaper session.

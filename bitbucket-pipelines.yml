@@ -51,11 +51,12 @@ definitions:
           # real dependencies of the gate.
           - apt-get -qq update
           - apt-get -qq install -y --no-install-recommends shellcheck patch
-          # This image has no cargo. The four cargo phases are declared
-          # skipped here because doFetchAndTest performs exactly those four in
-          # the Rust image; the pipeline as a whole runs every phase, and the
-          # declaration is what keeps a missing tool from passing quietly.
-          - RUE_CHECK_SKIP_OK=cargo-fmt,cargo-clippy,cargo-build,cargo-test RUE_CABAL_UPDATE=1 sh tools/check.sh
+          # This image has no cargo. The four cargo phases and the darwin
+          # dependency guard are declared skipped here because doFetchAndTest
+          # performs exactly those in the Rust image; the pipeline as a whole
+          # runs every phase, and the declaration is what keeps a missing
+          # tool from passing quietly.
+          - RUE_CHECK_SKIP_OK=darwin-deps,cargo-fmt,cargo-clippy,cargo-build,cargo-test RUE_CABAL_UPDATE=1 sh tools/check.sh
 
     - step: &doFetchAndTest
         name: Fetch dependencies, lint and run tests
@@ -75,6 +76,7 @@ definitions:
           # keeps it that way.
           - cargo fmt --check
           - cargo clippy --workspace --all-targets --locked -- -D warnings
+          - sh tools/lint-darwin-deps.sh
           - cargo test --release --locked
 
     - step: &doTestWindows
@@ -122,6 +124,27 @@ definitions:
           - dist/*
         script:
           - bash ci/build-target.sh aarch64-unknown-freebsd
+
+    - step: &buildDarwinAmd64
+        # Cross-linked with zig against its bundled libSystem, no macOS SDK;
+        # tools/lint-darwin-deps.sh keeps the graph framework-free. Built and
+        # packaged, executed nowhere until a Mac exists (ROADMAP.md section 11).
+        name: Build x86_64-apple-darwin
+        caches:
+          - cargo
+        artifacts:
+          - dist/*
+        script:
+          - bash ci/build-target.sh x86_64-apple-darwin
+
+    - step: &buildDarwinArm64
+        name: Build aarch64-apple-darwin
+        caches:
+          - cargo
+        artifacts:
+          - dist/*
+        script:
+          - bash ci/build-target.sh aarch64-apple-darwin
 
     - step: &buildWindowsAmd64
         # Windows is first-class (D-031): every binary, not a client-only build.
@@ -183,6 +206,8 @@ pipelines:
             - step: *buildLinuxArm64
             - step: *buildFreebsdAmd64
             - step: *buildFreebsdArm64
+            - step: *buildDarwinAmd64
+            - step: *buildDarwinArm64
             - step: *buildWindowsAmd64
 
     '{feature/**,bugfix/**,release/**,hotfix/**}':

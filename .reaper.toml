@@ -79,7 +79,7 @@ exec = "host"
 # Base system only: shellcheck, cabal and cargo are absent by design, and
 # declared so. FreeBSD-native Rust coverage is the workstation's pkg rust,
 # which the gate runs there with nothing skipped.
-run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test,cargo-fmt,cargo-clippy,cargo-build,cargo-test sh tools/check.sh" }
+run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,darwin-deps,cabal-build,cabal-test,cargo-fmt,cargo-clippy,cargo-build,cargo-test sh tools/check.sh" }
 
 [run]
 # The Ubuntu run, in build.image (a container run with no image of its own

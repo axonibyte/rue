@@ -42,6 +42,7 @@ fi
 echo "wine runner: $runner ($("$runner" --version 2> /dev/null || echo 'version unknown'))"
 
 rustup target add x86_64-pc-windows-gnu
+rustup component add clippy
 
 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER="$runner"
@@ -65,6 +66,10 @@ mkdir -p "/run/user/$(id -u)" 2> /dev/null || true
 "$runner" wineboot --init
 "$runner" cmd /c 'echo wine loader ok'
 wineserver -w 2> /dev/null || true
+
+# Clippy on the Windows target before the suite (Phase 1 acceptance: clippy
+# clean on every target); lint needs the target's std, not wine.
+cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -- -D warnings
 
 # The windows-gnu target links the C runtime statically (.cargo/config.toml),
 # so the test binaries need no mingw DLLs under wine.
