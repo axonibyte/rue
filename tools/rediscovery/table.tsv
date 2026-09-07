@@ -65,3 +65,5 @@ artifact-keeps-marker-core.patch	1	-	cargo	due_undoes_every_marked_step	-
 heartbeat-stale-not-fired-core.patch	1	-	cargo	stale_heartbeat_fires	-
 defer-clobbers-core.patch	1	-	cargo	drift_defer_leaves	-
 foreign-region-fallback-core.patch	1	-	cargo	damaged_region_markers	-
+fuzz-check-panics-core.patch	4	-	cargo	check_never_panics	RUE_FUZZ_STEPS=5000
+fuzz-render-panics-core.patch	4	-	cargo	render_never_panics	RUE_FUZZ_STEPS=5000

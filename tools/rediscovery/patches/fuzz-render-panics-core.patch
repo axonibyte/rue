@@ -1,0 +1,14 @@
+# Plants: a panic in render on a shape no unit test builds (an append of a template value in a covered undo) -- the fuzz generator must reach it (Phase 1 task 10: render never panics).
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/actions.rs
++++ b/render/src/actions.rs
+@@ -306,6 +306,9 @@
+                     Prim::Remove(r) => Action::Remove {
+                         path: static_path(n, &r.fact)?,
+                     },
++                    Prim::Append(a) if matches!(a.line, Value::Template(_)) => {
++                        unreachable!("a shape no unit test builds")
++                    }
+                     Prim::Append(a) => Action::Append {
+                         path: static_path(n, &a.fact)?,
+                         line: text_of(n, &a.line, host, b)?,

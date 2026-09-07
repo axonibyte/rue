@@ -1,0 +1,14 @@
+# Plants: a panic in check on a shape no unit test builds (two outputs, two reach transports, a suspend body) -- the fuzz generator must reach it (Phase 1 task 10: check never panics).
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -401,6 +401,9 @@
+     };
+     for (n, o) in &step_ops {
+         let n = Some(*n);
++        if o.outputs.len() == 2 && o.reach.len() == 2 && o.suspend.is_some() {
++            unreachable!("a shape no unit test builds");
++        }
+         if (o.undo == Undo::NoUndo) != is_knell(&o.refusal) {
+             diagnostics.push(d(
+                 Code::E0201,

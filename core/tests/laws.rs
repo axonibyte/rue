@@ -3,7 +3,8 @@
 
 mod common;
 
-use common::*;
+use common::gen::*;
+use common::{knell_op, owned, s};
 use rue_core::algebra::*;
 use rue_core::model::*;
 
