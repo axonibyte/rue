@@ -1,0 +1,13 @@
+# Reverts: the artifact undoes only steps whose completion marker is present (section 7.7) -- undoing a step that never ran destroys what was there before.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/template/sh.rs
++++ b/render/src/template/sh.rs
+@@ -39,7 +39,7 @@
+         let n = s.n;
+         o.push_str(&format!("# step {}: {}\n", n, s.id));
+         o.push_str(&format!("M=\"$INST/markers/{n}\"\n"));
+-        o.push_str("if [ -f \"$M\" ]; then\n  skip=0\n");
++        o.push_str("if true; then\n  skip=0\n");
+         for f in &s.files {
+             // Under :defer a changed fact is left alone and marked; under
+             // :clobber an Owned or Modified change is reported as clobbered

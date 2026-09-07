@@ -10,3 +10,7 @@ repository.workspace = true
 
 [dependencies]
 rue-core = { path = "../core" }
+
+[dev-dependencies]
+# The execution tests write completion markers with real digests.
+sha2.workspace = true

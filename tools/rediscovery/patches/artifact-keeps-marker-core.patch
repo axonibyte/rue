@@ -1,0 +1,13 @@
+# Reverts: the artifact removes a step's marker after undoing it (section 7.7) -- a marker that survives makes the next firing undo the step a second time.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/template/sh.rs
++++ b/render/src/template/sh.rs
+@@ -109,7 +109,7 @@
+                 )),
+             }
+         }
+-        o.push_str("    rm -f \"$M\"\n  fi\nfi\n");
++        o.push_str("  fi\nfi\n");
+     }
+     o.push_str(": > \"$INST/fired\"\nexit 0\n");
+     Ok(o)

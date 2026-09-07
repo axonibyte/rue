@@ -1,0 +1,13 @@
+# Reverts: a region's whole-file fallback defers when a sibling instance holds a region on the fact (section 5.2, D-053) -- restoring the whole file erases the other instance's region.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/template/sh.rs
++++ b/render/src/template/sh.rs
+@@ -67,7 +67,7 @@
+                     let snap = q(n, &format!("{inst}/snapshots/{n}/{k}"))?;
+                     let fallback = match s.drift {
+                         Drift::Clobber => format!(
+-                            "if foreign_region {p}; then defer {n}; else restore {snap} {p}; clobbered {n}; fi"
++                            "restore {snap} {p}; clobbered {n}"
+                         ),
+                         Drift::Defer => format!("defer {n}"),
+                     };

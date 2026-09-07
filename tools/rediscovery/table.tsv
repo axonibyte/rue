@@ -60,3 +60,8 @@ quote-powershell-undoubled-core.patch	1	-	cargo	round_trips_in_every_family	-
 artifact-forward-order-core.patch	1	-	cargo	reverse_order_and_nothing_else	-
 artifact-renders-uncovered-step-core.patch	1	-	cargo	reverse_order_and_nothing_else	-
 artifact-bakes-secret-core.patch	1	-	cargo	refusals	-
+artifact-undoes-unmarked-step-core.patch	1	-	cargo	without_a_marker_is_skipped	-
+artifact-keeps-marker-core.patch	1	-	cargo	due_undoes_every_marked_step	-
+heartbeat-stale-not-fired-core.patch	1	-	cargo	stale_heartbeat_fires	-
+defer-clobbers-core.patch	1	-	cargo	drift_defer_leaves	-
+foreign-region-fallback-core.patch	1	-	cargo	damaged_region_markers	-

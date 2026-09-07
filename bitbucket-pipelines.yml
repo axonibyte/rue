@@ -64,6 +64,12 @@ definitions:
         script:
           - export CARGO_HOME="$BITBUCKET_CLONE_DIR/.cargo_cache"
           - rustup component add rustfmt clippy
+          # The render crate's execution tests run the Python artifact the
+          # way a scheduler will: `uv run --offline --script`, so uv and a
+          # cached interpreter must exist here (the Rust image has neither).
+          - apt-get -qq update && apt-get -qq install -y --no-install-recommends python3-pip
+          - pip3 install --break-system-packages uv
+          - uv python install 3.12
           - cargo fetch --locked
           # The repository is kept fmt-clean and clippy-clean; the gate is what
           # keeps it that way.

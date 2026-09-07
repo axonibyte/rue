@@ -1,0 +1,13 @@
+# Reverts: unless_heartbeat fires when the heartbeat file is older than the deadline (section 5.6) -- reversed, a live engine fires the backstop and a dead one never does.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/template/sh.rs
++++ b/render/src/template/sh.rs
+@@ -30,7 +30,7 @@
+     }
+     if let Some(hb) = ctx.heartbeat_s {
+         o.push_str(&format!(
+-            "if [ -f \"$INST/heartbeat\" ]; then h=$(cat \"$INST/heartbeat\"); [ $((now - h)) -gt {hb} ] && due=1; else due=1; fi\n"
++            "if [ -f \"$INST/heartbeat\" ]; then h=$(cat \"$INST/heartbeat\"); [ $((now - h)) -lt {hb} ] && due=1; else due=1; fi\n"
+         ));
+     }
+     o.push_str("[ \"$due\" -eq 1 ] || exit 0\n");

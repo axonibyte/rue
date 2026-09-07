@@ -1,0 +1,13 @@
+# Reverts: drift :defer leaves a changed fact and marks the step (section 5.2) -- clobbering it destroys an edit the policy promised to keep.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/render/src/template/sh.rs
++++ b/render/src/template/sh.rs
+@@ -50,7 +50,7 @@
+             let p = q(n, &f.path)?;
+             match s.drift {
+                 Drift::Defer => o.push_str(&format!(
+-                    "  [ \"$(sha {p})\" = \"$(recorded \"$M\" {p})\" ] || skip=1\n"
++                    "  [ \"$(sha {p})\" = \"$(recorded \"$M\" {p})\" ] || clobbered {n}\n"
+                 )),
+                 Drift::Clobber => o.push_str(&format!(
+                     "  [ \"$(sha {p})\" = \"$(recorded \"$M\" {p})\" ] || clobbered {n}\n"

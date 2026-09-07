@@ -71,7 +71,7 @@ cargo build --workspace --all-targets --release --locked"""
 
 # Named by us and meaningless to the framework. Everything large lives here
 # and not on the guest's small root disk.
-cache = ["cabal", "build-dir", "ghcup", "cargo", "target"]
+cache = ["cabal", "build-dir", "ghcup", "cargo", "target", "uv"]
 
 [[guests]]
 name = "freebsd-15.1"
@@ -91,7 +91,10 @@ run = { cmd = "RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test,c
 # disk. The gate first, then the Windows suite under wine.
 cmd = """
 apt-get -qq update && \
-apt-get -qq install -y --no-install-recommends shellcheck patch libgmp-dev libffi-dev libncurses-dev libtinfo6 gcc-mingw-w64-x86-64 wine && \
+apt-get -qq install -y --no-install-recommends shellcheck patch libgmp-dev libffi-dev libncurses-dev libtinfo6 gcc-mingw-w64-x86-64 wine python3-pip && \
+pip3 install -q --break-system-packages uv && \
+export UV_CACHE_DIR=$REAPER_CACHE_UV/cache UV_PYTHON_INSTALL_DIR=$REAPER_CACHE_UV/python && \
+uv python install 3.12 && \
 rustup component add rustfmt clippy && \
 mkdir -p $REAPER_CACHE_BUILD_DIR/tmp && \
 export PATH=$REAPER_CACHE_GHCUP/.ghcup/bin:$PATH GHCUP_INSTALL_BASE_PREFIX=$REAPER_CACHE_GHCUP \

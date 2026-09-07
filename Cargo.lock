@@ -237,6 +237,7 @@ name = "rue-render"
 version = "0.0.1"
 dependencies = [
  "rue-core",
+ "sha2",
 ]
 
 [[package]]
