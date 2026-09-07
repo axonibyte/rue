@@ -1,0 +1,4 @@
+ 1. winfw_allow(port: 8443)   locus=target   refusal=revert   drift=clobber   undo=Remove-NetFirewallRule -Name rue-mgmt   undo_locus=target
+ 2. observe verify_reach as reach   no footprint, no undo
+ 3. confirm()   disarms the unless_confirmed backstop
+ 4. commit()   ends the plan: undo discarded, umbras released, backstops disarmed

@@ -64,6 +64,18 @@ pub const TENANT_CASES: &[TenantCase] = &[
         host: "fw-win-01",
     },
     TenantCase {
+        tenant: "t3",
+        host: "fw-02",
+    },
+    TenantCase {
+        tenant: "t3",
+        host: "fw-win-02",
+    },
+    TenantCase {
+        tenant: "t3",
+        host: "fw-mac-01",
+    },
+    TenantCase {
         tenant: "t4",
         host: "site-ctl",
     },
@@ -211,6 +223,10 @@ pub const NEGATIVES: &[NegativeCase] = &[
     NegativeCase {
         code: Code::E0211,
         slug: "executor-without-stdin-preamble",
+    },
+    NegativeCase {
+        code: Code::E0403,
+        slug: "artifact-language-unsupported",
     },
     NegativeCase {
         code: Code::E0606,

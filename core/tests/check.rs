@@ -21,6 +21,7 @@ fn site0() -> Site {
                 reach: vec!["ssh".into()],
                 filesystem: true,
                 stdin_preamble: true,
+                artifact: None,
             },
             HostRecord {
                 name: "api-01".into(),
@@ -28,6 +29,7 @@ fn site0() -> Site {
                 reach: vec!["api".into()],
                 filesystem: false,
                 stdin_preamble: false,
+                artifact: None,
             },
             HostRecord {
                 name: "island".into(),
@@ -35,6 +37,7 @@ fn site0() -> Site {
                 reach: vec!["console".into()],
                 filesystem: true,
                 stdin_preamble: true,
+                artifact: None,
             },
         ],
         transports: vec!["ssh".into()],
@@ -1126,6 +1129,7 @@ fn secret_rules() {
         reach: vec!["ssh".into()],
         filesystem: true,
         stdin_preamble: false,
+        artifact: None,
     });
     odd.hosts.push(HostRecord {
         name: "shim-no-fs".into(),
@@ -1133,6 +1137,7 @@ fn secret_rules() {
         reach: vec!["api".into()],
         filesystem: false,
         stdin_preamble: true,
+        artifact: None,
     });
     let on_host = |h: &str| {
         on(
@@ -1201,4 +1206,100 @@ fn secret_rules() {
     assert_eq!(codes_of(&token(true)), vec![Code::E0606]);
     assert!(clean(&token(false)));
     assert!(codes_with(&delivering, &token(true)).is_empty());
+}
+
+/// The artifact language of a `:target` backstop's host (sections 4.5 and
+/// 7.7): declared or native, and E0403 when the pair has no template.
+#[test]
+fn artifact_language_rules() {
+    use rue_core::artifact::{default_language, language_of, shell_of, supported, Shell};
+    assert_eq!(shell_of("windows"), Shell::Powershell);
+    for os in ["freebsd", "linux", "macos", "appliance", "reactive-host"] {
+        assert_eq!(shell_of(os), Shell::Posix, "{os}");
+        assert_eq!(default_language(os), ArtifactLanguage::Sh, "{os}");
+    }
+    assert_eq!(default_language("windows"), ArtifactLanguage::Powershell);
+    assert!(supported("freebsd", ArtifactLanguage::Sh));
+    assert!(supported("macos", ArtifactLanguage::Sh));
+    assert!(!supported("windows", ArtifactLanguage::Sh));
+    assert!(supported("windows", ArtifactLanguage::Powershell));
+    assert!(!supported("freebsd", ArtifactLanguage::Powershell));
+    assert!(!supported("macos", ArtifactLanguage::Powershell));
+    for os in ["freebsd", "linux", "macos", "windows"] {
+        assert!(supported(os, ArtifactLanguage::Python), "{os}");
+    }
+
+    let host = |os: &str, artifact: Option<ArtifactLanguage>| HostRecord {
+        name: "fw".into(),
+        os: os.into(),
+        reach: vec!["ssh".into()],
+        filesystem: true,
+        stdin_preamble: true,
+        artifact,
+    };
+    assert_eq!(
+        language_of(&host("windows", None)),
+        ArtifactLanguage::Powershell
+    );
+    assert_eq!(
+        language_of(&host("windows", Some(ArtifactLanguage::Python))),
+        ArtifactLanguage::Python
+    );
+
+    // A plan on `fw` with a :target backstop covering one step.
+    let site_with = |h: HostRecord| Site {
+        hosts: vec![h],
+        scheduler_present: vec!["fw".into()],
+        ..site0()
+    };
+    let covered = Plan {
+        backstop: Some(backstop_after_1h()),
+        ..Plan {
+            wane: Some(Duration::new(3600)),
+            ..Plan::new("p", "fw", vec![s(target(owned("a")))])
+        }
+    };
+    let e0403 = |h: HostRecord| codes_with(&site_with(h), &covered).contains(&Code::E0403);
+    assert!(!e0403(host("freebsd", None)));
+    assert!(!e0403(host("macos", None)));
+    assert!(!e0403(host("windows", None)));
+    assert!(!e0403(host("windows", Some(ArtifactLanguage::Python))));
+    assert!(!e0403(host("linux", Some(ArtifactLanguage::Python))));
+    assert!(e0403(host("windows", Some(ArtifactLanguage::Sh))));
+    assert!(e0403(host("freebsd", Some(ArtifactLanguage::Powershell))));
+    assert!(e0403(host("macos", Some(ArtifactLanguage::Powershell))));
+    // Only a :target backstop is an artifact: a controller-undo plan with a
+    // backstop covers nothing, and a plan without a backstop has none.
+    let uncovered = Plan {
+        body: vec![s(owned("a"))],
+        ..covered.clone()
+    };
+    assert!(!e0403_on(
+        &site_with(host("windows", Some(ArtifactLanguage::Sh))),
+        &uncovered
+    ));
+    let no_backstop = Plan {
+        backstop: None,
+        ..covered.clone()
+    };
+    assert!(!e0403_on(
+        &site_with(host("windows", Some(ArtifactLanguage::Sh))),
+        &no_backstop
+    ));
+    let v = check(
+        &site_with(host("windows", Some(ArtifactLanguage::Sh))),
+        "requester",
+        &covered,
+    );
+    let m = &v
+        .diagnostics
+        .iter()
+        .find(|d| d.code == Code::E0403)
+        .unwrap()
+        .message;
+    assert_eq!(m, "backstop artifact: no sh template for os windows on fw");
+}
+
+fn e0403_on(site: &Site, p: &Plan) -> bool {
+    codes_with(site, p).contains(&Code::E0403)
 }

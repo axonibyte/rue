@@ -573,6 +573,30 @@ pub struct HostRecord {
     /// The executor honours the stdin preamble that carries `env:` and
     /// `stdin:` secrets (section 7.4); false for an API appliance.
     pub stdin_preamble: bool,
+    /// The language the host's backstop artifact is rendered in; `None`
+    /// is the host's native shell (`crate::artifact::default_language`).
+    pub artifact: Option<ArtifactLanguage>,
+}
+
+/// A backstop artifact's language (sections 4.5 and 7.7): the host's native
+/// shell, or Python run by `uv` with PEP 723 metadata, on any OS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactLanguage {
+    Sh,
+    Powershell,
+    Python,
+}
+
+impl ArtifactLanguage {
+    /// The name as the surface and the diagnostics spell it.
+    pub fn name(self) -> &'static str {
+        match self {
+            ArtifactLanguage::Sh => "sh",
+            ArtifactLanguage::Powershell => "powershell",
+            ArtifactLanguage::Python => "python",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

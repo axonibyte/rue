@@ -7,6 +7,7 @@
 //! rule, and an offline check has no session to read it from (section 5.11).
 
 use crate::algebra::{numbered, op_of, step_of};
+use crate::artifact;
 use crate::backstop::{
     coverage, heartbeat_violations, reach_violations, trigger_violations, TriggerViolation,
 };
@@ -573,6 +574,26 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
             None,
             format!("backstop scheduler not present on {}", p.owner),
         ));
+    }
+    // A :target backstop is an artifact on the owner, rendered in the
+    // owner's declared language; no template for the pair is E0403
+    // (section 4.5).
+    if cov.as_ref().is_some_and(|c| !c.covered.is_empty()) {
+        if let Some(h) = host_record(site, owner) {
+            let lang = artifact::language_of(h);
+            if !artifact::supported(&h.os, lang) {
+                diagnostics.push(d(
+                    Code::E0403,
+                    None,
+                    format!(
+                        "backstop artifact: no {} template for os {} on {}",
+                        lang.name(),
+                        h.os,
+                        owner
+                    ),
+                ));
+            }
+        }
     }
 
     for c in &conflict_list {

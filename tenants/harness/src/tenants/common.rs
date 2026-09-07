@@ -41,6 +41,15 @@ pub fn host(name: &str, os: &str, reach: &[&str], filesystem: bool) -> HostRecor
         reach: reach.iter().map(|r| r.to_string()).collect(),
         filesystem,
         stdin_preamble: filesystem,
+        artifact: None,
+    }
+}
+
+/// The same host, its backstop artifact rendered in Python (uv, PEP 723).
+pub fn python_artifact(h: HostRecord) -> HostRecord {
+    HostRecord {
+        artifact: Some(ArtifactLanguage::Python),
+        ..h
     }
 }
 

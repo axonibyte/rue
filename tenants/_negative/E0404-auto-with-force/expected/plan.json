@@ -1,5 +1,5 @@
 {
-  "ir_version": 2,
+  "ir_version": 3,
   "plan": {
     "backstop": {
       "arm_before": 3,
@@ -80,6 +80,7 @@
     ],
     "hosts": [
       {
+        "artifact": null,
         "filesystem": true,
         "name": "db-01",
         "os": "freebsd",
@@ -89,6 +90,7 @@
         "stdin_preamble": true
       },
       {
+        "artifact": null,
         "filesystem": false,
         "name": "bmc-01",
         "os": "appliance",

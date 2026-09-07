@@ -113,7 +113,7 @@ require the term), covered by the hygiene guard and the orphan walk.
 
 The shape is `rue_core::model`'s serde form, spelled deliberately field by
 field so no implementation's constructor names leak into it. `ir_version` is
-an integer, currently 2; a reader refuses any version it does not know. While
+an integer, currently 3; a reader refuses any version it does not know. While
 the terms are the only emitter, any change of shape bumps the version and
 changes emitter and readers in one commit; Phase 2's front end freezes it.
 Durations are whole seconds under names ending in `_s`. A unit constructor is
@@ -129,8 +129,9 @@ body is a list of one-key primitive objects (`run`, `write`, `remove`,
 and a reference names its origin (`fact`, `param`, `host`, `output`,
 `controller`, `secret`), which is what closure (E0202) and secret placement
 read. Nothing in the IR says "closed" or "secret" as a flag: both are
-computed from the structure. A host record carries `stdin_preamble` and the
-site `secrets_deliver_to`. `undo_idempotent` remains a stand-in until E0208's
+computed from the structure. A host record carries `stdin_preamble` and, from
+version 3, `artifact` (`null` for the host's native shell, else `sh`,
+`powershell` or `python`); the site carries `secrets_deliver_to`. `undo_idempotent` remains a stand-in until E0208's
 analysis exists. `core/tests/ir.rs` holds a document exercising every
 primitive and asserts it reads and writes back byte for byte.
 

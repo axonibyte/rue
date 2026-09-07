@@ -1,0 +1,29 @@
+rue 0
+# Negative case E0403: a :target backstop on a host whose declared artifact
+# language has no template for its OS. T3's Windows firewall with its
+# inventory record saying `artifact = "sh"` (this directory's inventory.toml);
+# the plan is T3's Windows plan unchanged (tenants/harness/src/tenants/negative.rs).
+# The checker must refuse with exactly E0403.
+
+import "../../t3/plan.rue" as t3
+
+site do
+  inventory from: file("inventory.toml")
+  journal to: local()
+  approval via: hook(:authority)
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "netops", operator_for: :all, admin: true
+  end
+  hooks do
+    registrar :authority, user: "approvald", may_register: [:authority]
+  end
+end
+
+defplan :open_mgmt_port, %{os: :windows} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  t3.winfw_allow(port: 8443)
+  observe t3.verify_reach() as reach
+  confirm()
+  commit()
+end

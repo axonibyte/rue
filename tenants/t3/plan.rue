@@ -1,7 +1,9 @@
 rue 0
 # T3 -- commit-confirmed firewall change (docs/ROADMAP.md section 8.3).
-# Permanent. Two hosts: a FreeBSD pf anchor (region) and a Windows Firewall rule
-# (owned), dispatched by clause on the host's os.
+# Permanent. A FreeBSD pf anchor (region) and a Windows Firewall rule (owned),
+# dispatched by clause on the host's os; macOS takes the pf clause. The
+# inventory carries the same two firewalls a second time with `artifact =
+# "python"`, so the backstop is rendered for both families on both OSes.
 #
 # Damaged-marker cost (the region step's fallback): if the rue-mgmt anchor's
 # markers are damaged, the whole of /etc/pf.conf is restored from the do-time
@@ -30,7 +32,7 @@ defprobe :verify_reach do
   produces reach
 end
 
-defop :pf_allow, %{os: :freebsd} do
+defop :pf_allow, %{os: [:freebsd, :macos]} do
   footprint region: file("/etc/pf.conf", anchor: "rue-mgmt")
   reach ssh(host)
   do: [region_set(file("/etc/pf.conf", anchor: "rue-mgmt"), content: "pass in proto tcp to port #{port}"), run("pfctl -f /etc/pf.conf")]
@@ -47,7 +49,7 @@ defop :winfw_allow, %{os: :windows} do
   undo_locus: :target
 end
 
-defplan :open_mgmt_port, %{os: :freebsd} do
+defplan :open_mgmt_port, %{os: [:freebsd, :macos]} do
   backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
   pf_allow(port: 8443)
   observe verify_reach() as reach

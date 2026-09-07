@@ -1,0 +1,13 @@
+# Reverts: a :target backstop is refused when its host has no template for the declared artifact language (section 4.5, E0403) -- an sh artifact on Windows would be installed and never run.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/artifact.rs
++++ b/core/src/artifact.rs
+@@ -46,7 +46,7 @@
+ /// PowerShell on Windows, Python (uv, PEP 723) on either.
+ pub fn supported(os: &str, language: ArtifactLanguage) -> bool {
+     match language {
+-        ArtifactLanguage::Sh => shell_of(os) == Shell::Posix,
++        ArtifactLanguage::Sh => true,
+         ArtifactLanguage::Powershell => shell_of(os) == Shell::Powershell,
+         ArtifactLanguage::Python => true,
+     }

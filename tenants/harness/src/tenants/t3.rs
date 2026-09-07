@@ -13,11 +13,16 @@ pub fn site() -> Site {
         hosts: vec![
             host("fw-01", "freebsd", &["ssh"], true),
             host("fw-win-01", "windows", &["ssh"], true),
+            // The same two firewalls with their artifacts in Python, and a
+            // macOS pf host on the default sh: one plan, five artifacts.
+            python_artifact(host("fw-02", "freebsd", &["ssh"], true)),
+            python_artifact(host("fw-win-02", "windows", &["ssh"], true)),
+            host("fw-mac-01", "macos", &["ssh"], true),
         ],
         transports: strings(&["ssh"]),
         authenticators: vec![authenticator("netops", true)],
         max_wait: None,
-        scheduler_present: strings(&["fw-01", "fw-win-01"]),
+        scheduler_present: strings(&["fw-01", "fw-win-01", "fw-02", "fw-win-02", "fw-mac-01"]),
         secrets_deliver_to: vec![],
     }
 }
@@ -114,6 +119,27 @@ pub fn tenant() -> Tenant {
         cases: vec![
             case("fw-01", open_mgmt_port()),
             case("fw-win-01", open_mgmt_port_windows()),
+            case(
+                "fw-02",
+                Plan {
+                    owner: "fw-02".into(),
+                    ..open_mgmt_port()
+                },
+            ),
+            case(
+                "fw-win-02",
+                Plan {
+                    owner: "fw-win-02".into(),
+                    ..open_mgmt_port_windows()
+                },
+            ),
+            case(
+                "fw-mac-01",
+                Plan {
+                    owner: "fw-mac-01".into(),
+                    ..open_mgmt_port()
+                },
+            ),
         ],
     }
 }

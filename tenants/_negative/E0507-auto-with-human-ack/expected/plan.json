@@ -1,5 +1,5 @@
 {
-  "ir_version": 2,
+  "ir_version": 3,
   "plan": {
     "backstop": null,
     "body": [
@@ -85,6 +85,7 @@
     ],
     "hosts": [
       {
+        "artifact": null,
         "filesystem": true,
         "name": "node-b",
         "os": "freebsd",
@@ -94,6 +95,7 @@
         "stdin_preamble": true
       },
       {
+        "artifact": null,
         "filesystem": true,
         "name": "node-a",
         "os": "freebsd",
@@ -103,6 +105,7 @@
         "stdin_preamble": true
       },
       {
+        "artifact": null,
         "filesystem": true,
         "name": "node-c",
         "os": "freebsd",

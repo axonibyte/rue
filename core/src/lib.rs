@@ -9,6 +9,7 @@
 //! transcribes: every golden it produced must be reproduced byte for byte.
 
 pub mod algebra;
+pub mod artifact;
 pub mod backstop;
 pub mod body;
 pub mod canon;

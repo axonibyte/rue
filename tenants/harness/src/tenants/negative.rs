@@ -613,6 +613,30 @@ pub fn cases() -> Vec<Negative> {
                 })],
             ),
         ),
+        // A Windows firewall whose artifact is declared `sh`: no template.
+        neg(
+            Code::E0403,
+            "artifact-language-unsupported",
+            Site {
+                hosts: t3_site
+                    .hosts
+                    .iter()
+                    .cloned()
+                    .map(|h| {
+                        if h.name == "fw-win-01" {
+                            HostRecord {
+                                artifact: Some(ArtifactLanguage::Sh),
+                                ..h
+                            }
+                        } else {
+                            h
+                        }
+                    })
+                    .collect(),
+                ..t3_site.clone()
+            },
+            t3::open_mgmt_port_windows(),
+        ),
         neg(
             Code::E0606,
             "secret-without-deliver-to",

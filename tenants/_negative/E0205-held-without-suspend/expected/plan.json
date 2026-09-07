@@ -1,5 +1,5 @@
 {
-  "ir_version": 2,
+  "ir_version": 3,
   "plan": {
     "backstop": null,
     "body": [
@@ -100,6 +100,7 @@
     ],
     "hosts": [
       {
+        "artifact": null,
         "filesystem": true,
         "name": "db-01",
         "os": "freebsd",
@@ -109,6 +110,7 @@
         "stdin_preamble": true
       },
       {
+        "artifact": null,
         "filesystem": false,
         "name": "api-01",
         "os": "appliance",
@@ -118,6 +120,7 @@
         "stdin_preamble": false
       },
       {
+        "artifact": null,
         "filesystem": true,
         "name": "island",
         "os": "freebsd",

@@ -54,3 +54,4 @@ knell-reverse-allowed-core.patch	1	-	cargo	refuses_to_reverse	-
 reach-defer-drift-accepted-core.patch	1	-	cargo	op_rules	-
 temporary-after-not-wane-core.patch	1	-	cargo	backstop_rules	-
 wait-unbounded-core.patch	1	-	cargo	wait_rules	-
+artifact-language-unchecked-core.patch	1	-	cargo	artifact_language_rules	-

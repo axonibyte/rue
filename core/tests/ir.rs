@@ -9,7 +9,7 @@ use rue_core::model::*;
 // A small plan in canonical form: one step with a knell ack gate, a wait
 // factor, a bound-host locus, a heartbeat backstop, and every item kind.
 const DOC: &str = r#"{
-  "ir_version": 2,
+  "ir_version": 3,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -454,6 +454,7 @@ const DOC: &str = r#"{
     ],
     "hosts": [
       {
+        "artifact": "python",
         "filesystem": true,
         "name": "db-01",
         "os": "freebsd",
@@ -542,12 +543,12 @@ fn an_unknown_field_is_refused() {
 #[test]
 fn another_version_is_refused_before_the_shape_is_read() {
     let doc = DOC.replacen(
-        "\"ir_version\": 2,",
-        "\"ir_version\": 3,\n  \"future\": true,",
+        "\"ir_version\": 3,",
+        "\"ir_version\": 4,\n  \"future\": true,",
         1,
     );
     match parse(doc.as_bytes()) {
-        Err(IrError::Version { found: 3 }) => {}
+        Err(IrError::Version { found: 4 }) => {}
         other => panic!("{other:?}"),
     }
 }

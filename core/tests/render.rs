@@ -20,6 +20,7 @@ fn site() -> Site {
             reach: vec!["ssh".into()],
             filesystem: true,
             stdin_preamble: true,
+            artifact: None,
         }],
         transports: vec!["ssh".into()],
         authenticators: vec![Authenticator {
