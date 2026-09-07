@@ -158,8 +158,9 @@ definitions:
 
     - step: &doDeploy
         name: Deploy multi-target artifacts
-        clone:
-          enabled: false
+        # The clone stays enabled: the tag-equals-version check below reads
+        # Cargo.toml, and with the clone off (as v0.0.1's first deploy ran)
+        # the file is absent and every tag is refused.
         script:
           - |
             # Refuse rather than publish nothing: a tag with no artifacts is a
