@@ -1,0 +1,11 @@
+[package]
+name = "rue-engine"
+description = "rue's engine: the lifecycle over a locked store, bindings, executors, arming, the control channel and the hook protocol (docs/ROADMAP.md section 7)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rue-core = { path = "../core" }

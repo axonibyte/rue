@@ -194,11 +194,15 @@ p_cargo_build() {
 }
 
 # Read-only like the cabal suite: the same checksum guard over tenants/ and
-# docs/ brackets the run.
+# docs/ brackets the run. rue-e2e is the tier 5 and 6 harness: its tests
+# rewrite the sshd, firewall and loopback configuration of the machine they
+# run on and refuse without a provisioned disposable guest, so the gate
+# excludes that one package by name and tenants/e2e/run.sh is its only
+# caller (docs/TESTING.md).
 p_cargo_test() {
     rust_toolchain || return $?
     golden_sums "$tmp/r.before" || return 1
-    cargo test --workspace --release --locked || return 1
+    cargo test --workspace --exclude rue-e2e --release --locked || return 1
     golden_sums "$tmp/r.after" || return 1
     if ! cmp -s "$tmp/r.before" "$tmp/r.after"; then
         echo "cargo test changed files under tenants/ or docs/; the suite is read-only" >&2

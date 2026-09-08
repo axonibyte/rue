@@ -65,7 +65,14 @@ mkdir -p "/run/user/$(id -u)" 2> /dev/null || true
 # where its output is legible, rather than inside cargo's first test run.
 "$runner" wineboot --init
 "$runner" cmd /c 'echo wine loader ok'
+# One wineserver for the whole suite. Left to itself the server exits a few
+# seconds after its last client goes, and cargo starts the next test binary
+# inside that window; a client that connects to a server on its way out
+# gets "wine client error: recvmsg: Connection reset by peer" and its test
+# "exited abnormally" with nothing else wrong. -p keeps the server until
+# the -k at the end.
 wineserver -w 2> /dev/null || true
+wineserver -p
 
 # Clippy on the Windows target before the suite (Phase 1 acceptance: clippy
 # clean on every target); lint needs the target's std, not wine.
@@ -73,4 +80,9 @@ cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -
 
 # The windows-gnu target links the C runtime statically (.cargo/config.toml),
 # so the test binaries need no mingw DLLs under wine.
-cargo test --workspace --release --locked --target x86_64-pc-windows-gnu
+# rue-e2e is the tier 5 harness; it runs on a reaper guest only (tools/check.sh).
+status=0
+cargo test --workspace --exclude rue-e2e --release --locked --target x86_64-pc-windows-gnu || status=$?
+# The suite's status is the script's; the server's shutdown is not.
+wineserver -k || echo "wineserver: nothing left to stop"
+exit "$status"

@@ -16,8 +16,9 @@ export CARGO_HOME="${CARGO_HOME:-$BITBUCKET_CLONE_DIR/.cargo_cache}"
 NIGHTLY="nightly-2026-08-01"
 
 # Every binary the workspace ships, on every target (D-031: Windows is not a
-# client-only build; macOS is cross-built the same way). A name that does not exist yet is skipped (rued and
-# rue-hook arrive in Phases 3 and 4); none existing is a failure.
+# client-only build; macOS is cross-built the same way). A name that does not
+# exist yet is skipped (rued arrives in Phase 3's daemon unit, rue-hook in
+# Phase 4); none existing is a failure.
 BINS="rue rued rue-hook"
 
 apt_install() {

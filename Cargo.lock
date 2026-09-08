@@ -391,6 +391,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-e2e"
+version = "0.0.3"
+
+[[package]]
+name = "rue-engine"
+version = "0.0.3"
+dependencies = [
+ "rue-core",
+]
+
+[[package]]
 name = "rue-render"
 version = "0.0.3"
 dependencies = [

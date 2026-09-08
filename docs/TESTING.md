@@ -269,28 +269,68 @@ caught at once rather than when someone remembers the battery.
 
 ## Under reaper
 
-`.reaper.toml` runs the whole gate on the Ubuntu guest, in the digest-pinned
-Rust 1.97 image the pipeline uses (Debian trixie) with GHC 9.10.3 and cabal
-installed by ghcup into the guest's caches on first use, and the POSIX-sh half
-on the FreeBSD host guest with its skips declared. `reaper up && reaper test`. The manifest validates with
-`reaper-manifest-validate .reaper.toml`.
+`.reaper.toml` declares two guests. `reaper up && reaper test`; the manifest
+is validated by `reaper doctor`.
 
-The Ubuntu run also installs `uv` and a 3.12 interpreter into a `uv` cache
-for the execution tests, and `ci/build-target.sh` runs clippy for each
-target it builds before building it (the Windows script does the same for
-its target), which is how "clippy clean on every target" is proven: on the
-guest for the targets a guest can host, in the pipeline for all seven.
+- **ubuntu-26.04.** Its `build` runs in the digest-pinned Rust 1.97 image the
+  pipeline uses (Debian trixie) with GHC 9.10.3 and cabal installed by ghcup
+  into the guest's caches on first use: the cabal and cargo builds, then the
+  whole gate, then the Windows suite under wine. Its `run` executes on the
+  guest itself (`exec = "host"`), because the tier 5 and 6 harness needs a
+  real sshd, nftables and cron and the container has none of them and no
+  capability to add them: it installs a pinned 1.97.1 toolchain from rustup
+  into a cache of its own and runs `tenants/e2e/run.sh`.
+- **freebsd-15.1.** Host execution throughout. Its `build` installs `uv` and
+  a system Python from pkg and a pinned 1.97.1 toolchain from rustup (the
+  port's rust is 1.96 and the workspace's `rust-version` says 1.97), then
+  builds the workspace; its `run` is the gate with bash, shellcheck and cabal
+  declared skipped, then `tenants/e2e/run.sh` against pf, sshd and cron.
+
+rustup-init and ghcup are fetched to files and executed, never piped into a
+shell. Every skip is declared in the manifest's `RUE_CHECK_SKIP_OK` and
+nowhere else.
+
+### Tier 5 and 6: the harness on a disposable guest
+
+`tenants/e2e` (crate `rue-e2e`) holds the tests that run rue against real
+hosts. They are never a gate phase: `tools/check.sh`, the pipeline and
+`ci/test-windows.sh` all run `cargo test --workspace --exclude rue-e2e`,
+with that reason beside the exclusion, and the harness's tests refuse
+(panic) unless `RUE_E2E=1`, which only `tenants/e2e/run.sh` sets. A test
+that can only pass by touching nothing is not a test, so a workstation run
+of the crate fails loudly rather than reporting green.
+
+`run.sh` refuses on any machine that is not a reaper guest (`REAPER_WORK`
+unset) unless `RUE_E2E_DISPOSABLE=1` says it may be rewritten, provisions the
+guest with `tenants/e2e/provision.sh apply`, asserts the provisioning with
+`provision.sh check`, and runs the crate's tests one at a time. Provisioning
+means: the harness's Ed25519 key and its own `known_hosts` under `rue-e2e`
+beside the working tree (never inside it; never `~/.ssh`, which rue and
+its tests read and write nowhere); an sshd drop-in adding that file as a
+second `AuthorizedKeysFile`; the loopback alias `127.0.0.2` every e2e plan
+addresses its target by, so a plan that severs ssh severs only itself and
+never reaper's transport; a firewall baseline that skips the management
+interface (pf `set skip`; an nftables table of rue's own whose input chain
+accepts); the `rue` group; and `rue_root` under `$REAPER_STATE/rue`, the
+dataset reaper's reset rolls back. Every ssh call the harness makes is
+`ssh -F none -o IdentitiesOnly=yes -i <its key> -o UserKnownHostsFile=<its
+file> -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes`.
+
+This unit's tier 5 is the smoke: the provisioning self-check passes and the
+target answers over rue's own key through the alias (`SSH_CONNECTION`
+names `127.0.0.2:22` on the server side). Every later case stands on it.
 
 Windows is tested under wine: `ci/test-windows.sh` builds the whole suite for
 `x86_64-pc-windows-gnu`, statically linked against the C runtime
 (`.cargo/config.toml`) so the binaries carry no mingw DLL dependency, and
-runs it with wine as cargo's runner, on the Ubuntu reaper guest after the gate
-and in the pipeline's `doTestWindows` step. Rust's standard library needs
+runs it with wine as cargo's runner, on the Ubuntu reaper guest and in the
+pipeline's `doTestWindows` step. Rust's standard library needs
 `bcryptprimitives.dll`, which wine has had since 8.13; Debian trixie's wine 10
 qualifies and bookworm's 8.0 does not, which is why both hosts are trixie. That
 proves the crates' logic and the CLI's bytes on the Windows target. What wine
 cannot exercise -- services, named pipes, the Task Scheduler, ACLs -- is
-Phase 3's to test on a real machine.
+proven on no real machine in Phase 3, by the owner's decision of 2026-09-07,
+and the roadmap's not-proven table says so.
 
 ## What green does not prove
 

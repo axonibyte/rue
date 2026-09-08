@@ -76,7 +76,8 @@ definitions:
           - cargo fmt --check
           - cargo clippy --workspace --all-targets --locked -- -D warnings
           - sh tools/lint-darwin-deps.sh
-          - cargo test --release --locked
+          # rue-e2e is the tier 5 harness; it runs on a reaper guest only (tools/check.sh).
+          - cargo test --workspace --exclude rue-e2e --release --locked
 
     - step: &doTestWindows
         # Windows is first-class (D-031). The suite runs on the Windows target

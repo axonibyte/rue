@@ -13,17 +13,24 @@ core/      rue-core     the model, the checker, the verdict, the journal model,
                         the digests, the state machine; no I/O
 render/    rue-render   the backstop artifact per artifact language; depends on
                         core only; no I/O
+engine/    rue-engine   the runtime (ROADMAP 7): the clock in this unit; the
+                        store, lifecycle, executors, arming, the control
+                        channel and the hook protocol by Phase 3's units
 cli/       rue          check | explain | artifact | states over a plan IR file
 tenants/harness         rue-tenants: the tenants and negatives as terms, the case
                         table, the golden writer (rue-goldens) and the tier-2
                         and tier-3 suites
+tenants/e2e             rue-e2e: the tier 5 and 6 harness, run on a disposable
+                        reaper guest by tenants/e2e/run.sh and never by the
+                        gate
 proto/                  the Phase 0 Haskell prototype, kept as the record; its
                         tier-1 and tier-4 tests run in the gate
 ```
 
 Dependency direction is downward only (ROADMAP 4.2). `rue-core` depends on
 nothing in the workspace and on no I/O crate; `rue-render` on core;
-the CLI on both; the harness on both and on nothing else. Per-OS knowledge
+`rue-engine` on core, render and surface; the CLI on all of them; the
+harnesses on the public API and on nothing else. Per-OS knowledge
 lives in `rue-render` (templates and quoting), `ci/build-target.sh`
 (toolchains and linkers) and, from Phase 3, the generic executor and
 scheduler bindings; the one exception is `core/src/artifact.rs`, the

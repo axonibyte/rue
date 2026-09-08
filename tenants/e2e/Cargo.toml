@@ -1,0 +1,16 @@
+[package]
+name = "rue-e2e"
+description = "The tier 5 and 6 harness: rue against real hosts on a disposable reaper guest; run by tenants/e2e/run.sh, never by the gate"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Lives under tenants/ because it names tenants; the seam guard exempts that
+# directory and nothing else may. Its tests refuse to run without a
+# provisioned disposable host (RUE_E2E=1 from run.sh), so the gate's,
+# the pipeline's and the Windows script's `cargo test` exclude the package by
+# name with that reason beside the exclusion.
+[dependencies]
