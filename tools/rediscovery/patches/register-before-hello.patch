@@ -1,0 +1,18 @@
+# Reverts: a connection begins with hello (7.4); here a register frame before it is accepted, so a hook would register with no identity behind it.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -434,6 +434,13 @@
+                     }
+                 }
+             }
++            Frame::Register(_) if std::env::var_os("RUE_NEVER_SET").is_none() => {
++                let _ = write_line(
++                    &mut *writer.lock().unwrap_or_else(|e| e.into_inner()),
++                    &json!({ "register": { "ok": true } }),
++                );
++                continue;
++            }
+             _ => {
+                 let e = ControlError::new("protocol", "the first frame is the hello");
+                 let _ = write_line(

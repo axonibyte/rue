@@ -69,6 +69,8 @@ pub struct Contract {
 pub struct SiteDecl {
     pub inventory: Option<Binding>,
     pub journal: Option<Binding>,
+    /// `journal to: ..., sign: key(path)`.
+    pub journal_sign: Option<Binding>,
     pub approval: Option<Binding>,
     pub secrets_from: Option<Binding>,
     pub deliver_to: Vec<Binding>,
@@ -102,15 +104,30 @@ pub enum ArgKind {
     Other,
 }
 
+/// An operator (7.4): its identity, the OS user peer credentials must map
+/// to (`:socket_owner` for the account the daemon runs as), the plans it
+/// may act on (`all`, or names), whether admin verbs are granted, and the
+/// instances it subscribes to notifications for.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Identity {
     pub name: String,
+    pub user: Option<String>,
+    pub operator_for: Vec<String>,
     pub admin: bool,
+    pub subscribe: Vec<String>,
 }
 
+impl Identity {
+    pub fn admits_plan(&self, plan: &str) -> bool {
+        self.operator_for.iter().any(|p| p == "all" || p == plan)
+    }
+}
+
+/// A registrar (7.4): who may register which hook names, by OS user.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Registrar {
     pub name: String,
+    pub user: Option<String>,
     pub may_register: Vec<String>,
 }
 
@@ -186,7 +203,7 @@ fn bindings_of(a: &Arg, slot: &'static str) -> Vec<Binding> {
 fn admitted(slot: &str) -> &'static [&'static str] {
     match slot {
         "inventory" => &["rue_toml", "file", "hook"],
-        "journal" => &["file", "stdout", "local", "hook"],
+        "journal" => &["file", "stdout", "local", "hook", "key"],
         "approval" => &["always", "hook"],
         "secrets_from" => &["file", "hook"],
         "deliver_to" => &["requester", "hold", "hook"],
@@ -218,6 +235,7 @@ pub fn validate(
         .inventory
         .iter()
         .chain(decl.journal.iter())
+        .chain(decl.journal_sign.iter())
         .chain(decl.approval.iter())
         .chain(decl.secrets_from.iter())
         .chain(decl.deliver_to.iter())
@@ -240,7 +258,7 @@ pub fn validate(
             continue;
         }
         let contract = match b.kind.as_str() {
-            "file" | "rue_toml" => (b.arg_kind == ArgKind::Str, "a path string"),
+            "file" | "rue_toml" | "key" => (b.arg_kind == ArgKind::Str, "a path string"),
             "hook" => (b.arg_kind == ArgKind::Atom, "the hook's atom"),
             "hold" => (
                 b.kws.iter().any(|(k, _)| k == "until"),
@@ -292,6 +310,32 @@ pub fn validate(
             "no operators block, or none declares an identity; nothing may request a plan".into(),
         );
     }
+    // An identity or a registrar is a statement about an OS user (7.4):
+    // without `user:` peer credentials could map to nothing.
+    for i in &decl.identities {
+        if i.user.is_none() {
+            with(
+                block.range,
+                Code::E0602,
+                format!(
+                    "identity :{} names no OS user (user: \"name\" or :socket_owner)",
+                    i.name
+                ),
+            );
+        }
+    }
+    for r in &decl.registrars {
+        if r.user.is_none() {
+            with(
+                block.range,
+                Code::E0602,
+                format!(
+                    "registrar :{} names no OS user (user: \"name\" or :socket_owner)",
+                    r.name
+                ),
+            );
+        }
+    }
     out
 }
 
@@ -320,7 +364,12 @@ pub fn declare(block: &Block) -> SiteDecl {
                 let bs: Vec<Binding> = l.args.iter().flat_map(|a| bindings_of(a, slot)).collect();
                 match slot {
                     "inventory" => d.inventory = bs.into_iter().next(),
-                    "journal" => d.journal = bs.into_iter().next(),
+                    "journal" => {
+                        let (keys, sinks): (Vec<Binding>, Vec<Binding>) =
+                            bs.into_iter().partition(|b| b.kind == "key");
+                        d.journal = sinks.into_iter().next();
+                        d.journal_sign = keys.into_iter().next();
+                    }
                     "approval" => d.approval = bs.into_iter().next(),
                     "secrets_from" => d.secrets_from = bs.into_iter().next(),
                     "deliver_to" => d.deliver_to = bs,
@@ -347,7 +396,16 @@ pub fn declare(block: &Block) -> SiteDecl {
                                 })
                                 .unwrap_or_default();
                             let admin = kw_bool(&l.args, "admin").unwrap_or(false);
-                            d.identities.push(Identity { name, admin });
+                            let user = kw_atom_or_str(&l.args, "user");
+                            let operator_for = kw_list(&l.args, "operator_for");
+                            let subscribe = kw_list(&l.args, "subscribe");
+                            d.identities.push(Identity {
+                                name,
+                                user,
+                                operator_for,
+                                admin,
+                                subscribe,
+                            });
                         }
                     }
                 }
@@ -365,7 +423,12 @@ pub fn declare(block: &Block) -> SiteDecl {
                                 })
                                 .unwrap_or_default();
                             let may_register = kw_list(&l.args, "may_register");
-                            d.registrars.push(Registrar { name, may_register });
+                            let user = kw_atom_or_str(&l.args, "user");
+                            d.registrars.push(Registrar {
+                                name,
+                                user,
+                                may_register,
+                            });
                         }
                     }
                 }
@@ -391,6 +454,13 @@ pub fn kw<'a>(args: &'a [Arg], name: &str) -> Option<&'a Kw> {
         Arg::Kw(k) if k.name == name => Some(k),
         _ => None,
     })
+}
+
+fn kw_atom_or_str(args: &[Arg], name: &str) -> Option<String> {
+    match kw(args, name).map(|k| &*k.value) {
+        Some(Arg::Expr(e)) => atom_or_str(e),
+        _ => None,
+    }
 }
 
 fn kw_bool(args: &[Arg], name: &str) -> Option<bool> {

@@ -1,0 +1,22 @@
+# rued: rue's engine daemon (systemd). Install to /etc/systemd/system/.
+#
+# The account rued runs as is the socket owner (7.4); the socket's directory
+# is created for it here. The store is created with this build's schema
+# when empty and migrated only by `rued migrate`.
+
+[Unit]
+Description=rue engine daemon
+After=network.target
+
+[Service]
+Type=simple
+User=rued
+Group=rue
+RuntimeDirectory=rue
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/rued run --site /etc/rue/site.rue --store /var/lib/rue/store --socket /run/rue/rued.sock --group rue
+Restart=on-failure
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

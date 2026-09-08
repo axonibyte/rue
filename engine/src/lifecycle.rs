@@ -416,6 +416,32 @@ impl Engine {
         &self.trace
     }
 
+    /// A site-level journal entry (an operator connected, a hook registered):
+    /// about no plan and no instance.
+    pub fn journal_site_event(&mut self, ev: J) -> Result<rue_core::journal::Entry, EngineError> {
+        let at = self.clock.now();
+        let about = About {
+            plan: String::new(),
+            instance: String::new(),
+            host: String::new(),
+        };
+        Ok(self
+            .journal
+            .record(&self.store, at, &about, ev, Vec::new())?)
+    }
+
+    /// Replace the host inventory (a hook inventory listed anew).
+    pub fn set_hosts(&mut self, hosts: Vec<Host>) {
+        self.hosts = hosts
+            .into_iter()
+            .map(|h| (h.name().to_string(), h))
+            .collect();
+    }
+
+    pub fn add_executor(&mut self, e: Box<dyn Executor>) {
+        self.executors.push(e);
+    }
+
     pub fn store(&self) -> &Store {
         &self.store
     }
@@ -1041,7 +1067,9 @@ impl Engine {
             Ok(h) => h,
             Err(from) => return self.defer(rec, n, &op, &from),
         };
-        if host.name() != "controller" && self.executor_for(&host).is_none() {
+        // A rehearsal calls no executor, so it is never deferred for the
+        // lack of one (the check's own deferrals still stand).
+        if !rec.rehearsal && host.name() != "controller" && self.executor_for(&host).is_none() {
             return self.defer(
                 rec,
                 n,

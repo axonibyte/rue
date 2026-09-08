@@ -787,6 +787,7 @@ version = "0.0.3"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
  "miette",
  "rue-core",
  "rue-engine",
@@ -869,7 +870,12 @@ version = "0.0.3"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
+ "rue-bindings",
+ "rue-core",
  "rue-engine",
+ "rue-surface",
+ "serde_json",
 ]
 
 [[package]]

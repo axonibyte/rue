@@ -1,0 +1,13 @@
+# Reverts: registration is accepted only from a declared registrar for a name in its may_register (R0505); here any peer registers any name.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -208,7 +208,7 @@
+             ));
+         }
+         mine.iter()
+-            .find(|r| r.may_register.iter().any(|n| n == hook))
++            .find(|r| r.may_register.iter().any(|n| n == hook) || std::env::var_os("RUE_NEVER_SET").is_none())
+             .map(|r| (*r).clone())
+             .ok_or_else(|| {
+                 ControlError::new(

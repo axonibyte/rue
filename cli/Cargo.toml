@@ -17,6 +17,7 @@ rue-render = { path = "../render" }
 rue-surface = { path = "../surface" }
 rue-engine = { path = "../engine" }
 clap.workspace = true
+serde_json.workspace = true
 # The binary's error type; the library crates have their own.
 anyhow.workspace = true
 miette.workspace = true
@@ -24,3 +25,7 @@ miette.workspace = true
 [dev-dependencies]
 rue-tenants = { path = "../tenants/harness" }
 serde_json.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+# The test's own group id, for the socket's group.
+libc = "0.2"

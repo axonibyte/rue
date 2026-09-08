@@ -68,6 +68,7 @@ impl Drop for Dir {
 
 fn codes(path: &std::path::Path, host: &str) -> Vec<(Code, String)> {
     let opts = Options {
+        suspend_e0604: false,
         host: Some(host.into()),
         plan: None,
         requester: None,
@@ -233,6 +234,7 @@ end
 
 fn ir(path: &std::path::Path, host: &str) -> rue_core::ir::PlanIr {
     let opts = Options {
+        suspend_e0604: false,
         host: Some(host.into()),
         plan: None,
         requester: None,
@@ -403,4 +405,96 @@ fn the_site_is_validated() {
     // The full block is clean.
     let f = d.raw("plan5.rue", &format!("rue 0\n{SITE_FULL}\n{POSTURE}\ndefplan :p, %{{name: \"db-01\"}} do\n  wane 1h\n  posture()\nend\n"));
     assert!(codes(&f, "db-01").is_empty());
+}
+
+// --- the site bindings a daemon reads --------------------------------------
+
+#[test]
+fn site_bindings_carry_operators_registrars_and_the_inventory_and_refuse_an_identity_with_no_user()
+{
+    use rue_surface::resolve::site_bindings;
+    let d = Dir::new("site-bindings");
+    let text = r#"rue 0
+site do
+  inventory from: file("inventory.toml")
+  journal to: file("journal.ndjson")
+  execute via: [ssh(), hook(:actuate, transport: :api)]
+  max_wait 20m
+  operators do
+    identity :ops, user: "ops", operator_for: :all, admin: true, subscribe: [:p]
+    identity :host, user: :socket_owner, operator_for: [:p, :q]
+  end
+  hooks do
+    registrar :host, user: :socket_owner, may_register: [:actuate]
+  end
+end
+"#;
+    let f = d.raw("site.rue", text);
+    let sb = site_bindings(&f).unwrap();
+    assert_eq!(sb.dir, d.0);
+    assert_eq!(sb.inventory.hosts.len(), 2);
+    assert_eq!(sb.inventory.contracts[0].address, "10.0.0.1");
+    assert_eq!(sb.decl.journal.as_ref().unwrap().kind, "file");
+    assert_eq!(
+        sb.decl.journal.as_ref().unwrap().arg.as_deref(),
+        Some("journal.ndjson")
+    );
+    assert_eq!(sb.decl.execute.len(), 2);
+    assert_eq!(sb.decl.max_wait.map(|d| d.seconds), Some(1200));
+    let ops = &sb.decl.identities;
+    assert_eq!(ops.len(), 2);
+    assert_eq!(
+        (
+            ops[0].name.as_str(),
+            ops[0].user.as_deref(),
+            ops[0].admin,
+            &ops[0].subscribe
+        ),
+        ("ops", Some("ops"), true, &vec!["p".to_string()])
+    );
+    assert!(ops[0].admits_plan("anything"));
+    assert_eq!(
+        (ops[1].name.as_str(), ops[1].user.as_deref(), ops[1].admin),
+        ("host", Some("socket_owner"), false)
+    );
+    assert!(ops[1].admits_plan("p") && ops[1].admits_plan("q") && !ops[1].admits_plan("r"));
+    let regs = &sb.decl.registrars;
+    assert_eq!(regs[0].user.as_deref(), Some("socket_owner"));
+    assert_eq!(regs[0].may_register, vec!["actuate".to_string()]);
+
+    // An identity or a registrar with no OS user is E0602.
+    let bad = d.raw(
+        "bad.rue",
+        &text.replace("identity :ops, user: \"ops\", ", "identity :ops, "),
+    );
+    let diags = site_bindings(&bad).unwrap_err();
+    assert!(
+        diags
+            .iter()
+            .any(|x| x.code == Code::E0602 && x.message.contains("identity :ops names no OS user")),
+        "{diags:?}"
+    );
+    let bad = d.raw(
+        "bad2.rue",
+        &text.replace(
+            "registrar :host, user: :socket_owner, ",
+            "registrar :host, ",
+        ),
+    );
+    let diags = site_bindings(&bad).unwrap_err();
+    assert!(
+        diags.iter().any(
+            |x| x.code == Code::E0602 && x.message.contains("registrar :host names no OS user")
+        ),
+        "{diags:?}"
+    );
+    // A missing inventory file is E0602 at the binding.
+    let bad = d.raw("bad3.rue", &text.replace("inventory.toml", "nowhere.toml"));
+    let diags = site_bindings(&bad).unwrap_err();
+    assert!(
+        diags
+            .iter()
+            .any(|x| x.code == Code::E0602 && x.message.contains("nowhere.toml")),
+        "{diags:?}"
+    );
 }

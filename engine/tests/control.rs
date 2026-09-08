@@ -1,0 +1,629 @@
+//! The control channel over a socket pair in one process (the peer is this
+//! process's own uid): identity from peer credentials and the declared
+//! operators (R0503), the protocol version (R0501), scope (R0504), admin
+//! verbs (R0506), hook registration by declared registrars only (R0505)
+//! and journaled, a hook serving execute and probe through the same
+//! connection, a hook that goes silent, notifications to a subscriber, and
+//! every verb over the channel.
+
+#![cfg(unix)]
+
+mod common;
+
+use std::collections::BTreeMap;
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixStream;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
+use common::world::{self, World, OWNER};
+use rue_core::journal::Event as J;
+use rue_engine::control::{
+    handle, Daemon, Operator, Operators, Peer, RegistrarDecl, SharedWriter, SubscriberSink,
+    Subscribers, UserSpec, CONTROL_PROTOCOL,
+};
+use rue_engine::executor::Executor;
+use rue_engine::hook::{HookExecutor, HookRegistry, HOOK_PROTOCOL};
+use rue_engine::journal::{Journal, MemorySink, Sink};
+use rue_engine::lifecycle::Engine;
+use rue_engine::peer::{my_uid, user_name, PeerCred};
+use rue_engine::store::Store;
+use serde_json::{json, Value};
+
+/// A daemon over the test world's engine, with the given operators.
+/// The world is returned too: its temporary directory holds the store.
+fn daemon(
+    w: World,
+    ops: Operators,
+    dry_run: bool,
+) -> (Arc<Daemon>, MemorySink, Arc<HookRegistry>, World) {
+    let hooks = Arc::new(HookRegistry::new());
+    let subscribers = Arc::new(Subscribers::default());
+    // A fresh engine whose journal fans out to the subscribers too, and
+    // whose executors include a hook executor for transport `api`.
+    let store = Store::create(&w.dir.join("store-b")).unwrap();
+    let sink = MemorySink::new("mem");
+    let sinks: Vec<Box<dyn Sink>> = vec![
+        Box::new(sink.clone()),
+        Box::new(SubscriberSink(subscribers.clone())),
+    ];
+    let journal = Journal::open(&store, sinks, None).unwrap();
+    let hook_exec = HookExecutor {
+        name: "actuate".into(),
+        transport: "api".into(),
+        registry: hooks.clone(),
+        deadline: Duration::from_millis(500),
+    };
+    let execs: Vec<Box<dyn Executor>> = vec![Box::new(w.ssh.clone()), Box::new(hook_exec)];
+    let mut api_host = world::host("api-01", &["api"]);
+    api_host.record.filesystem = false;
+    api_host.record.stdin_preamble = false;
+    let engine = Engine::open(
+        store,
+        journal,
+        w.clock.clone(),
+        execs,
+        vec![world::host(OWNER, &["ssh"]), api_host],
+    )
+    .unwrap();
+    let d = Arc::new(Daemon {
+        engine: Mutex::new(engine),
+        operators: ops,
+        hooks: hooks.clone(),
+        subscribers,
+        hook_deadline: Duration::from_millis(500),
+        dry_run,
+    });
+    (d, sink, hooks, w)
+}
+
+fn ops(identities: Vec<Operator>, registrars: Vec<RegistrarDecl>) -> Operators {
+    Operators {
+        identities,
+        registrars,
+        socket_owner_uid: my_uid(),
+        dry_run: false,
+    }
+}
+
+fn me() -> String {
+    user_name(my_uid()).expect("this uid has a name")
+}
+
+fn operator(name: &str, user: UserSpec, plans: &[&str], admin: bool) -> Operator {
+    Operator {
+        name: name.into(),
+        user,
+        operator_for: plans.iter().map(|s| s.to_string()).collect(),
+        admin,
+        subscribe: Vec::new(),
+    }
+}
+
+/// A connection to the daemon: the server side handled on its own thread
+/// over a socket pair; the client side a line reader and writer.
+struct Conn {
+    reader: BufReader<UnixStream>,
+    writer: UnixStream,
+    next: u64,
+}
+
+impl Conn {
+    fn open(d: &Arc<Daemon>) -> Conn {
+        let (a, b) = UnixStream::pair().unwrap();
+        let d = d.clone();
+        thread::spawn(move || {
+            let peer = Peer {
+                cred: PeerCred {
+                    uid: my_uid(),
+                    gid: 0,
+                },
+                user: user_name(my_uid()),
+                socket_owner_uid: my_uid(),
+            };
+            let reader = BufReader::new(b.try_clone().unwrap());
+            let writer: SharedWriter = Arc::new(Mutex::new(Box::new(b)));
+            handle(reader, writer, peer, &d);
+        });
+        Conn {
+            reader: BufReader::new(a.try_clone().unwrap()),
+            writer: a,
+            next: 1,
+        }
+    }
+
+    fn send(&mut self, v: Value) {
+        let mut line = serde_json::to_vec(&v).unwrap();
+        line.push(b'\n');
+        self.writer.write_all(&line).unwrap();
+    }
+
+    fn recv(&mut self) -> Value {
+        let mut line = String::new();
+        let n = self.reader.read_line(&mut line).unwrap();
+        assert!(n > 0, "the daemon closed the connection");
+        serde_json::from_str(line.trim_end()).unwrap()
+    }
+
+    fn hello(&mut self, identity: Option<&str>) -> Value {
+        self.send(json!({ "hello": { "proto": CONTROL_PROTOCOL, "identity": identity } }));
+        self.recv()
+    }
+
+    fn call(&mut self, verb: &str, args: Value) -> Value {
+        let id = self.next;
+        self.next += 1;
+        self.send(json!({ "id": id, "verb": verb, "args": args }));
+        loop {
+            let v = self.recv();
+            if v.get("event").is_some() {
+                continue;
+            }
+            assert_eq!(v.get("id").and_then(Value::as_u64), Some(id));
+            return v;
+        }
+    }
+}
+
+fn error_code(v: &Value) -> &str {
+    v.pointer("/error/code")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+fn plan_ir(id: &str) -> Value {
+    let plan = world::temp_plan(id, vec![world::step(world::op("a"))]);
+    serde_json::to_value(world::ir(plan)).unwrap()
+}
+
+#[test]
+fn identity_comes_from_peer_credentials_and_the_declared_operators() {
+    let w = World::new("control-identity");
+    let (d, sink, _, _w) = daemon(
+        w,
+        ops(
+            vec![
+                operator("ops", UserSpec::Name(me()), &["all"], true),
+                operator(
+                    "nobody",
+                    UserSpec::Name("no-such-user-here".into()),
+                    &["all"],
+                    true,
+                ),
+                operator("owner", UserSpec::SocketOwner, &["p"], false),
+            ],
+            vec![],
+        ),
+        false,
+    );
+    // Named and matching: accepted, with what it is.
+    let mut c = Conn::open(&d);
+    let h = c.hello(Some("ops"));
+    assert_eq!(h.pointer("/hello/ok"), Some(&json!(true)), "{h}");
+    assert_eq!(h.pointer("/hello/identity"), Some(&json!("ops")));
+    assert_eq!(h.pointer("/hello/admin"), Some(&json!(true)));
+    // Named but another user's identity: R0503.
+    let mut c2 = Conn::open(&d);
+    let h = c2.hello(Some("nobody"));
+    assert_eq!(error_code(&h), "R0503", "{h}");
+    assert!(h
+        .pointer("/error/message")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .contains("never an identity"));
+    // The socket owner's identity by uid.
+    let mut c3 = Conn::open(&d);
+    let h = c3.hello(Some("owner"));
+    assert_eq!(h.pointer("/hello/identity"), Some(&json!("owner")), "{h}");
+    // Unnamed with two identities for this user: the hello must choose.
+    let mut c4 = Conn::open(&d);
+    let h = c4.hello(None);
+    assert_eq!(error_code(&h), "R0503", "{h}");
+    assert!(h
+        .pointer("/error/message")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .contains("must name one"));
+    // A wrong protocol: R0501.
+    let mut c5 = Conn::open(&d);
+    c5.send(json!({ "hello": { "proto": 99 } }));
+    let h = c5.recv();
+    assert_eq!(error_code(&h), "R0501", "{h}");
+    // A verb before hello is refused.
+    let mut c6 = Conn::open(&d);
+    c6.send(json!({ "id": 1, "verb": "status", "args": {} }));
+    let h = c6.recv();
+    assert_eq!(error_code(&h), "protocol", "{h}");
+    // Connections are journaled with their identity.
+    thread::sleep(Duration::from_millis(50));
+    let ev = sink.events();
+    assert!(ev.contains(&J::OperatorConnected {
+        identity: "ops".into(),
+        admin: true
+    }));
+    assert!(ev.contains(&J::OperatorConnected {
+        identity: "owner".into(),
+        admin: false
+    }));
+    assert!(!ev
+        .iter()
+        .any(|e| matches!(e, J::OperatorConnected { identity, .. } if identity == "nobody")));
+    drop(c);
+    thread::sleep(Duration::from_millis(100));
+    assert!(sink.events().contains(&J::OperatorDisconnected {
+        identity: "ops".into()
+    }));
+}
+
+#[test]
+fn a_sole_identity_needs_no_name_and_an_undeclared_user_is_refused() {
+    let w = World::new("control-sole");
+    let (d, _, _, _w) = daemon(
+        w,
+        ops(
+            vec![operator("ops", UserSpec::Name(me()), &["all"], false)],
+            vec![],
+        ),
+        false,
+    );
+    let mut c = Conn::open(&d);
+    let h = c.hello(None);
+    assert_eq!(h.pointer("/hello/identity"), Some(&json!("ops")), "{h}");
+    let w2 = World::new("control-none");
+    let (d2, _, _, _w2) = daemon(
+        w2,
+        ops(
+            vec![operator(
+                "x",
+                UserSpec::Name("someone-else".into()),
+                &["all"],
+                false,
+            )],
+            vec![],
+        ),
+        false,
+    );
+    let mut c = Conn::open(&d2);
+    let h = c.hello(None);
+    assert_eq!(error_code(&h), "R0503", "{h}");
+}
+
+#[test]
+fn every_verb_runs_over_the_channel_within_the_operator_s_scope() {
+    let w = World::new("control-verbs");
+    let (d, sink, _, _w) = daemon(
+        w,
+        ops(
+            vec![
+                operator("ops", UserSpec::Name(me()), &["p", "q"], false),
+                operator("admin", UserSpec::SocketOwner, &["all"], true),
+            ],
+            vec![],
+        ),
+        false,
+    );
+    let mut c = Conn::open(&d);
+    c.hello(Some("ops"));
+    // apply within scope
+    let r = c.call("apply", json!({ "ir": plan_ir("p"), "params": {} }));
+    assert_eq!(r.get("ok"), Some(&json!(true)), "{r}");
+    let id = r
+        .pointer("/result/id")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(r.pointer("/result/state"), Some(&json!("Applied")));
+    assert_eq!(r.pointer("/result/exit"), Some(&json!(0)));
+    // status, one and all
+    let s = c.call("status", json!({ "instance": id }));
+    assert_eq!(s.pointer("/result/state"), Some(&json!("Applied")));
+    assert_eq!(s.pointer("/result/applied"), Some(&json!([1])));
+    let all = c.call("status", json!({}));
+    assert_eq!(all.pointer("/result").unwrap().as_array().unwrap().len(), 1);
+    // out of scope: R0504
+    let r = c.call("apply", json!({ "ir": plan_ir("r"), "params": {} }));
+    assert_eq!(error_code(&r), "R0504", "{r}");
+    // renew, confirm (R0102 on a temporary plan), recant
+    let r = c.call("renew", json!({ "instance": id, "wane_s": 100 }));
+    assert_eq!(error_code(&r), "R0102", "{r}");
+    let r = c.call("confirm", json!({ "instance": id }));
+    assert_eq!(error_code(&r), "R0102", "{r}");
+    let r = c.call("recant", json!({ "instance": id, "force": [] }));
+    assert_eq!(r.pointer("/result/state"), Some(&json!("Closed")), "{r}");
+    assert_eq!(r.pointer("/result/exit"), Some(&json!(1)));
+    // a verb on a closed instance: wrong_state
+    let r = c.call("recant", json!({ "instance": id }));
+    assert_eq!(error_code(&r), "wrong_state", "{r}");
+    // no such instance
+    let r = c.call("status", json!({ "instance": "nope" }));
+    assert_eq!(error_code(&r), "no_such_instance", "{r}");
+    // abandon needs admin (R0506) and a reason
+    let r = c.call("abandon", json!({ "instance": id, "reason": "x" }));
+    assert_eq!(error_code(&r), "R0506", "{r}");
+    let mut a = Conn::open(&d);
+    a.hello(Some("admin"));
+    let r = a.call("abandon", json!({ "instance": id, "reason": "" }));
+    assert_eq!(error_code(&r), "protocol", "{r}");
+    let r = a.call("abandon", json!({ "instance": id, "reason": "gone" }));
+    assert_eq!(error_code(&r), "wrong_state", "abandon on Closed: {r}");
+    // an unknown verb
+    let r = c.call("frobnicate", json!({}));
+    assert_eq!(error_code(&r), "protocol");
+    // the ledger's refusal carries its code
+    let r = c.call("apply", json!({ "ir": plan_ir("q"), "params": {} }));
+    assert_eq!(r.pointer("/result/state"), Some(&json!("Applied")));
+    let r = c.call("apply", json!({ "ir": plan_ir("q"), "params": {} }));
+    assert_eq!(error_code(&r), "R0101", "{r}");
+    assert!(sink.events().contains(&J::Recant));
+}
+
+#[test]
+fn a_hook_registers_by_a_declared_registrar_only_is_journaled_and_serves_execute_and_probe() {
+    let w = World::new("control-hook");
+    let (d, sink, hooks, _w) = daemon(
+        w,
+        ops(
+            vec![operator("ops", UserSpec::Name(me()), &["all"], true)],
+            vec![RegistrarDecl {
+                name: "host".into(),
+                user: UserSpec::SocketOwner,
+                may_register: vec!["actuate".into()],
+            }],
+        ),
+        false,
+    );
+    // Register before hello: refused as a protocol error.
+    let mut early = Conn::open(&d);
+    early.send(json!({ "register": { "name": "actuate", "kinds": ["execute"], "protocol": HOOK_PROTOCOL } }));
+    let r = early.recv();
+    assert_eq!(error_code(&r), "protocol", "{r}");
+    // A name outside may_register: R0505.
+    let mut c = Conn::open(&d);
+    c.hello(Some("ops"));
+    c.send(
+        json!({ "register": { "name": "other", "kinds": ["execute"], "protocol": HOOK_PROTOCOL } }),
+    );
+    let r = c.recv();
+    assert_eq!(
+        r.pointer("/register/error/code"),
+        Some(&json!("R0505")),
+        "{r}"
+    );
+    // A wrong hook protocol: R0501.
+    c.send(json!({ "register": { "name": "actuate", "kinds": ["execute"], "protocol": 7 } }));
+    let r = c.recv();
+    assert_eq!(
+        r.pointer("/register/error/code"),
+        Some(&json!("R0501")),
+        "{r}"
+    );
+    // The declared one: accepted and journaled.
+    c.send(json!({ "register": { "name": "actuate", "kinds": ["execute", "probe"], "protocol": HOOK_PROTOCOL } }));
+    let r = c.recv();
+    assert_eq!(r.pointer("/register/ok"), Some(&json!(true)), "{r}");
+    assert_eq!(hooks.names(), vec!["actuate".to_string()]);
+    assert_eq!(hooks.serving("execute"), vec!["actuate".to_string()]);
+    thread::sleep(Duration::from_millis(50));
+    assert!(sink.events().iter().any(|e| matches!(e, J::HookRegistered { name, registrar, .. } if name == "actuate" && registrar == "host")));
+
+    // The hook serves: a plan on api-01 (reach api) runs through it. The
+    // hook answers on the same connection from another thread while the
+    // operator applies over a second connection.
+    let (server_side, _keep) = {
+        let (r, wtr) = (c.reader, c.writer);
+        (r, wtr)
+    };
+    let mut hook_reader = server_side;
+    let mut hook_writer = _keep;
+    let served = Arc::new(Mutex::new(Vec::new()));
+    let served2 = served.clone();
+    let hook_thread = thread::spawn(move || {
+        let mut line = String::new();
+        // Exactly two requests: the probe, then the run.
+        for _ in 0..2 {
+            line.clear();
+            if hook_reader.read_line(&mut line).unwrap_or(0) == 0 {
+                break;
+            }
+            let req: Value = serde_json::from_str(line.trim_end()).unwrap();
+            served2.lock().unwrap().push(req.clone());
+            let id = req["id"].clone();
+            let reply = match (req["kind"].as_str(), req["op"].as_str()) {
+                (Some("execute"), Some("run")) => {
+                    json!({ "id": id, "ok": true, "output": { "stdout": "", "outputs": { "token": "t-9" } }, "facts": [] })
+                }
+                (Some("probe"), Some("observe")) => {
+                    json!({ "id": id, "ok": true, "fact": { "text": "up", "tri": "yes" } })
+                }
+                _ => json!({ "id": id, "ok": false, "error": "unexpected" }),
+            };
+            let mut bytes = serde_json::to_vec(&reply).unwrap();
+            bytes.push(b'\n');
+            hook_writer.write_all(&bytes).unwrap();
+        }
+    });
+    let mut o = world::on(world::op("act"), "api-01");
+    o.pre = vec![world::guard("up", rue_core::model::Tri::Unknown)];
+    o.outputs = vec![rue_core::model::Output {
+        name: "token".into(),
+        secret: false,
+    }];
+    o.footprint = vec![];
+    o.undo = rue_core::model::Undo::Restore;
+    let mut plan = world::temp_plan("h", vec![world::step(o)]);
+    plan.owner = "api-01".into();
+    let mut site = world::site();
+    site.transports.push("api".into());
+    site.hosts.push(world::record("api-01", &["api"]));
+    let ir = rue_core::ir::PlanIr {
+        ir_version: rue_core::ir::IR_VERSION,
+        requester: "ops".into(),
+        site,
+        plan,
+    };
+    let mut op_conn = Conn::open(&d);
+    op_conn.hello(Some("ops"));
+    let r = op_conn.call("apply", json!({ "ir": ir, "params": {} }));
+    assert_eq!(r.pointer("/result/state"), Some(&json!("Applied")), "{r}");
+    hook_thread.join().unwrap();
+    let served = served.lock().unwrap();
+    assert_eq!(served.len(), 2, "{served:?}");
+    assert_eq!(
+        (served[0]["kind"].as_str(), served[0]["op"].as_str()),
+        (Some("probe"), Some("observe"))
+    );
+    assert_eq!(served[0]["probe"], json!("up"));
+    assert_eq!(
+        (served[1]["kind"].as_str(), served[1]["op"].as_str()),
+        (Some("execute"), Some("run"))
+    );
+    assert_eq!(served[1]["host"], json!("api-01"));
+    assert!(served[1]["body"].as_array().unwrap().len() == 1);
+    let id = r
+        .pointer("/result/id")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    let s = op_conn.call("status", json!({ "instance": id }));
+    assert_eq!(s.pointer("/result/state"), Some(&json!("Applied")));
+    let e = d.engine.lock().unwrap();
+    let rec = e.status(&id).unwrap().unwrap();
+    assert_eq!(
+        rec.outputs.get("act.token").map(String::as_str),
+        Some("t-9")
+    );
+}
+
+#[test]
+fn a_hook_that_goes_silent_refuses_the_step_and_its_departure_is_journaled() {
+    let w = World::new("control-silent");
+    let (d, sink, hooks, _w) = daemon(
+        w,
+        ops(
+            vec![operator("ops", UserSpec::Name(me()), &["all"], true)],
+            vec![RegistrarDecl {
+                name: "host".into(),
+                user: UserSpec::SocketOwner,
+                may_register: vec!["actuate".into()],
+            }],
+        ),
+        false,
+    );
+    let mut c = Conn::open(&d);
+    c.hello(Some("ops"));
+    c.send(json!({ "register": { "name": "actuate", "kinds": ["execute"], "protocol": HOOK_PROTOCOL } }));
+    c.recv();
+    // The hook never answers.
+    let mut o = world::on(world::op("act"), "api-01");
+    o.footprint = vec![];
+    o.undo = rue_core::model::Undo::Restore;
+    let mut plan = world::temp_plan("h", vec![world::step(o)]);
+    plan.owner = "api-01".into();
+    let mut site = world::site();
+    site.transports.push("api".into());
+    site.hosts.push(world::record("api-01", &["api"]));
+    let ir = rue_core::ir::PlanIr {
+        ir_version: rue_core::ir::IR_VERSION,
+        requester: "ops".into(),
+        site,
+        plan,
+    };
+    let mut op_conn = Conn::open(&d);
+    op_conn.hello(Some("ops"));
+    let r = op_conn.call("apply", json!({ "ir": ir, "params": {} }));
+    assert_eq!(r.pointer("/result/state"), Some(&json!("Closed")), "{r}");
+    assert!(sink
+        .events()
+        .iter()
+        .any(|e| matches!(e, J::StepFailed { error, .. } if error.contains("silent"))));
+    // The hook connection closes: deregistered and journaled.
+    drop(c);
+    thread::sleep(Duration::from_millis(100));
+    assert!(hooks.names().is_empty());
+    assert!(sink
+        .events()
+        .iter()
+        .any(|e| matches!(e, J::HookDeregistered { name, .. } if name == "actuate")));
+}
+
+#[test]
+fn a_subscriber_receives_the_entries_of_its_plans_and_dry_run_forces_rehearsal() {
+    let w = World::new("control-subscribe");
+    let mut sub = operator("watcher", UserSpec::Name(me()), &["all"], false);
+    sub.subscribe = vec!["p".into()];
+    let (d, _, _, _w) = daemon(w, ops(vec![sub], vec![]), true);
+    let mut c = Conn::open(&d);
+    let h = c.hello(None);
+    assert_eq!(h.pointer("/hello/dry_run"), Some(&json!(true)));
+    let r = c.call("apply", json!({ "ir": plan_ir("p"), "params": {} }));
+    assert!(
+        r.pointer("/result/line")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains("rehearsal"),
+        "{r}"
+    );
+    // The reply to the first call was the reply, not an event: `Conn::call`
+    // asserts the id. A plan not subscribed to yields no events before its
+    // reply.
+    let mut c2 = Conn::open(&d);
+    c2.hello(None);
+    let mut line = String::new();
+    c2.send(json!({ "id": 7, "verb": "apply", "args": { "ir": plan_ir("q"), "params": {} } }));
+    c2.reader.read_line(&mut line).unwrap();
+    let v: Value = serde_json::from_str(line.trim_end()).unwrap();
+    assert_eq!(v.get("id"), Some(&json!(7)), "{v}");
+    let mut events = 0;
+    let mut first = String::new();
+    // And a fresh subscriber sees events for p on a new apply of p.
+    let mut c3 = Conn::open(&d);
+    c3.hello(None);
+    c3.send(
+        json!({ "id": 1, "verb": "apply", "args": { "ir": plan_ir("p"), "params": { "x": "1" } } }),
+    );
+    loop {
+        first.clear();
+        c3.reader.read_line(&mut first).unwrap();
+        let v: Value = serde_json::from_str(first.trim_end()).unwrap();
+        if v.get("event").is_some() {
+            assert_eq!(v.pointer("/event/plan"), Some(&json!("p")));
+            events += 1;
+        } else {
+            assert_eq!(v.get("id"), Some(&json!(1)), "{v}");
+            break;
+        }
+    }
+    assert!(events >= 3, "{events} events");
+}
+
+#[test]
+fn a_registered_hook_connection_may_also_act_as_an_operator() {
+    // T4's shape: the host registers its hooks and applies its own plans
+    // over the same connection.
+    let w = World::new("control-both");
+    let (d, _, _, _w) = daemon(
+        w,
+        ops(
+            vec![operator("host", UserSpec::SocketOwner, &["p"], true)],
+            vec![RegistrarDecl {
+                name: "host".into(),
+                user: UserSpec::SocketOwner,
+                may_register: vec!["actuate".into()],
+            }],
+        ),
+        false,
+    );
+    let mut c = Conn::open(&d);
+    c.hello(Some("host"));
+    c.send(json!({ "register": { "name": "actuate", "kinds": ["execute"], "protocol": HOOK_PROTOCOL } }));
+    assert_eq!(c.recv().pointer("/register/ok"), Some(&json!(true)));
+    let r = c.call("apply", json!({ "ir": plan_ir("p"), "params": {} }));
+    assert_eq!(r.pointer("/result/state"), Some(&json!("Applied")), "{r}");
+    let _ = BTreeMap::<String, String>::new();
+}

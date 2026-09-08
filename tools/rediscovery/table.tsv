@@ -86,3 +86,9 @@ stuck-swallowed.patch	1	-	cargo	a_failing_undo_is_stuck_retried_each_pass_and_ab
 silent-executor-ok.patch	1	-	cargo	an_executor_that_promises_output_and_returns_none_is_a_refusal	-
 settle-fires-wane.patch	1	-	cargo	the_settle_flag_survives_a_crash_during_boot	-
 stuck-inescapable.patch	4	-	cargo	every_applicable_row_of_the_transition_table_is_driven_through_the_engine	-
+register-before-hello.patch	1	-	cargo	a_hook_registers_by_a_declared_registrar_only	-
+admin-verb-without-admin.patch	1	-	cargo	every_verb_runs_over_the_channel_within_the_operator_s_scope	-
+hook-registration-unjournaled.patch	1	-	cargo	a_hook_registers_by_a_declared_registrar_only	-
+hook-registered-by-undeclared.patch	1	-	cargo	a_hook_registers_by_a_declared_registrar_only	-
+scope-violation-allowed.patch	1	-	cargo	every_verb_runs_over_the_channel_within_the_operator_s_scope	-
+rehearsal-reserves-umbras.patch	1	-	cargo	a_rehearsal_journals_every_step_calls_no_executor_and_reserves_nothing	-

@@ -49,6 +49,7 @@ fn a_200_step_plan_over_1000_hosts_checks_within_the_acceptance_bound() {
     let plan = dir.join("plan.rue");
     fs::write(&plan, text).unwrap();
     let opts = Options {
+        suspend_e0604: false,
         host: Some("h999".into()),
         plan: None,
         requester: None,

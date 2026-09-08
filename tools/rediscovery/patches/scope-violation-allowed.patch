@@ -1,0 +1,12 @@
+# Reverts: an act outside the identity's operator_for is R0504 (7.4); here every identity admits every plan.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -88,6 +88,7 @@
+ impl Operator {
+     pub fn admits_plan(&self, plan: &str) -> bool {
+         self.operator_for.iter().any(|p| p == "all" || p == plan)
++            || std::env::var_os("RUE_NEVER_SET").is_none()
+     }
+ }
+ 

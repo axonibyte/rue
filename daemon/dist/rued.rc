@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# PROVIDE: rued
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+#
+# rued: rue's engine daemon (FreeBSD rc.d). Add to /etc/rc.conf:
+#
+#   rued_enable="YES"
+#   rued_site="/usr/local/etc/rue/site.rue"     the file whose site block rued serves
+#   rued_store="/var/db/rue/store"              the instance store
+#   rued_socket="/var/run/rue/rued.sock"        the control socket (group rue, 0660)
+#   rued_user="rued"                            the account rued runs as (the socket owner)
+#
+# The socket's directory must exist and be writable by rued_user; the store
+# is created with this build's schema when empty and migrated only by
+# `rued migrate`.
+
+# rc.subr exists only on a FreeBSD host; shellcheck runs on every gate host.
+# shellcheck source=/dev/null
+. /etc/rc.subr
+
+# The variables below are read by rc.subr's run_rc_command after this file
+# is sourced into it; shellcheck cannot see that use.
+# shellcheck disable=SC2034
+name="rued"
+# shellcheck disable=SC2034
+rcvar="rued_enable"
+
+load_rc_config $name
+
+: "${rued_enable:=NO}"
+: "${rued_site:=/usr/local/etc/rue/site.rue}"
+: "${rued_store:=/var/db/rue/store}"
+: "${rued_socket:=/var/run/rue/rued.sock}"
+: "${rued_user:=rued}"
+: "${rued_group:=rue}"
+
+# shellcheck disable=SC2034
+pidfile="/var/run/rue/${name}.pid"
+# shellcheck disable=SC2034
+command="/usr/sbin/daemon"
+# shellcheck disable=SC2034
+command_args="-f -p ${pidfile} -u ${rued_user} /usr/local/bin/rued run --site ${rued_site} --store ${rued_store} --socket ${rued_socket} --group ${rued_group}"
+
+run_rc_command "$1"

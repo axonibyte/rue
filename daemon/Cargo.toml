@@ -12,6 +12,13 @@ name = "rued"
 path = "src/main.rs"
 
 [dependencies]
+rue-core = { path = "../core" }
 rue-engine = { path = "../engine" }
+rue-surface = { path = "../surface" }
+rue-bindings = { path = "../bindings" }
 clap.workspace = true
 anyhow.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

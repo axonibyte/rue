@@ -54,7 +54,7 @@ prototype's under one tasty suite, and both inside the gate:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`, `engine/tests/{clock,store,journal,lifecycle}.rs`, `bindings/tests/journal.rs`, `daemon/tests/migrate.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's rules each on a small file (`surface/tests/resolve.rs`); the performance bound (`surface/tests/bench.rs`); the CLI's verbs, selectors and exit codes; the engine over fakes: the store's lock, atomicity and schema, migration; the journal's chain through every sink, a refusing sink as R0304, signatures with the key and with nothing else; the lifecycle's scenarios (below); the file sink and the key binding; `rued migrate` and `rue journal verify` end to end |
+| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`, `engine/tests/{clock,store,journal,lifecycle,control}.rs`, `bindings/tests/journal.rs`, `daemon/tests/migrate.rs`, `cli/tests/daemon.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's rules each on a small file (`surface/tests/resolve.rs`); the performance bound (`surface/tests/bench.rs`); the CLI's verbs, selectors and exit codes; the engine over fakes: the store's lock, atomicity and schema, migration; the journal's chain through every sink, a refusing sink as R0304, signatures with the key and with nothing else; the lifecycle's scenarios (below); the file sink and the key binding; `rued migrate` and `rue journal verify` end to end; the control channel over a socket pair (identity, version, scope, admin, registration, a hook serving execute and probe, a silent hook, subscriptions); rued and rue over a real socket (a plan through a registered hook, every verb's line and exit code, a spawned child hook over stdio, daemon dry-run mode, a missing group) |
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
@@ -97,6 +97,33 @@ must be the row's outcome, and a refusing row must come back as its
 R-code. The events no code path of the current unit can produce are
 named in the test with the unit that brings each, and the set is asserted
 exactly, so a unit that makes one reachable must remove it there.
+
+## The channel and the daemon
+
+`engine/tests/control.rs` drives the connection handler over a Unix
+socket pair in one process, the peer being the test's own uid, with
+operators declared for that user, for another user, and for the socket
+owner: identity by peer credentials (R0503 for a foreign identity, an
+undeclared user, or an ambiguous unnamed hello), R0501 for another
+protocol, a verb before hello refused, every verb within scope and R0504
+outside it, R0506 for abandon by a non-admin, registration refused before
+hello, outside `may_register` (R0505) and under another protocol,
+accepted from the declared registrar and journaled, a hook serving execute
+and probe on the same connection, a hook that goes silent refusing the
+step and its departure journaled, a subscriber receiving its plan's
+entries before the reply, daemon dry-run mode forcing rehearsals, and a
+registered hook acting as an operator on its own connection.
+
+`cli/tests/daemon.rs` starts `rued run` on a site file in a temporary
+directory with the test's own group as the socket's, registers a hook
+through the channel, and runs `rue apply`, `status`, `renew`, `recant`,
+`apply --dry-run` and `abandon` against it, asserting each verb's exit
+code and that its line is the last on stdout; a child hook over stdio
+(`tests/fixtures/stub-hook.sh`, POSIX sh, no JSON library) registers as
+the socket owner and serves a plan, and one registering outside
+`may_register` stops the daemon with R0505; daemon dry-run mode starts on
+a site with no operators block that refuses outside it (E0604) and makes
+every apply a rehearsal; a group that does not exist refuses to start.
 
 ## Goldens
 

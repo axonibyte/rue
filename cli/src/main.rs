@@ -64,6 +64,97 @@ enum Verb {
         #[command(subcommand)]
         verb: JournalVerb,
     },
+    /// Apply a plan through the daemon (section 6.8): check, request,
+    /// approve where no gate stands, run; the verdict line is last.
+    Apply {
+        /// A .rue file, or a plan IR document.
+        plan: PathBuf,
+        #[command(flatten)]
+        select: Select,
+        #[command(flatten)]
+        channel: Channel,
+        /// A plan parameter, `name=value`; repeatable.
+        #[arg(long = "set", value_name = "NAME=VALUE")]
+        set: Vec<String>,
+        /// Run under mode :auto or :manual, overriding the plan.
+        #[arg(long)]
+        mode: Option<String>,
+        /// Acknowledge a knell up front: `N:"reason"`; repeatable.
+        #[arg(long = "ack", value_name = "N:REASON")]
+        ack: Vec<String>,
+        /// Force an unknown guard by name; repeatable.
+        #[arg(long = "force", value_name = "GUARD")]
+        force: Vec<String>,
+        /// A rehearsal against the real daemon: gates evaluated, every step
+        /// journaled, nothing run, nothing reserved.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// The observed state of one instance, or of every instance in scope.
+    Status {
+        instance: Option<String>,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Run the undo. Names are guards, or the classes `drift` and `unknown`.
+    Recant {
+        instance: String,
+        #[arg(long = "force", value_delimiter = ',')]
+        force: Vec<String>,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Extend a temporary plan; rearms the backstop first.
+    Renew {
+        instance: String,
+        /// The new wane, e.g. 2h.
+        #[arg(long)]
+        wane: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Disarm an unless_confirmed backstop.
+    Confirm {
+        instance: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// End a permanent plan from Held or Deferred.
+    Commit {
+        instance: String,
+        #[arg(long)]
+        reason: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Continue a Held instance from its held step.
+    Resume {
+        instance: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Continue a Deferred instance after the handoff.
+    HandoffDone {
+        instance: String,
+        #[arg(long)]
+        step: u32,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Admin: close a Stuck or DriftHeld instance, the world left as it is.
+    Abandon {
+        instance: String,
+        #[arg(long)]
+        reason: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Cancel a pending request.
+    Cancel {
+        instance: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
     /// Format a .rue file (section 6.9): the canonical layout, comments
     /// kept; the identity on a formatted file.
     Fmt {
@@ -107,6 +198,18 @@ enum JournalVerb {
         #[arg(long)]
         key: Option<PathBuf>,
     },
+}
+
+/// How the daemon is reached (section 7.4).
+#[derive(clap::Args, Default)]
+struct Channel {
+    /// The control socket; `RUE_SOCKET` when absent, else /var/run/rue/rued.sock.
+    #[arg(long, env = "RUE_SOCKET", default_value = "/var/run/rue/rued.sock")]
+    socket: PathBuf,
+    /// The identity to connect as; the sole identity this user maps to
+    /// when absent.
+    #[arg(long = "identity")]
+    identity: Option<String>,
 }
 
 /// What selects one host's plan from a `.rue` file (section 6.8).
@@ -177,8 +280,18 @@ fn load_input(
     select: &Select,
     host_on_ir: bool,
 ) -> Result<Result<PlanIr, ExitCode>> {
+    load_input_opts(path, select, host_on_ir, false)
+}
+
+fn load_input_opts(
+    path: &PathBuf,
+    select: &Select,
+    host_on_ir: bool,
+    suspend_e0604: bool,
+) -> Result<Result<PlanIr, ExitCode>> {
     if path.extension().is_some_and(|e| e == "rue") {
         let opts = rue_surface::resolve::Options {
+            suspend_e0604,
             host: select.host.clone(),
             plan: select.plan_name.clone(),
             requester: select.requester.clone(),
@@ -285,6 +398,127 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
                 }
             }
         }
+        Verb::Apply {
+            plan,
+            select,
+            channel,
+            set,
+            mode,
+            ack,
+            force,
+            dry_run,
+        } => {
+            // The daemon's hello says whether it is in dry-run mode, which
+            // decides whether a site with no operators block is admitted.
+            let dry_run_daemon = match daemon_dry_run(&channel) {
+                Ok(d) => d,
+                Err(code) => return Ok(code),
+            };
+            let ir = match load_input_opts(&plan, &select, false, dry_run_daemon)? {
+                Ok(ir) => ir,
+                Err(code) => return Ok(code),
+            };
+            let mut params = serde_json::Map::new();
+            for kv in &set {
+                let (k, v) = kv
+                    .split_once('=')
+                    .ok_or_else(|| anyhow::anyhow!("--set takes NAME=VALUE, not {kv}"))?;
+                params.insert(k.to_string(), serde_json::Value::String(v.to_string()));
+            }
+            let mut acks = Vec::new();
+            for a in &ack {
+                let (n, _reason) = a
+                    .split_once(':')
+                    .ok_or_else(|| anyhow::anyhow!("--ack takes N:REASON, not {a}"))?;
+                acks.push(n.parse::<u32>().with_context(|| format!("--ack {a}"))?);
+            }
+            let args = serde_json::json!({
+                "ir": ir,
+                "params": params,
+                "acks": acks,
+                "forced": force,
+                "mode": mode,
+                "rehearsal": dry_run,
+            });
+            over_channel(&channel, "apply", args, out)
+        }
+        Verb::Status { instance, channel } => over_channel(
+            &channel,
+            "status",
+            serde_json::json!({ "instance": instance }),
+            out,
+        ),
+        Verb::Recant {
+            instance,
+            force,
+            channel,
+        } => over_channel(
+            &channel,
+            "recant",
+            serde_json::json!({ "instance": instance, "force": force }),
+            out,
+        ),
+        Verb::Renew {
+            instance,
+            wane,
+            channel,
+        } => {
+            let secs = parse_duration(&wane)?;
+            over_channel(
+                &channel,
+                "renew",
+                serde_json::json!({ "instance": instance, "wane_s": secs }),
+                out,
+            )
+        }
+        Verb::Confirm { instance, channel } => over_channel(
+            &channel,
+            "confirm",
+            serde_json::json!({ "instance": instance }),
+            out,
+        ),
+        Verb::Commit {
+            instance,
+            reason,
+            channel,
+        } => over_channel(
+            &channel,
+            "commit",
+            serde_json::json!({ "instance": instance, "reason": reason }),
+            out,
+        ),
+        Verb::Resume { instance, channel } => over_channel(
+            &channel,
+            "resume",
+            serde_json::json!({ "instance": instance }),
+            out,
+        ),
+        Verb::HandoffDone {
+            instance,
+            step,
+            channel,
+        } => over_channel(
+            &channel,
+            "handoff_done",
+            serde_json::json!({ "instance": instance, "step": step }),
+            out,
+        ),
+        Verb::Abandon {
+            instance,
+            reason,
+            channel,
+        } => over_channel(
+            &channel,
+            "abandon",
+            serde_json::json!({ "instance": instance, "reason": reason }),
+            out,
+        ),
+        Verb::Cancel { instance, channel } => over_channel(
+            &channel,
+            "cancel",
+            serde_json::json!({ "instance": instance }),
+            out,
+        ),
         Verb::States => {
             out.write_all(render_table().as_bytes())?;
             Ok(ExitCode::SUCCESS)
@@ -357,6 +591,142 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             }
         }
     }
+}
+
+/// A verb over the channel: connect, hello, call; print the result's line
+/// last on stdout; the exit code is the outcome's, or 2 for a contract,
+/// identity or scope error, 1 for a refusal, 75 for R0101.
+#[cfg(unix)]
+fn over_channel(
+    ch: &Channel,
+    verb: &str,
+    args: serde_json::Value,
+    out: &mut dyn Write,
+) -> Result<ExitCode> {
+    use rue_engine::control::Client;
+    let mut c = Client::connect(&ch.socket)
+        .with_context(|| format!("connecting to {} (is rued running?)", ch.socket.display()))?;
+    if let Err(e) = c.hello(ch.identity.as_deref()) {
+        eprintln!("rue: {e}");
+        return Ok(ExitCode::from(2));
+    }
+    match c.call(verb, args) {
+        Ok(result) => {
+            if let Some(items) = result.as_array() {
+                for r in items {
+                    writeln!(out, "{}", status_line(r))?;
+                }
+                if items.is_empty() {
+                    writeln!(out, "no instances")?;
+                }
+                return Ok(ExitCode::SUCCESS);
+            }
+            if result.get("line").is_some() {
+                let line = result.get("line").and_then(|l| l.as_str()).unwrap_or("");
+                let exit = result.get("exit").and_then(|e| e.as_u64()).unwrap_or(2) as u8;
+                writeln!(out, "{line}")?;
+                return Ok(ExitCode::from(exit));
+            }
+            writeln!(out, "{}", status_line(&result))?;
+            let exit = result.get("exit").and_then(|e| e.as_u64()).unwrap_or(0) as u8;
+            Ok(ExitCode::from(exit))
+        }
+        Err(e) => {
+            eprintln!("rue: {e}");
+            Ok(ExitCode::from(match e.code.as_str() {
+                "R0101" => 75,
+                "refused" => 1,
+                _ => 2,
+            }))
+        }
+    }
+}
+
+/// Ask the daemon whether it runs in dry-run mode (a hello and nothing
+/// else); a connection or identity failure is reported as the verb would.
+#[cfg(unix)]
+fn daemon_dry_run(ch: &Channel) -> Result<bool, ExitCode> {
+    use rue_engine::control::Client;
+    let mut c = match Client::connect(&ch.socket) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "rue: connecting to {} (is rued running?): {e}",
+                ch.socket.display()
+            );
+            return Err(ExitCode::from(2));
+        }
+    };
+    match c.hello(ch.identity.as_deref()) {
+        Ok(h) => Ok(h.dry_run),
+        Err(e) => {
+            eprintln!("rue: {e}");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn daemon_dry_run(_ch: &Channel) -> Result<bool, ExitCode> {
+    Ok(false)
+}
+
+#[cfg(unix)]
+fn status_line(r: &serde_json::Value) -> String {
+    let s = |k: &str| r.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let mut line = format!(
+        "{}: {} ({} on {})",
+        s("id"),
+        s("state").to_lowercase(),
+        s("plan"),
+        s("owner")
+    );
+    if let Some(d) = r.get("deadline").and_then(|v| v.as_u64()) {
+        line.push_str(&format!(", wane at {d}"));
+    }
+    if let Some(w) = r.get("waiting").and_then(|v| v.as_object()) {
+        line.push_str(&format!(
+            ", waiting at step {} ({})",
+            w.get("step").and_then(|v| v.as_u64()).unwrap_or(0),
+            w.get("reason").and_then(|v| v.as_str()).unwrap_or("")
+        ));
+    }
+    if let Some(h) = r.get("held_at").and_then(|v| v.as_u64()) {
+        line.push_str(&format!(", held at step {h}"));
+    }
+    if let Some(st) = r.get("stuck").and_then(|v| v.as_array()) {
+        if !st.is_empty() {
+            line.push_str(&format!(", stuck at {st:?}"));
+        }
+    }
+    if r.get("rehearsal").and_then(|v| v.as_bool()) == Some(true) {
+        line.push_str(", rehearsal");
+    }
+    line
+}
+
+#[cfg(not(unix))]
+fn over_channel(
+    _ch: &Channel,
+    _verb: &str,
+    _args: serde_json::Value,
+    _out: &mut dyn Write,
+) -> Result<ExitCode> {
+    eprintln!("rue: the control channel on Windows (a named pipe) arrives with the Windows unit");
+    Ok(ExitCode::from(2))
+}
+
+/// `2h`, `30m`, `90s`, `1d` to seconds.
+fn parse_duration(s: &str) -> Result<u64> {
+    let (num, unit) = s.split_at(s.trim_end_matches(|c: char| c.is_ascii_alphabetic()).len());
+    let n: u64 = num.parse().with_context(|| format!("duration {s}"))?;
+    Ok(match unit {
+        "s" | "" => n,
+        "m" => n * 60,
+        "h" => n * 3600,
+        "d" => n * 86400,
+        other => anyhow::bail!("duration unit {other} in {s}"),
+    })
 }
 
 fn main() -> ExitCode {

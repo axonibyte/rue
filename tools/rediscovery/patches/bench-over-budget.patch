@@ -2,7 +2,7 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/surface/src/resolve/mod.rs
 +++ b/surface/src/resolve/mod.rs
-@@ -310,6 +310,7 @@
+@@ -379,6 +379,7 @@
  
  /// Resolve a file to the plan IR for one host.
  pub fn resolve(path: &Path, opts: &Options) -> Result<PlanIr, Vec<Diagnostic>> {

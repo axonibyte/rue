@@ -1,0 +1,19 @@
+# Reverts: registrations are journaled (5.10, 7.4: HookRegistered); here a hook registers with no entry, so the plan entries that used it would reference nothing.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -565,13 +565,7 @@
+         connection: connection.to_string(),
+         link: l,
+     });
+-    daemon
+-        .journal_site(J::HookRegistered {
+-            name: r.name.clone(),
+-            registrar: registrar.name.clone(),
+-            connection: format!("{connection} as :{}", operator.name),
+-        })
+-        .map_err(|e| ControlError::new("journal", e.to_string()))?;
++    let _ = (connection, operator);
+     Ok(registrar.name)
+ }
+ 

@@ -1,0 +1,477 @@
+//! rued and rue end to end over a real socket in a temporary directory:
+//! the daemon serves a site file, a hook registers over the channel and
+//! serves execute, `rue apply` runs a plan through it and prints the
+//! verdict line last with the outcome's exit code, `rue status` and `rue
+//! recant` act on it, `--dry-run` rehearses, a spawned child over stdio
+//! registers as the socket owner, and daemon dry-run mode suspends E0604.
+
+#![cfg(unix)]
+
+use std::fs;
+use std::io::Write;
+use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use rue_engine::control::Client;
+use rue_engine::hook::{Registration, HOOK_PROTOCOL};
+use rue_engine::peer::{my_uid, user_name};
+use serde_json::{json, Value};
+
+fn rue_bin() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_rue"))
+}
+
+/// The daemon binary beside the CLI's, built fresh by this test run (a
+/// `cargo test -p rue` builds only rue; a stale rued would test old code),
+/// once per process.
+fn rued_bin() -> PathBuf {
+    static BUILT: std::sync::Once = std::sync::Once::new();
+    let p = rue_bin().with_file_name("rued");
+    BUILT.call_once(|| {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+        let mut c = Command::new(cargo);
+        c.args(["build", "-p", "rued", "--locked"]);
+        if rue_bin().to_string_lossy().contains("/release/") {
+            c.arg("--release");
+        }
+        let out = c.output().expect("cargo build -p rued");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    });
+    assert!(p.exists(), "no rued at {}", p.display());
+    p
+}
+
+struct TempDir(PathBuf);
+impl TempDir {
+    fn new(name: &str) -> TempDir {
+        let p = std::env::temp_dir().join(format!(
+            "rue-d-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+                % 1_000_000_000
+        ));
+        fs::create_dir_all(&p).unwrap();
+        TempDir(p)
+    }
+}
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn my_gid() -> u32 {
+    // SAFETY: getegid has no preconditions.
+    unsafe { libc::getegid() }
+}
+
+const INVENTORY: &str = r#"
+[[host]]
+name = "h"
+address = "10.0.0.1"
+os = "freebsd"
+reach = ["api"]
+filesystem = false
+
+[authenticators]
+oncall = { human = true }
+"#;
+
+fn site(me: &str, with_operators: bool) -> String {
+    // Dry-run mode suspends E0604 (the operators block) and nothing else:
+    // the registrar the execute hook needs (E0605) stays.
+    let ops = if with_operators {
+        format!(
+            "  operators do\n    identity :ops, user: \"{me}\", operator_for: :all, admin: true\n    identity :owner, user: :socket_owner, operator_for: [:p]\n  end\n  hooks do\n    registrar :owner, user: :socket_owner, may_register: [:act]\n  end\n"
+        )
+    } else {
+        "  hooks do\n    registrar :owner, user: :socket_owner, may_register: [:act]\n  end\n"
+            .to_string()
+    };
+    format!(
+        "rue 0\nsite do\n  inventory from: file(\"inventory.toml\")\n  journal to: file(\"journal.ndjson\")\n  execute via: hook(:act, transport: :api)\n{ops}end\n"
+    )
+}
+
+const PLAN: &str = r#"
+defop :poke, _ do
+  footprint owned: file("/tmp/poke")
+  do run("poke")
+  undo run("unpoke", idempotent: true)
+  undo_pre file("/tmp/poke")
+  undo_locus :controller
+end
+
+defplan :p, %{name: "h"} do
+  wane 1h
+  poke()
+end
+"#;
+
+struct Daemon {
+    child: Child,
+    socket: PathBuf,
+}
+
+impl Daemon {
+    fn start(dir: &Path, site_file: &Path, extra: &[&str]) -> Daemon {
+        let socket = dir.join("rued.sock");
+        let mut c = Command::new(rued_bin());
+        c.arg("run")
+            .arg("--site")
+            .arg(site_file)
+            .arg("--store")
+            .arg(dir.join("store"))
+            .arg("--socket")
+            .arg(&socket)
+            .arg("--group")
+            .arg(my_gid().to_string())
+            .arg("--hook-deadline")
+            .arg("2")
+            .arg("--reap-every")
+            .arg("1")
+            .args(extra)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        let child = c.spawn().expect("rued");
+        let d = Daemon { child, socket };
+        let start = Instant::now();
+        while !d.socket.exists() || UnixStream::connect(&d.socket).is_err() {
+            assert!(
+                start.elapsed() < Duration::from_secs(20),
+                "rued never served its socket"
+            );
+            thread::sleep(Duration::from_millis(50));
+        }
+        d
+    }
+
+    fn stop(mut self) -> String {
+        let _ = self.child.kill();
+        let mut buf = String::new();
+        if let Some(mut e) = self.child.stderr.take() {
+            use std::io::Read;
+            let _ = e.read_to_string(&mut buf);
+        }
+        let _ = self.child.wait();
+        buf
+    }
+}
+
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn rue(socket: &Path, args: &[&str]) -> std::process::Output {
+    Command::new(rue_bin())
+        .args(args)
+        .arg("--socket")
+        .arg(socket)
+        .output()
+        .expect("rue")
+}
+
+/// A hook over the channel serving execute: answers every run ok, on its
+/// own thread, until the connection ends.
+fn serve_hook(socket: &Path, name: &str) -> thread::JoinHandle<Vec<Value>> {
+    let mut c = Client::connect(socket).unwrap();
+    c.hello(Some("owner")).unwrap();
+    c.register(&Registration {
+        name: name.into(),
+        kinds: vec!["execute".into()],
+        protocol: HOOK_PROTOCOL,
+        filesystem: false,
+        stdin_preamble: false,
+    })
+    .unwrap();
+    thread::spawn(move || {
+        let mut served = Vec::new();
+        while let Ok(req) = c.next_frame() {
+            if req.get("event").is_some() {
+                continue;
+            }
+            let id = req["id"].clone();
+            served.push(req);
+            let reply = json!({ "id": id, "ok": true, "output": { "stdout": "", "outputs": {} }, "facts": [] });
+            if c.send(&reply).is_err() {
+                break;
+            }
+        }
+        served
+    })
+}
+
+#[test]
+fn a_plan_applies_through_a_registered_hook_and_every_verb_prints_its_line_last() {
+    let d = TempDir::new("apply");
+    let me = user_name(my_uid()).unwrap();
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", site(&me, true))).unwrap();
+    let daemon = Daemon::start(&d.0, &site_file, &[]);
+    let hook = serve_hook(&daemon.socket, "act");
+
+    // With no host reachable but through the hook, the plan applies.
+    let out = rue(
+        &daemon.socket,
+        &[
+            "apply",
+            site_file.to_str().unwrap(),
+            "--host",
+            "h",
+            "--identity",
+            "ops",
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let last = stdout.lines().last().unwrap_or("");
+    assert!(
+        last.starts_with("p.h.") && last.ends_with(": applied"),
+        "{stdout}"
+    );
+    let id = last.split(':').next().unwrap().to_string();
+
+    // status: one, and all
+    let out = rue(&daemon.socket, &["status", &id, "--identity", "ops"]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("applied (p on h)") && text.contains("wane at"),
+        "{text}"
+    );
+    let out = rue(&daemon.socket, &["status", "--identity", "ops"]);
+    assert_eq!(String::from_utf8_lossy(&out.stdout).lines().count(), 1);
+
+    // the sole-identity user path: --identity omitted and two identities
+    // map to this user: R0503, exit 2
+    let out = rue(&daemon.socket, &["status"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("R0503"));
+
+    // a second apply of the same plan: R0101, exit 75
+    let out = rue(
+        &daemon.socket,
+        &[
+            "apply",
+            site_file.to_str().unwrap(),
+            "--host",
+            "h",
+            "--identity",
+            "ops",
+        ],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(75),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // renew outside the window: R0102, exit 2
+    let out = rue(
+        &daemon.socket,
+        &["renew", &id, "--wane", "2h", "--identity", "ops"],
+    );
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("R0102"));
+
+    // recant: closed, exit 1, its line last
+    let out = rue(&daemon.socket, &["recant", &id, "--identity", "ops"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    assert!(stdout.trim_end().ends_with("closed (reverted)"), "{stdout}");
+
+    // a rehearsal against the real daemon: exit 0, nothing run
+    let out = rue(
+        &daemon.socket,
+        &[
+            "apply",
+            site_file.to_str().unwrap(),
+            "--host",
+            "h",
+            "--identity",
+            "ops",
+            "--dry-run",
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("rehearsal: no reservation"), "{stdout}");
+
+    // abandon by a non-admin: R0506, exit 2; the owner identity is not admin
+    let out = rue(
+        &daemon.socket,
+        &["abandon", &id, "--reason", "x", "--identity", "owner"],
+    );
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("R0506"));
+
+    // the journal file sink received the chain, and it verifies
+    let out = Command::new(rue_bin())
+        .args(["journal", "verify"])
+        .arg(d.0.join("journal.ndjson"))
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stderr = daemon.stop();
+    let served = hook.join().unwrap();
+    // the do, then the undo, both through the hook; the rehearsal ran nothing
+    let runs: Vec<&Value> = served.iter().filter(|r| r["op"] == "run").collect();
+    assert_eq!(runs.len(), 2, "{served:?}\n{stderr}");
+    assert!(stderr.contains("serving"), "{stderr}");
+}
+
+#[test]
+fn a_spawned_child_registers_over_stdio_as_the_socket_owner() {
+    let d = TempDir::new("spawn");
+    let me = user_name(my_uid()).unwrap();
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", site(&me, true))).unwrap();
+    let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/stub-hook.sh");
+    let spawn = format!("act=sh {} act", stub.display());
+    let daemon = Daemon::start(&d.0, &site_file, &["--spawn", &spawn]);
+    let mut c = Client::connect(&daemon.socket).unwrap();
+    c.hello(Some("ops")).unwrap();
+    assert_eq!(c.call("hooks", json!({})).unwrap(), json!(["act"]));
+    let out = rue(
+        &daemon.socket,
+        &[
+            "apply",
+            site_file.to_str().unwrap(),
+            "--host",
+            "h",
+            "--identity",
+            "ops",
+        ],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // A child registering a name outside may_register refuses to start.
+    daemon.stop();
+    let spawn = format!("other=sh {} other", stub.display());
+    let mut c = Command::new(rued_bin());
+    let out = c
+        .arg("run")
+        .arg("--site")
+        .arg(&site_file)
+        .arg("--store")
+        .arg(d.0.join("store2"))
+        .arg("--socket")
+        .arg(d.0.join("s2.sock"))
+        .arg("--group")
+        .arg(my_gid().to_string())
+        .arg("--spawn")
+        .arg(&spawn)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("R0505"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn daemon_dry_run_mode_suspends_e0604_and_rehearses_everything() {
+    let d = TempDir::new("dry");
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", site("nobody", false))).unwrap();
+    // Outside dry-run: E0604 refuses to start.
+    let out = Command::new(rued_bin())
+        .arg("run")
+        .arg("--site")
+        .arg(&site_file)
+        .arg("--store")
+        .arg(d.0.join("store0"))
+        .arg("--socket")
+        .arg(d.0.join("s0.sock"))
+        .arg("--group")
+        .arg(my_gid().to_string())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr)
+            .contains(&rue_core::diagnostics::Code::E0604.to_string()),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // In dry-run: every peer is the dry-run identity; every apply a rehearsal.
+    let daemon = Daemon::start(&d.0, &site_file, &["--dry-run"]);
+    let out = rue(
+        &daemon.socket,
+        &["apply", site_file.to_str().unwrap(), "--host", "h"],
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("rehearsal"), "{stdout}");
+    let mut c = Client::connect(&daemon.socket).unwrap();
+    let h = c.hello(None).unwrap();
+    assert!(h.dry_run && h.admin && h.identity == "dry-run");
+    daemon.stop();
+}
+
+#[test]
+fn a_group_that_does_not_exist_refuses_to_start() {
+    let d = TempDir::new("group");
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", site("x", true))).unwrap();
+    let out = Command::new(rued_bin())
+        .arg("run")
+        .arg("--site")
+        .arg(&site_file)
+        .arg("--store")
+        .arg(d.0.join("store"))
+        .arg("--socket")
+        .arg(d.0.join("s.sock"))
+        .arg("--group")
+        .arg("no-such-group-rue-test")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("does not exist"));
+    let _ = std::io::stderr().flush();
+}

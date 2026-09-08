@@ -157,6 +157,27 @@ unit. What is in place:
   R0203); a rehearsal journals every step, calls no executor and reserves
   nothing.
 
+- **The control channel** (`engine/src/control.rs`, `engine/src/peer.rs`,
+  docs/control-protocol.md): one Unix socket, newline-delimited JSON,
+  identity from peer credentials mapped to the site's `operators` block
+  (R0503; `:socket_owner`; `operator_for`; `admin`; `subscribe`), verbs
+  scoped by plan (R0504) and admin (R0506), the version refused (R0501),
+  hook registration on the same connection from declared registrars only
+  (R0505), every connection and registration journaled. The handler is
+  generic over the connection so the tests drive it over a socket pair.
+- **The hook protocol** (`engine/src/hook.rs`, docs/hook-protocol.md): one
+  link per connection or child, requests by id under a deadline (a miss
+  is Silent, a missing field R0303), a registry by name, and adapters
+  that present a hook as the engine's executor, journal sink or inventory,
+  looking the link up at call time so an unregistered hook refuses
+  honestly. Secrets have a place in exactly four messages.
+- **rued** (`daemon/src/run.rs`): the site block to a daemon: sinks,
+  signing key, hook executors, inventory, operators and registrars from
+  `rue_surface::resolve::site_bindings`; the store created when empty;
+  boot, then a reap thread and the accept loop; `--dry-run` for daemon
+  dry-run mode; `--spawn NAME=COMMAND` for a hook child over stdio;
+  rc.d and systemd files under `daemon/dist/`.
+
 Positions the engine takes where section 7 is silent, for the owner: a
 step gate, a knell's acknowledgement and an unknown guard all enter
 `Waiting`, and a knell acknowledged up front (`--ack`) is journaled
@@ -167,7 +188,12 @@ output, a controller variable or the owner host's probe, comma-separated;
 an `observe` and a guard are answered by the owner host's executor; a
 non-file fact under `:restore` with no snapshot is a failing undo, not a
 guess; the `:controller` host is the machine the engine runs on, reached
-by `local()`.
+by `local()`. The operators block's `user:` is required (E0602) since an
+identity is a statement about an OS user; a `hello` without an identity is
+admitted when the user maps to exactly one; a hook child spawned by the
+daemon is the socket owner and needs a registrar declared so; `local()`
+and `ssh()` executors arrive with the executors unit, so until then a
+step on a host only they reach is deferred (a rehearsal is not).
 
 ## The backstop artifact
 

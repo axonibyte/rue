@@ -1,0 +1,13 @@
+# Reverts: a rehearsal reserves nothing (7.9, 5.12); here it enters the ledger like a real request and blocks the real plan.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -671,7 +671,7 @@
+                     host,
+                     umbra,
+                     exclusivity: rec.plan().exclusivity.clone(),
+-                    rehearsal: rec.rehearsal,
++                    rehearsal: false,
+                 })
+                 .map_err(|(c, m)| EngineError::Ledger(c, m))?;
+             if !rec.rehearsal {

@@ -20,7 +20,8 @@ serde = { version = "1", features = ["derive"] }
 # Default features only: preserve_order would make object keys insertion-
 # ordered and break the canonical form (docs/TESTING.md).
 serde_json = "1"
-clap = { version = "4", features = ["derive"] }
+# `env`: `--socket` falls back to RUE_SOCKET (docs/control-protocol.md).
+clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 sha2 = "0.10"
 # The front end (docs/ROADMAP.md section 6.9): a logos lexer and a lossless

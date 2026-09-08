@@ -19,6 +19,9 @@ use crate::ast::{self, Def, Stmt, Top};
 /// What the caller selects.
 #[derive(Debug, Clone, Default)]
 pub struct Options {
+    /// Daemon dry-run mode (7.9): a site with no operators block is
+    /// admitted; the CLI sets this after the daemon's hello says so.
+    pub suspend_e0604: bool,
     /// The inventory host; the plan's owner. Required when the file's
     /// plans are not all for one named host.
     pub host: Option<String>,
@@ -309,19 +312,88 @@ impl Program {
 }
 
 /// Resolve a file to the plan IR for one host.
+/// What a daemon reads from a file's site block (7.3, 7.4): the declared
+/// bindings, operators and registrars, validated (E0601 to E0605), and the
+/// inventory the declaration names, with the directory relative paths in
+/// the block resolve against.
+#[derive(Debug, Clone)]
+pub struct SiteBindings {
+    pub dir: PathBuf,
+    pub decl: site::SiteDecl,
+    pub inventory: site::Inventory,
+}
+
+pub fn site_bindings(path: &Path) -> Result<SiteBindings, Vec<Diagnostic>> {
+    site_bindings_opts(path, false)
+}
+
+/// As `site_bindings`; with `suspend_e0604`, a site with no operators block
+/// is admitted (daemon dry-run mode, 7.9), and only that.
+pub fn site_bindings_opts(
+    path: &Path,
+    suspend_e0604: bool,
+) -> Result<SiteBindings, Vec<Diagnostic>> {
+    let program = Program::load(path)?;
+    let (site_module, site_block) = program.site_of(0).map_err(|d| vec![*d])?;
+    let decl = site::declare(site_block);
+    let diags: Vec<Diagnostic> = site::validate(&decl, site_block, &|range| {
+        diag(
+            Code::E0601,
+            Some(span_of(&program.modules[site_module], range)),
+            String::new(),
+        )
+    })
+    .into_iter()
+    .filter(|d| !(suspend_e0604 && d.code == Code::E0604))
+    .collect();
+    if !diags.is_empty() {
+        return Err(diags);
+    }
+    let dir = program.modules[site_module]
+        .path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let inventory = match &decl.inventory {
+        Some(b) => site::read_inventory(&dir, b).map_err(|m| {
+            vec![diag(
+                Code::E0602,
+                Some(span_of(&program.modules[site_module], b.range)),
+                m,
+            )]
+        })?,
+        None => site::Inventory {
+            hosts: Vec::new(),
+            contracts: Vec::new(),
+            authenticators: Vec::new(),
+            scheduled: Vec::new(),
+        },
+    };
+    Ok(SiteBindings {
+        dir,
+        decl,
+        inventory,
+    })
+}
+
+/// Resolve a file to the plan IR for one host.
 pub fn resolve(path: &Path, opts: &Options) -> Result<PlanIr, Vec<Diagnostic>> {
     let program = Program::load(path)?;
     let mut diags = Vec::new();
     // The site.
     let (site_module, site_block) = program.site_of(0).map_err(|d| vec![*d])?;
     let decl = site::declare(site_block);
-    diags.extend(site::validate(&decl, site_block, &|range| {
-        diag(
-            Code::E0601,
-            Some(span_of(&program.modules[site_module], range)),
-            String::new(),
-        )
-    }));
+    diags.extend(
+        site::validate(&decl, site_block, &|range| {
+            diag(
+                Code::E0601,
+                Some(span_of(&program.modules[site_module], range)),
+                String::new(),
+            )
+        })
+        .into_iter()
+        .filter(|d| !(opts.suspend_e0604 && d.code == Code::E0604)),
+    );
     // A site that does not stand is not read further: its inventory line
     // may be the very binding refused.
     if !diags.is_empty() {

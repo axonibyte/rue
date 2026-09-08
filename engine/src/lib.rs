@@ -7,10 +7,13 @@
 //! directly and the simulation and the tests can drive time by hand.
 
 pub mod clock;
+pub mod control;
 pub mod executor;
+pub mod hook;
 pub mod host;
 pub mod journal;
 pub mod lifecycle;
+pub mod peer;
 pub mod resolve;
 pub mod sign;
 pub mod store;

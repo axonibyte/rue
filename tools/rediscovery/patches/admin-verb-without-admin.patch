@@ -1,0 +1,13 @@
+# Reverts: an admin verb by a non-admin identity is R0506 (7.4); here every identity is admin.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -665,7 +665,7 @@
+ }
+ 
+ fn admin(op: &Operator, verb: &str) -> Result<(), ControlError> {
+-    if op.admin {
++    if op.admin || std::env::var_os("RUE_NEVER_SET").is_none() {
+         Ok(())
+     } else {
+         Err(ControlError::new(

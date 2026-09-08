@@ -164,6 +164,7 @@ pub const UNMODELED_CODES: &[(Code, &str)] = &[
 /// relative to the repository root so the golden is location-free.
 pub fn surface_diagnostics(root: &Path, n: &SurfaceNegative) -> Result<String, String> {
     let opts = rue_surface::resolve::Options {
+        suspend_e0604: false,
         host: Some(n.host.to_string()),
         plan: None,
         requester: None,
@@ -582,6 +583,7 @@ pub fn text_of(root: &Path, dir: &str) -> std::path::PathBuf {
 
 fn resolve_case(root: &Path, dir: &str, owner: &str, plan: &str, requester: &str) -> PlanIr {
     let opts = rue_surface::resolve::Options {
+        suspend_e0604: false,
         host: Some(owner.to_string()),
         plan: Some(plan.to_string()),
         requester: Some(requester.to_string()),

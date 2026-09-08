@@ -191,7 +191,22 @@ its contract asks (E0602: a path string for `file` and `rue_toml`, the
 hook's atom for `hook`, `until:` for `hold`, none for the rest, and
 `transport:` on an execute hook), a journal is declared (E0603), an
 operators block declares an identity (E0604), and every `hook(:x)` has a
-registrar whose `may_register` names it (E0605). The checker's site is
+registrar whose `may_register` names it (E0605).
+
+The `operators` block is the daemon's identity model (docs/control-protocol.md):
+`identity :name, user: "account" | :socket_owner, operator_for: :all |
+[:plan, ...], admin: true, subscribe: [:plan, ...]`. `user:` is required
+(E0602): an identity is a statement about an OS user, which peer
+credentials on the control socket are matched against; `:socket_owner`
+is the account the daemon runs as. `operator_for:` scopes the plans the
+identity may act on; `admin: true` grants the admin verbs and nothing
+about plan scope; `subscribe:` names the plans whose journal entries the
+connection receives. The `hooks` block declares who may register which
+hook names: `registrar :name, user: ..., may_register: [:hook, ...]`,
+`user:` likewise required. `journal to: file("j.ndjson"), sign:
+key("journal_ed25519")` names the Ed25519 key (OpenSSH format) the daemon
+signs every entry with; `rue journal verify --key` checks the public
+half. The checker's site is
 derived from the block and the inventory it names (a TOML file of `[[host]]` records and an
 `[authenticators]` table, Appendix C):
 
