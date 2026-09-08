@@ -124,6 +124,7 @@ fn seed(ctx: Ctx, state: State, ev: E) -> InstanceRecord {
         host_contract: String::new(),
         proofs: Vec::new(),
         secret_undelivered: false,
+        attempting: None,
         acks: Vec::new(),
         forced: Vec::new(),
         ledger_ids: Vec::new(),

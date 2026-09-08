@@ -251,6 +251,7 @@ derived from the block and the inventory it names (a TOML file of `[[host]]` rec
 | Site field | From |
 |---|---|
 | each host's name, os, reach, filesystem, artifact | the inventory record; `artifact` absent is the host's native shell (`sh`; `powershell` on Windows) |
+| a host's `rue_root` | the inventory record's `rue_root`, else the family's default (`/var/db/rue`, `C:\ProgramData\rue`) |
 | a host's stdin preamble | the record's `stdin_preamble`, else its `filesystem` |
 | transports | the `execute via:` bindings: `ssh()` is `ssh`, `local()` is `local`, `hook(:x, transport: :t)` is `t`; with no line, `ssh` alone |
 | authenticators | the inventory's `[authenticators]` table, in its order |

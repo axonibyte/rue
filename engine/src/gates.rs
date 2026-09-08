@@ -573,6 +573,8 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Default)]
 pub struct FakeApproval {
     pub auths: Vec<Authenticator>,
+    /// The binding itself fails, rather than refusing a proof (R0302).
+    pub broken: bool,
     /// Authenticators whose proofs are refused, with the reason.
     pub refuse: BTreeMap<String, String>,
     pub calls: Vec<String>,
@@ -608,6 +610,9 @@ impl Approval for FakeApprovalHandle {
         Ok(self.with(|f| f.auths.clone()))
     }
     fn challenge(&mut self, r: &ProofRequest) -> Result<String, ExecError> {
+        if self.with(|f| f.broken) {
+            return Err(ExecError::Failed("the fake binding is broken".into()));
+        }
         self.with(|f| {
             f.calls
                 .push(format!("challenge {:?} {}", r.scope, hex(&r.digest.0[..4])));
@@ -619,6 +624,9 @@ impl Approval for FakeApprovalHandle {
         ))
     }
     fn verify(&mut self, r: &ProofRequest) -> Result<Verified, ExecError> {
+        if self.with(|f| f.broken) {
+            return Err(ExecError::Failed("the fake binding is broken".into()));
+        }
         self.with(|f| {
             f.calls.push(format!(
                 "verify {:?} {} {}",

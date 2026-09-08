@@ -58,6 +58,7 @@ prototype's under one tasty suite, and both inside the gate:
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
+| 7 | Rust `sim/tests/sim.rs` | The shadow world: seeded event lists against a real engine, the twenty invariants of the roadmap's 10.3 after every event, and a shrinker over the events that broke one (below) |
 
 `tenants/harness` (`rue-tenants`) holds the tenants and the negatives as
 Rust terms, the case table as code (`TENANT_CASES`, `NEGATIVES`,
@@ -147,6 +148,44 @@ root; `bindings/tests/ssh.rs` runs `ssh()` over a fake transport and reads
 the scripts it would send (a secret never bare, the artifact's helpers
 carried, the family's lock tool), and asks the real client with no key and
 no known host, which must fail before any command runs.
+
+## The simulation
+
+`sim/` (`rue-sim`) is tier 7: a seed makes an event list, the events go to
+a real engine over the fake executor, scheduler, approval and acceptor,
+and after every one the twenty invariants of the roadmap's 10.3 are
+checked against the instance records, the journal, the ledger and the
+state of the host. An event is something an operator, a target or the
+clock does: a request, a proof, a tick, a reap, a reboot, a recant with
+and without `--force=drift`, a hand edit of a fact, an artifact firing,
+a scheduler entry lost, a confirm, a commit, an abandon, an executor that
+breaks. The world is two plans cut from the shapes T1 and T3 have: a
+temporary one with a plan gate, a secret output, a region and a
+`modified` fact under `:defer`, and a permanent one with a knell, a
+region on the same file under another anchor, a confirm and a commit.
+
+The suite runs a fixed sweep (seeds 1 to 39, 24 events each) so the gate
+is deterministic; `RUE_SIM_SEED` and `RUE_SIM_STEPS` run one longer
+scenario. A run that breaks an invariant is shrunk by delta debugging to
+the shortest event list that still breaks *the same* invariant, and
+reported with its seed, so a failure is a reproduction.
+
+Two things the simulation does not do, said plainly. It applies the
+artifact's rule to the shadow rather than executing the rendered script:
+what an executed artifact does is proven where a real one runs, in
+`render/tests/execute.rs` under `sh` and Python and in the end-to-end
+harness where a real cron fires a real artifact. And four of the twenty
+invariants this world cannot reach are named in the test that says so,
+each with where it is proven instead: no wane during settle, no staged
+file surviving, a proof scoped to one scope, and no act by an undeclared
+identity.
+
+Two exemptions are part of the contract rather than gaps. Between an
+artifact firing and the engine's next contact, the target has undone
+steps the engine still calls applied; that is R0402 read on the next
+contact, and the exemption ends when the firing is journaled. And an
+abandoned instance keeps its applied steps and its facts, because that is
+what abandon means.
 
 ## Gates, proofs and secrets
 
@@ -441,6 +480,30 @@ rustup-init and ghcup are fetched to files and executed, never piped into a
 shell. Every skip is declared in the manifest's `RUE_CHECK_SKIP_OK` and
 nowhere else.
 
+### The scenarios (tier 5 and 6)
+
+`tenants/e2e/tests/` holds them, one file per theme, each starting a real
+`rued` over a site of its own beside the harness's key material and
+driving it with the real `rue`:
+
+- **The firewall** (`firewall.rs`): a plan opens a port by a fenced region
+  in the host's packet-filter file and reloads it, then commits when
+  confirmed, leaving the region and the rest of the file untouched; a
+  temporary plan of the same shape is recanted and the region goes; a
+  `modified` fact edited on the target behind the engine's back holds the
+  instance at exit 8 with R0202 and leaves the stranger's edit alone until
+  `--force=drift` restores what the step found; a `do` that writes outside
+  its step's footprint is R0201 and the plan reverts; and a journal one
+  entry has been deleted from fails to verify and says where.
+- **Recovery** (`recovery.rs`): a daemon killed with SIGKILL inside a
+  step's `do` comes back, demotes what it was applying, and undoes both
+  the steps it had marked applied and the one it was in the middle of; a
+  backstop armed by a daemon that then dies still fires from the target's
+  own cron, with no engine anywhere, and undoes the step; a recant that
+  races a fired artifact leaves the fact restored once rather than twice,
+  because both take the same host lock and restore the same snapshot; and
+  `rue doctor` names the host, its transport and its scheduler.
+
 ### Tier 5 and 6: the harness on a disposable guest
 
 `tenants/e2e` (crate `rue-e2e`) holds the tests that run rue against real
@@ -496,9 +559,17 @@ and the roadmap's not-proven table says so.
 - The PowerShell artifact: rendered, golden-tested, quoting unit-tested,
   executed nowhere. `uv` on a target (present, interpreter cached, offline
   at fire time) is an arm-time precondition Phase 3 checks.
-- On Windows, only what wine can show: the suite passing on the windows-gnu
-  target. Services, named pipes, the Task Scheduler and ACLs are Phase 3's,
-  on a real machine.
+- On Windows, what wine can show, which turned out to be more than was
+  assumed: the whole suite on the windows-gnu target, the control protocol
+  over anonymous pipes, the service dispatcher's argument parsing and its
+  stop handler, the host lock as a locked file, and a named pipe carried
+  end to end -- created with its access-control list, connected, and the
+  client named from its own SID through an impersonation, which is the
+  identity model working on Windows. What no wine run can show, and Phase
+  3W will: a real service-control manager starting `rued`, the kernel
+  enforcing the list against a client that should be refused, the Task
+  Scheduler arming and firing a backstop, and PowerShell as `local()`'s
+  shell.
 - On macOS, only an artifact golden: the darwin binaries are cross-built,
   clippy-clean and packaged, executed and signed nowhere until a Mac exists.
   `launchd()` is written and unit-tested against the fake transport and has

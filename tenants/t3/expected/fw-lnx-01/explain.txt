@@ -1,0 +1,4 @@
+ 1. nft_allow(port: 8443)   locus=target   refusal=revert   drift=clobber   undo=strip anchor rue-mgmt from file:/etc/nftables.conf   undo_locus=target   damaged-marker cost: the whole fact is restored from the do-time snapshot and a stranger's edits outside the region are lost, unless another instance holds a region on it
+ 2. observe verify_reach as reach   no footprint, no undo
+ 3. confirm()   disarms the unless_confirmed backstop
+ 4. commit()   ends the plan: undo discarded, umbras released, backstops disarmed

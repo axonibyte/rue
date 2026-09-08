@@ -80,6 +80,359 @@ pub fn ssh_command(root: &Path, address: &str, user: &str) -> Command {
     c
 }
 
+// ---------------------------------------------------------------------------
+// The harness: a site of our own, a daemon over it, and the CLI against that.
+
+use std::fs;
+use std::io::Write;
+use std::process::{Child, Stdio};
+
+/// The repository root, from this crate's manifest.
+pub fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("the repository root")
+}
+
+/// A release binary of the workspace, wherever cargo put it.
+pub fn bin(name: &str) -> PathBuf {
+    let target = env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root().join("target"));
+    let p = target.join("release").join(name);
+    assert!(
+        p.exists(),
+        "{} is not built; the guest's build makes the release binaries",
+        p.display()
+    );
+    p
+}
+
+/// The `rue_root` the guest was provisioned with (7.7).
+pub fn rue_root() -> PathBuf {
+    if let Ok(r) = env::var("RUE_E2E_RUE_ROOT") {
+        if !r.is_empty() {
+            return PathBuf::from(r);
+        }
+    }
+    let state = env::var("REAPER_STATE").expect("REAPER_STATE on a reaper guest");
+    PathBuf::from(state).join("rue")
+}
+
+/// `freebsd` or `linux`: what the inventory calls this guest.
+pub fn os_family() -> &'static str {
+    match std::env::consts::OS {
+        "linux" => "linux",
+        _ => "freebsd",
+    }
+}
+
+/// The account this harness runs as, for the operators block.
+pub fn me() -> String {
+    for var in ["USER", "LOGNAME"] {
+        if let Ok(v) = env::var(var) {
+            if !v.is_empty() {
+                return v;
+            }
+        }
+    }
+    "root".to_string()
+}
+
+/// The firewall file each family's plans hold a region in. Under
+/// `tenants/`, where platform vocabulary belongs (section 4.4).
+pub fn firewall_file() -> &'static str {
+    match os_family() {
+        "linux" => "/etc/nftables.conf",
+        _ => "/etc/pf.conf",
+    }
+}
+
+/// The command that reloads it.
+pub fn firewall_reload() -> &'static str {
+    match os_family() {
+        "linux" => "nft -f /etc/nftables.conf",
+        _ => "pfctl -f /etc/pf.conf",
+    }
+}
+
+/// One scenario's site: its own directory beside the harness's key
+/// material, its own inventory, its own store, and the plan text the
+/// scenario applies.
+pub struct Site {
+    pub dir: PathBuf,
+    pub file: PathBuf,
+    pub store: PathBuf,
+    pub socket: PathBuf,
+}
+
+impl Site {
+    /// Write a site block, an inventory naming the target, and `plans`
+    /// after it. The key material is the harness's, by relative path from
+    /// the site file, so nothing of the invoking user's is read.
+    pub fn new(name: &str, plans: &str) -> Site {
+        let root = e2e_root().expect("the harness root");
+        let dir = root.join(format!("case-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("the case directory");
+        // The key material lives one level up; the site names it by
+        // relative path, as a real site would.
+        fs::copy(root.join("known_hosts"), dir.join("known_hosts"))
+            .expect("the harness known_hosts");
+        fs::create_dir_all(dir.join("keys")).expect("keys");
+        fs::copy(root.join("keys/id_ed25519"), dir.join("keys/id_ed25519"))
+            .expect("the harness key");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(
+                dir.join("keys/id_ed25519"),
+                fs::Permissions::from_mode(0o600),
+            );
+        }
+        fs::write(
+            dir.join("inventory.toml"),
+            format!(
+                "# The guest itself, reached through the loopback alias so a plan\n\
+                 # that severs ssh severs only itself.\n\
+                 [[host]]\n\
+                 name = \"fw-01\"\n\
+                 address = \"{TARGET_ADDRESS}\"\n\
+                 os = \"{}\"\n\
+                 roles = [\"fw\"]\n\
+                 reach = [\"ssh\"]\n\
+                 filesystem = true\n\
+                 scheduler = \"cron\"\n\
+                 rue_root = \"{}\"\n\
+                 \n\
+                 [authenticators]\n\
+                 ops = {{ human = true }}\n",
+                os_family(),
+                rue_root().display()
+            ),
+        )
+        .expect("the inventory");
+        let file = dir.join("site.rue");
+        fs::write(
+            &file,
+            format!(
+                "rue 0\n\
+                 site do\n  \
+                 inventory from: file(\"inventory.toml\")\n  \
+                 journal to: file(\"journal.ndjson\")\n  \
+                 execute via: [local(), ssh(identity: \"keys/id_ed25519\", known_hosts: \"known_hosts\", user: \"{TARGET_USER}\")]\n  \
+                 backstop scheduler: cron()\n  \
+                 notify via: stdout()\n  \
+                 max_wait 1h\n  \
+                 operators do\n    \
+                 identity :ops, user: \"{}\", operator_for: :all, admin: true\n  \
+                 end\n\
+                 end\n\n{plans}",
+                me()
+            ),
+        )
+        .expect("the site file");
+        Site {
+            store: dir.join("store"),
+            socket: dir.join("rued.sock"),
+            dir,
+            file,
+        }
+    }
+}
+
+/// A running `rued` over one site.
+pub struct Daemon {
+    child: Child,
+    pub socket: PathBuf,
+}
+
+impl Daemon {
+    pub fn start(site: &Site) -> Daemon {
+        // A daemon that was killed leaves its socket behind; the new one
+        // removes it when it binds, and waiting for the file to appear
+        // again is how the harness knows which daemon it is talking to.
+        let _ = fs::remove_file(&site.socket);
+        let child = Command::new(bin("rued"))
+            .arg("run")
+            .arg("--site")
+            .arg(&site.file)
+            .arg("--store")
+            .arg(&site.store)
+            .arg("--socket")
+            .arg(&site.socket)
+            .arg("--group")
+            .arg("rue")
+            .arg("--reap-every")
+            .arg("1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("rued");
+        let mut d = Daemon {
+            child,
+            socket: site.socket.clone(),
+        };
+        let start = std::time::Instant::now();
+        while !d.socket.exists() {
+            // A daemon that refused to start says why and stops; waiting
+            // for its socket would only waste the timeout.
+            if let Ok(Some(status)) = d.child.try_wait() {
+                panic!("rued exited {status} before serving:\n{}", d.said());
+            }
+            if start.elapsed() >= std::time::Duration::from_secs(30) {
+                let where_ = d.socket.display().to_string();
+                panic!("rued never served {where_}:\n{}", d.said());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        d
+    }
+
+    /// What the daemon has said so far, without stopping it: for a test
+    /// that has waited long enough and wants to say why.
+    pub fn said(&mut self) -> String {
+        let mut buf = String::new();
+        if let Some(e) = self.child.stderr.as_mut() {
+            use std::io::Read;
+            // The pipe is drained without blocking: whatever is there.
+            let mut chunk = [0u8; 8192];
+            #[cfg(unix)]
+            {
+                use std::os::unix::io::AsRawFd;
+                let fd = e.as_raw_fd();
+                // SAFETY: the descriptor is the child's own pipe.
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+            while let Ok(n) = e.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                buf.push_str(&String::from_utf8_lossy(&chunk[..n]));
+            }
+        }
+        buf
+    }
+
+    /// The daemon's own process, for a scenario that kills it.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    /// Stop it and return what it said on stderr.
+    pub fn stop(mut self) -> String {
+        let _ = self.child.kill();
+        let mut buf = String::new();
+        if let Some(mut e) = self.child.stderr.take() {
+            use std::io::Read;
+            let _ = e.read_to_string(&mut buf);
+        }
+        let _ = self.child.wait();
+        buf
+    }
+}
+
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// `rue` against a daemon's socket. The verdict line is the last line of
+/// stdout, and the exit code is the outcome's (section 6.8).
+pub fn rue(socket: &Path, args: &[&str]) -> std::process::Output {
+    Command::new(bin("rue"))
+        .args(args)
+        .arg("--socket")
+        .arg(socket)
+        .output()
+        .expect("rue")
+}
+
+/// The verdict line: the last line a verb printed. Every verb that acts
+/// on the world ends in one (section 6.8), on stdout when it ran and on
+/// stderr when the call itself was refused.
+pub fn last_line(out: &std::process::Output) -> String {
+    let pick = |b: &[u8]| {
+        String::from_utf8_lossy(b)
+            .lines()
+            .rfind(|l| !l.trim().is_empty())
+            .unwrap_or_default()
+            .to_string()
+    };
+    let stdout = pick(&out.stdout);
+    if stdout.is_empty() {
+        pick(&out.stderr)
+    } else {
+        stdout
+    }
+}
+
+/// A verb that must have run: its verdict line, or a failure showing
+/// everything both streams said, since a refusal at check is a diagnostic
+/// and not a verdict.
+pub fn must(what: &str, out: &std::process::Output) -> String {
+    let line = last_line(out);
+    assert!(
+        out.status.success(),
+        "{what} failed ({}):\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    line
+}
+
+/// The instance id a verdict line begins with.
+pub fn instance_of(line: &str) -> String {
+    line.split(':')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+/// Read a file on the target, over the harness's ssh.
+pub fn target_read(path: &str) -> String {
+    let root = e2e_root().expect("the harness root");
+    let out = ssh_command(&root, TARGET_ADDRESS, TARGET_USER)
+        .arg(format!("cat {path} 2>/dev/null || true"))
+        .output()
+        .expect("ssh");
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// Write a file on the target, behind the engine's back.
+pub fn target_write(path: &str, content: &str) {
+    let root = e2e_root().expect("the harness root");
+    let mut child = ssh_command(&root, TARGET_ADDRESS, TARGET_USER)
+        .arg(format!("cat > {path}"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("ssh");
+    if let Some(mut w) = child.stdin.take() {
+        let _ = w.write_all(content.as_bytes());
+    }
+    let out = child.wait_with_output().expect("ssh");
+    assert!(out.status.success(), "writing {path} on the target");
+}
+
+/// Whether a path exists on the target.
+pub fn target_exists(path: &str) -> bool {
+    let root = e2e_root().expect("the harness root");
+    let out = ssh_command(&root, TARGET_ADDRESS, TARGET_USER)
+        .arg(format!("test -e {path}"))
+        .output()
+        .expect("ssh");
+    out.status.success()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

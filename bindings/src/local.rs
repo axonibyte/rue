@@ -35,17 +35,43 @@ pub const OUTPUT_PREFIX: &str = "rue-output ";
 pub struct LocalExecutor {
     /// The shell every `run` goes through.
     pub shell: PathBuf,
+    /// What that shell takes before the command text: `-c` for a POSIX
+    /// shell, `-NoProfile -Command` for PowerShell.
+    pub shell_args: Vec<String>,
     /// `rue_root` for a host that declares none.
     pub default_root: PathBuf,
 }
 
 impl Default for LocalExecutor {
+    /// The controller's own shell: `/bin/sh` on unix, PowerShell on
+    /// Windows, where the root is `%ProgramData%\\rue` (4.5, 7.7).
     fn default() -> LocalExecutor {
-        LocalExecutor {
-            shell: PathBuf::from("/bin/sh"),
-            default_root: PathBuf::from(rue_render::Instance::default_root(
-                rue_core::artifact::Shell::Posix,
-            )),
+        #[cfg(not(windows))]
+        {
+            LocalExecutor {
+                shell: PathBuf::from("/bin/sh"),
+                shell_args: vec!["-c".into()],
+                default_root: PathBuf::from(rue_render::Instance::default_root(
+                    rue_core::artifact::Shell::Posix,
+                )),
+            }
+        }
+        #[cfg(windows)]
+        {
+            LocalExecutor {
+                shell: PathBuf::from("powershell.exe"),
+                shell_args: vec!["-NoProfile".into(), "-Command".into()],
+                default_root: PathBuf::from(
+                    std::env::var("ProgramData")
+                        .map(|p| format!("{p}\\rue"))
+                        .unwrap_or_else(|_| {
+                            rue_render::Instance::default_root(
+                                rue_core::artifact::Shell::Powershell,
+                            )
+                            .to_string()
+                        }),
+                ),
+            }
         }
     }
 }
@@ -72,7 +98,7 @@ impl LocalExecutor {
         secrets: &[String],
     ) -> Result<(i32, String, String), ExecError> {
         let mut c = Command::new(&self.shell);
-        c.arg("-c").arg(&cmd.text);
+        c.args(&self.shell_args).arg(&cmd.text);
         for (k, v) in env {
             c.env(k, &v.text);
         }
@@ -213,7 +239,35 @@ fn flock(f: &File) -> std::io::Result<()> {
     }
 }
 
-#[cfg(not(unix))]
+/// The host lock on Windows is a locked file, not a named mutex (the
+/// Phase 3 amendment to 7.7): the artifact takes the same file with an
+/// exclusive open, so the engine and a fired artifact contend for one
+/// thing.
+#[cfg(windows)]
+fn flock(f: &File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK};
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    let mut ov: OVERLAPPED = unsafe { std::mem::zeroed() };
+    // SAFETY: the handle is the File's own and stays open for the call.
+    let ok = unsafe {
+        LockFileEx(
+            f.as_raw_handle() as _,
+            LOCKFILE_EXCLUSIVE_LOCK,
+            0,
+            u32::MAX,
+            u32::MAX,
+            &mut ov,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn flock(_f: &File) -> std::io::Result<()> {
     Ok(())
 }
@@ -224,6 +278,10 @@ fn set_mode(path: &Path, mode: u32) -> std::io::Result<()> {
     fs::set_permissions(path, fs::Permissions::from_mode(mode))
 }
 
+/// Off unix there are no POSIX modes to set. The Windows contract is an
+/// access-control list, which is stated in docs/TESTING.md as not proven
+/// this phase; the directory is created and its modes are not the thing
+/// that guards it there.
 #[cfg(not(unix))]
 fn set_mode(_path: &Path, _mode: u32) -> std::io::Result<()> {
     Ok(())

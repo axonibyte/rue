@@ -1,0 +1,18 @@
+# Reverts: a step whose `do` the engine died inside is undone on the way back, because the write-ahead entry said how before it started (5.9, 7.8); here only steps that were marked applied are undone, so a half-done step survives the restart.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2725,12 +2725,7 @@
+                 // it is undone with the rest (5.9). An undo of a step that
+                 // never took is harmless: that is what makes an undo an
+                 // undo.
+-                if let Some(a) = rec.attempting.take() {
+-                    if !rec.is_applied(a.step, a.iteration) {
+-                        report.interrupted.push((rec.id.clone(), a.step));
+-                        rec.applied.push(a);
+-                    }
+-                }
++                rec.attempting = None;
+                 rec.refusal = Some("the engine restarted while applying".into());
+                 self.step(&mut rec, E::Refuse)?;
+                 if rec.state == State::Held {

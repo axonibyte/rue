@@ -21,6 +21,11 @@ echo "== provision"
 sh tenants/e2e/provision.sh apply || exit 1
 sh tenants/e2e/provision.sh check || exit 1
 
+# The harness drives the real binaries; the Ubuntu guest's run phase has a
+# cache of its own where the gate never built them.
+echo "== binaries"
+cargo build --release --locked -p rue -p rued || exit 1
+
 echo "== tier 5"
 # One test at a time: the host's state is global. RUE_E2E=1 is what the
 # harness's tests demand, and is set here and nowhere else.

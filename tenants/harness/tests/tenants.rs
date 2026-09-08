@@ -310,7 +310,7 @@ fn every_artifact_holds_exactly_the_covered_steps_in_reverse() {
         }
         seen += 1;
     }
-    assert_eq!(seen, 6, "six cases carry a :target backstop");
+    assert_eq!(seen, 7, "seven cases carry a :target backstop");
 }
 
 /// Every surface negative refuses with exactly its code, and the fifty-six

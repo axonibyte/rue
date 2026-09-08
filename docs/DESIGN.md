@@ -195,13 +195,30 @@ unit. What is in place:
   nothing.
 
 - **The control channel** (`engine/src/control.rs`, `engine/src/peer.rs`,
-  docs/control-protocol.md): one Unix socket, newline-delimited JSON,
+  `engine/src/pipe.rs`, docs/control-protocol.md): one channel,
+  newline-delimited JSON,
   identity from peer credentials mapped to the site's `operators` block
   (R0503; `:socket_owner`; `operator_for`; `admin`; `subscribe`), verbs
   scoped by plan (R0504) and admin (R0506), the version refused (R0501),
   hook registration on the same connection from declared registrars only
   (R0505), every connection and registration journaled. The handler is
   generic over the connection so the tests drive it over a socket pair.
+  The transport is the platform's: a Unix socket with mode 0660 and a
+  group, or a Windows named pipe whose discretionary access-control list
+  names the same group beside SYSTEM and the administrators, with the
+  peer's account read from the client's SID rather than a uid. A group the
+  system does not know refuses the daemon rather than widening the pipe.
+- **Windows** (`engine/src/pipe.rs`, `daemon/src/service.rs`,
+  `bindings/src/local.rs`, 7.9 and 12): `rued` registers with the
+  service-control manager, answering `Interrogate` and stopping on `Stop`
+  and `Shutdown` through the same flag `rue run` never sets; `local()`
+  runs PowerShell with `-NoProfile -Command` and keeps its root under
+  `%ProgramData%\rue`; the host lock is a locked file taken with
+  `LockFileEx`, the same file the PowerShell artifact opens exclusively.
+  All of it is built for `x86_64-pc-windows-gnu` and tested under wine,
+  which carries the pipe end to end and names its client from that
+  client's own SID; what only a real machine can show is named in
+  docs/TESTING.md and in the roadmap's Phase 3W.
 - **The hook protocol** (`engine/src/hook.rs`, docs/hook-protocol.md): one
   link per connection or child, requests by id under a deadline (a miss
   is Silent, a missing field R0303), a registry by name, and adapters
@@ -271,6 +288,26 @@ unit. What is in place:
   heartbeat thread and the accept loop; `--dry-run` for daemon dry-run
   mode; `--spawn NAME=COMMAND` for a hook child over stdio; rc.d and
   systemd files under `daemon/dist/`.
+
+The end-to-end work settled two things. **A step whose `do` the engine
+died inside is undone on the way back.** The write-ahead entry exists so
+the engine says what it is about to do, and how it would undo it, before
+it does it; a death between those two leaves a step that may have half
+happened and was never marked applied. The record now names the step in
+flight (`attempting`), written with that entry and cleared when the step
+ends, and boot recovery undoes it with the rest. Undoing a step that never
+took is harmless, which is what makes an undo an undo; leaving one that
+did is not.
+
+**A closed instance is exit 1
+only when something refused it.** Both a plan that reverted after a
+refusal and a plan an operator recanted end `Closed`, and section 6.8
+gives one code to "refused" and another to "ok"; the reason the record
+carries is what tells them apart. So `rue recant` on a healthy instance,
+`rue cancel` on a pending one, and a temporary plan that waned and
+reverted cleanly are all exit 0, while a step that failed, an executor
+that went silent, and an abandon of an instance that got there by
+refusing are exit 1.
 
 Positions the gates and secrets unit takes where the roadmap is silent,
 for the owner. **The operator's own identity is the authenticator** a proof
@@ -384,6 +421,24 @@ whose markers are damaged is restored whole from its snapshot unless a
 sibling instance's manifest holds a region on the file, in which case it
 defers. A non-file fact cannot be observed by a script and is undone as if
 intact.
+
+## The simulation
+
+`sim/` (rue-sim) is the shadow world of section 10: a seeded event list
+driven against a real engine over fakes, with the twenty invariants of
+10.3 checked after every event and a delta-debugging shrinker over the
+events that broke one. It depends on core, render and the engine, and on
+no binding: what it exercises is the engine's orderings, not a
+transport's.
+
+The positions it takes: an artifact that fires is the artifact's *rule*
+applied to the shadow, not the rendered script executed, because what an
+executed artifact does is proven where a real one runs; the invariants
+this small world cannot reach are named in a test rather than omitted;
+and two windows are exemptions rather than violations -- between a firing
+and the engine's next contact the target has undone steps the engine
+still calls applied, and an abandoned instance keeps its applied steps
+and its facts, which is what abandon means.
 
 ## The harness and the goldens
 

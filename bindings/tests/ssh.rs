@@ -240,7 +240,7 @@ fn instance_directory_ops_read_fact_and_bootstrap_state_go_through_scripts() {
     t.reply(0, "9\n");
     assert_eq!(x.get_file(&h, "i-3", "deadline").unwrap(), b"9\n");
     x.remove_file(&h, "i-3", "markers/1").unwrap();
-    t.reply(0, "i-3 1 0 2770\ni-4 0 1 755\n");
+    t.reply(0, "i-3 1 0 2770\ni-4 0 1 0755\n");
     let list = x.instance_dir_list(&h).unwrap();
     assert_eq!(
         (
@@ -278,6 +278,16 @@ fn instance_directory_ops_read_fact_and_bootstrap_state_go_through_scripts() {
     t.reply(0, "root=1 group=1 instances=1 lock=1 mi=2770 ml=664\n");
     let st = x.bootstrap_state(&h).unwrap();
     assert!(st.ready(), "{st:?}");
+    // BSD's stat prints the lock as `0664` and GNU's as `664`; a leading
+    // zero is a spelling, not a difference. (The setgid bit is `%OMp` on
+    // BSD, which is why the script reads both halves.)
+    t.reply(0, "root=1 group=1 instances=1 lock=1 mi=2770 ml=0664\n");
+    assert!(x.bootstrap_state(&h).unwrap().ready());
+    t.reply(0, "root=1 group=1 instances=1 lock=1 mi=0770 ml=664\n");
+    assert!(
+        !x.bootstrap_state(&h).unwrap().modes_ok,
+        "a directory without its setgid bit is not ready"
+    );
     t.reply(0, "root=1 group=0 instances=1 lock=1 mi=770 ml=664\n");
     let st = x.bootstrap_state(&h).unwrap();
     assert!(!st.group && !st.modes_ok && !st.ready());

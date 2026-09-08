@@ -16,3 +16,11 @@ serde_json.workspace = true
 [target.'cfg(unix)'.dependencies]
 # flock on the host lock; the rue group's existence for bootstrap.
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# The host lock as a locked file (the Phase 3 amendment to 7.7).
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+] }

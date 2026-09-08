@@ -2,12 +2,12 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1130,7 +1130,7 @@
+@@ -1517,7 +1517,7 @@
                      .filter(|o| !out.outputs.contains_key(&o.name))
                      .map(|o| o.name.as_str())
                      .collect();
 -                if !missing.is_empty() {
 +                if !missing.is_empty() && std::env::var_os("RUE_NEVER_SET").is_some() {
+                     let why = format!("silent: no output for {}", missing.join(", "));
                      self.log(
                          rec,
-                         J::StepFailed {

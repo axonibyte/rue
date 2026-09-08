@@ -1130,3 +1130,52 @@ fn a_knell_waits_for_its_acknowledgement_unless_acked_up_front() {
         .iter()
         .any(|e| matches!(e, J::KnellAcknowledged { step: 1, by, .. } if by == "ops")));
 }
+
+#[test]
+fn a_step_whose_do_the_engine_died_inside_is_undone_on_the_way_back() {
+    // The write-ahead entry exists for exactly this: the engine says what
+    // it is about to do and how it would undo it, then does it. A death
+    // between those two leaves a step that may have half happened and was
+    // never marked applied, and boot recovery must undo it anyway (5.9,
+    // 7.8). Undoing a step that never took is harmless; leaving one that
+    // did is not.
+    let mut w = World::new("boot-interrupted");
+    let plan = world::temp_plan(
+        "p",
+        vec![world::step(world::op("a")), world::step(world::op("b"))],
+    );
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    let id = out.id.clone();
+    // Rewrite the record as a death mid-`do` of step 2 leaves it: step 1
+    // applied, step 2 attempted and unmarked, the instance Applying.
+    let mut rec = w.engine.status(&id).unwrap().unwrap();
+    rec.state = State::Applying;
+    rec.applied.retain(|a| a.step == 1);
+    rec.attempting = Some(rue_engine::lifecycle::AppliedStep {
+        step: 2,
+        iteration: 0,
+    });
+    w.engine.store().write_instance(&id, &rec).unwrap();
+
+    let mut w = w.restart();
+    let boot = w.engine.boot().unwrap();
+    assert_eq!(
+        boot.interrupted,
+        vec![(id.clone(), 2)],
+        "the interrupted step is named"
+    );
+    assert!(boot.demoted.contains(&id), "{boot:?}");
+    // Both steps are undone, the interrupted one first.
+    let undos: Vec<String> = w
+        .commands()
+        .into_iter()
+        .filter(|c| c.starts_with("undo "))
+        .collect();
+    assert_eq!(undos, vec!["undo b".to_string(), "undo a".to_string()]);
+    let rec = w.engine.status(&id).unwrap().unwrap();
+    assert_eq!(rec.state, State::Closed, "{rec:?}");
+    assert!(rec.applied.is_empty() && rec.attempting.is_none());
+}

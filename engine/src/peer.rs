@@ -1,15 +1,19 @@
-//! Peer credentials on the control socket (7.4): the connecting process's
-//! effective uid as the kernel reports it (`SO_PEERCRED` on Linux,
-//! `LOCAL_PEERCRED` on FreeBSD, `getpeereid` on macOS), and the account
-//! name for a uid. Nothing here trusts what the client says about itself.
+//! Peer credentials on the control channel (7.4): the connecting
+//! process's effective uid as the kernel reports it (`SO_PEERCRED` on
+//! Linux, `LOCAL_PEERCRED` on FreeBSD, `getpeereid` on macOS), and the
+//! account name for a uid; on Windows the client's SID at the other end of
+//! the named pipe, and the account name for a SID. Nothing here trusts
+//! what the client says about itself.
 
-#![cfg(unix)]
-
+#[cfg(unix)]
 use std::io;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 
 /// The peer's effective uid and gid.
+#[cfg(unix)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PeerCred {
     pub uid: u32,
@@ -87,6 +91,7 @@ pub fn peer_cred(s: &UnixStream) -> io::Result<PeerCred> {
 
 /// The account name for a uid, from the password database; `None` when
 /// the uid has no entry.
+#[cfg(unix)]
 pub fn user_name(uid: u32) -> Option<String> {
     let mut buf = vec![0u8; 16 * 1024];
     let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
@@ -111,7 +116,53 @@ pub fn user_name(uid: u32) -> Option<String> {
 }
 
 /// This process's effective uid.
+#[cfg(unix)]
 pub fn my_uid() -> u32 {
     // SAFETY: geteuid has no preconditions.
     unsafe { libc::geteuid() }
+}
+
+/// The gid of a group named by name or by number; `None` when the system
+/// knows no such group. The control socket belongs to it (7.4).
+#[cfg(unix)]
+pub fn gid_for(spec: &str) -> Option<u32> {
+    if let Ok(n) = spec.parse::<u32>() {
+        return Some(n);
+    }
+    let c = std::ffi::CString::new(spec).ok()?;
+    // SAFETY: getgrnam reads a NUL-terminated name and returns a static
+    // entry or null.
+    let g = unsafe { libc::getgrnam(c.as_ptr()) };
+    if g.is_null() {
+        return None;
+    }
+    // SAFETY: g is a valid entry.
+    Some(unsafe { (*g).gr_gid })
+}
+
+/// This process's own account name, whichever platform names it.
+#[cfg(unix)]
+pub fn my_account() -> Option<String> {
+    user_name(my_uid())
+}
+
+/// The account this process runs as, from the operating system.
+#[cfg(windows)]
+pub fn my_account() -> Option<String> {
+    use std::os::windows::ffi::OsStringExt;
+    let mut buf = vec![0u16; 256];
+    let mut len = buf.len() as u32;
+    // SAFETY: the buffer is the size the length says.
+    let ok = unsafe {
+        windows_sys::Win32::System::WindowsProgramming::GetUserNameW(buf.as_mut_ptr(), &mut len)
+    };
+    if ok == 0 {
+        return None;
+    }
+    let n = len.saturating_sub(1) as usize;
+    Some(
+        std::ffi::OsString::from_wide(&buf[..n.min(buf.len())])
+            .to_string_lossy()
+            .into_owned(),
+    )
 }

@@ -15,17 +15,18 @@
 //! speak is R0501.
 //!
 //! The server side is generic over the connection's reader and writer, so
-//! a test drives it over a socket pair in one process with its own uid as
-//! the peer; `serve` binds the real socket.
-
-#![cfg(unix)]
+//! a test drives it over a socket pair in one process with its own account
+//! as the peer; `serve` binds the real channel. What that channel is
+//! belongs to the platform: a Unix socket with a group and mode 0660, or a
+//! Windows named pipe with a discretionary access-control list naming the
+//! same group. Everything above the transport -- the frames, the identity
+//! model, the verbs -- is one body of code on both.
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -40,7 +41,6 @@ use serde_json::{json, Value};
 use crate::hook::{HookRegistry, LineLink, Registered, Registration, HOOK_PROTOCOL};
 use crate::journal::Sink;
 use crate::lifecycle::{ApplyOptions, Engine, EngineError, InstanceRecord, Outcome};
-use crate::peer::{peer_cred, user_name, PeerCred};
 use crate::secrets::Mailbox;
 
 pub const CONTROL_PROTOCOL: u32 = 1;
@@ -70,7 +70,7 @@ impl UserSpec {
 
     fn matches(&self, peer: &Peer) -> bool {
         match self {
-            UserSpec::SocketOwner => peer.cred.uid == peer.socket_owner_uid,
+            UserSpec::SocketOwner => peer.owner,
             UserSpec::Name(n) => peer.user.as_deref() == Some(n.as_str()),
         }
     }
@@ -105,18 +105,36 @@ pub struct RegistrarDecl {
 pub struct Operators {
     pub identities: Vec<Operator>,
     pub registrars: Vec<RegistrarDecl>,
-    pub socket_owner_uid: u32,
     /// Daemon dry-run mode (7.9): with no operators block, every peer is
     /// the socket owner's `dry-run` identity.
     pub dry_run: bool,
 }
 
-/// The connecting process, as the kernel and the password database say.
+/// The connecting process, as the operating system reports it: never what
+/// the client says about itself. On unix that is the peer's effective uid
+/// through `SO_PEERCRED`, `LOCAL_PEERCRED` or `getpeereid`, resolved to an
+/// account name; on Windows it is the client's SID at the other end of the
+/// pipe, resolved the same way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Peer {
-    pub cred: PeerCred,
+    /// The account the peer runs as.
     pub user: Option<String>,
-    pub socket_owner_uid: u32,
+    /// Whether that is the account the daemon itself runs as
+    /// (`:socket_owner`).
+    pub owner: bool,
+    /// The numeric uid where the platform has one, for diagnostics.
+    pub uid: Option<u32>,
+}
+
+impl Peer {
+    /// How a peer with no account name is named in a refusal.
+    pub fn describe(&self) -> String {
+        match (&self.user, self.uid) {
+            (Some(u), _) => u.clone(),
+            (None, Some(id)) => format!("uid {id}"),
+            (None, None) => "an unnamed account".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,10 +176,7 @@ impl Operators {
             .iter()
             .filter(|o| o.user.matches(peer))
             .collect();
-        let who = peer
-            .user
-            .clone()
-            .unwrap_or_else(|| format!("uid {}", peer.cred.uid));
+        let who = peer.user.clone().unwrap_or_else(|| peer.describe());
         match requested {
             Some(name) => mine
                 .iter()
@@ -193,10 +208,7 @@ impl Operators {
 
     /// The registrar that may register `hook` from this peer, or R0505.
     pub fn registrar_for(&self, peer: &Peer, hook: &str) -> Result<RegistrarDecl, ControlError> {
-        let who = peer
-            .user
-            .clone()
-            .unwrap_or_else(|| format!("uid {}", peer.cred.uid));
+        let who = peer.user.clone().unwrap_or_else(|| peer.describe());
         let mine: Vec<&RegistrarDecl> = self
             .registrars
             .iter()
@@ -416,6 +428,13 @@ pub fn handle<R: BufRead>(mut reader: R, writer: SharedWriter, peer: Peer, daemo
                 }
                 match daemon.operators.identify(&peer, h.identity.as_deref()) {
                     Ok(op) => {
+                        // Journaled before the client is told it is in: an
+                        // operator that can act is an operator the journal
+                        // already names.
+                        let _ = daemon.journal_site(J::OperatorConnected {
+                            identity: op.name.clone(),
+                            admin: op.admin,
+                        });
                         let ok = HelloOk {
                             ok: true,
                             proto: CONTROL_PROTOCOL,
@@ -448,17 +467,13 @@ pub fn handle<R: BufRead>(mut reader: R, writer: SharedWriter, peer: Peer, daemo
             }
         }
     };
-    let _ = daemon.journal_site(J::OperatorConnected {
-        identity: operator.name.clone(),
-        admin: operator.admin,
-    });
     daemon
         .subscribers
         .add(operator.subscribe.clone(), writer.clone());
     // 2. verbs, registration, replies
     let mut registered: Vec<(String, String)> = Vec::new();
     let mut link: Option<Arc<LineLink>> = None;
-    let connection = format!("{}@uid{}", operator.name, peer.cred.uid);
+    let connection = format!("{}@{}", operator.name, peer.describe());
     loop {
         line.clear();
         match reader.read_line(&mut line) {
@@ -631,7 +646,7 @@ fn status_json(r: &InstanceRecord) -> Value {
         "plan": r.plan().id,
         "owner": r.plan().owner,
         "state": r.state.to_string(),
-        "exit": crate::lifecycle::exit_of(r.state, false),
+        "exit": crate::lifecycle::exit_of(r.state, r.refusal.is_some(), r.secret_undelivered),
         "applied": r.applied.iter().map(|a| a.step).collect::<Vec<_>>(),
         "deadline": r.deadline.map(|d| d.unix_s),
         "waiting": r.waiting.as_ref().map(|w| json!({ "step": w.step, "reason": w.reason })),
@@ -984,23 +999,33 @@ fn dispatch_inner(
 }
 
 // ---------------------------------------------------------------------------
-// The socket
+// The channel
 
-/// Bind the socket (removing a stale file), set its mode and group, and
-/// accept connections until `stop` is set, each on its own thread.
+/// Accept connections until `stop` is set, each on its own thread.
+///
+/// On unix `path` is a socket, bound with mode 0660 and the given group.
+/// On Windows it is a named pipe (`\\.\pipe\...`), created with a
+/// discretionary access-control list naming the same group; `group` is a
+/// gid on unix and is ignored on Windows, where the pipe's list is built
+/// from the account the daemon runs as.
+#[cfg(unix)]
 pub fn serve(
     path: &Path,
-    group: Option<u32>,
+    group: Option<&str>,
     daemon: Arc<Daemon>,
     stop: Arc<AtomicBool>,
 ) -> std::io::Result<()> {
+    use crate::peer;
+    use std::os::unix::net::UnixListener;
+    use std::sync::atomic::Ordering;
+
     if path.exists() {
         std::fs::remove_file(path)?;
     }
     let listener = UnixListener::bind(path)?;
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o660))?;
-    if let Some(gid) = group {
+    if let Some(gid) = group.and_then(peer::gid_for) {
         let c = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap_or_default();
         // SAFETY: chown on a NUL-terminated path we own; -1 leaves the owner.
         let rc = unsafe { libc::chown(c.as_ptr(), u32::MAX, gid) };
@@ -1009,21 +1034,21 @@ pub fn serve(
         }
     }
     listener.set_nonblocking(true)?;
-    let socket_owner_uid = crate::peer::my_uid();
+    let owner_uid = peer::my_uid();
     while !stop.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, _)) => {
                 let d = daemon.clone();
                 std::thread::spawn(move || {
                     let _ = stream.set_nonblocking(false);
-                    let cred = match peer_cred(&stream) {
+                    let cred = match peer::peer_cred(&stream) {
                         Ok(c) => c,
                         Err(_) => return,
                     };
                     let peer = Peer {
-                        cred,
-                        user: user_name(cred.uid),
-                        socket_owner_uid,
+                        user: peer::user_name(cred.uid),
+                        owner: cred.uid == owner_uid,
+                        uid: Some(cred.uid),
                     };
                     let reader = BufReader::new(match stream.try_clone() {
                         Ok(s) => s,
@@ -1042,22 +1067,43 @@ pub fn serve(
     Ok(())
 }
 
+#[cfg(windows)]
+pub fn serve(
+    path: &Path,
+    group: Option<&str>,
+    daemon: Arc<Daemon>,
+    stop: Arc<AtomicBool>,
+) -> std::io::Result<()> {
+    crate::pipe::serve(path, group.map(str::to_string), daemon, stop)
+}
+
 // ---------------------------------------------------------------------------
 // The client
 
 /// A client of the control channel: the CLI, a test, an embedding host.
 pub struct Client {
-    reader: BufReader<UnixStream>,
-    writer: UnixStream,
+    reader: BufReader<Box<dyn std::io::Read + Send>>,
+    writer: Box<dyn Write + Send>,
     next_id: u64,
 }
 
 impl Client {
+    #[cfg(unix)]
     pub fn connect(path: &Path) -> std::io::Result<Client> {
-        let s = UnixStream::connect(path)?;
+        let s = std::os::unix::net::UnixStream::connect(path)?;
         Ok(Client {
-            reader: BufReader::new(s.try_clone()?),
-            writer: s,
+            reader: BufReader::new(Box::new(s.try_clone()?)),
+            writer: Box::new(s),
+            next_id: 1,
+        })
+    }
+
+    #[cfg(windows)]
+    pub fn connect(path: &Path) -> std::io::Result<Client> {
+        let (r, w) = crate::pipe::connect(path)?;
+        Ok(Client {
+            reader: BufReader::new(r),
+            writer: w,
             next_id: 1,
         })
     }

@@ -6,13 +6,10 @@
 //! connection, a hook that goes silent, notifications to a subscriber, and
 //! every verb over the channel.
 
-#![cfg(unix)]
-
 mod common;
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -27,7 +24,7 @@ use rue_engine::executor::Executor;
 use rue_engine::hook::{HookExecutor, HookRegistry, HOOK_PROTOCOL};
 use rue_engine::journal::{Journal, MemorySink, Sink};
 use rue_engine::lifecycle::Engine;
-use rue_engine::peer::{my_uid, user_name, PeerCred};
+use rue_engine::peer::my_account;
 use rue_engine::store::Store;
 use serde_json::{json, Value};
 
@@ -83,13 +80,12 @@ fn ops(identities: Vec<Operator>, registrars: Vec<RegistrarDecl>) -> Operators {
     Operators {
         identities,
         registrars,
-        socket_owner_uid: my_uid(),
         dry_run: false,
     }
 }
 
 fn me() -> String {
-    user_name(my_uid()).expect("this uid has a name")
+    my_account().expect("this account has a name")
 }
 
 fn operator(name: &str, user: UserSpec, plans: &[&str], admin: bool) -> Operator {
@@ -103,33 +99,33 @@ fn operator(name: &str, user: UserSpec, plans: &[&str], admin: bool) -> Operator
 }
 
 /// A connection to the daemon: the server side handled on its own thread
-/// over a socket pair; the client side a line reader and writer.
+/// over a pair of anonymous pipes, which every platform rue runs on has.
+/// The transport a real daemon binds is the platform's (a Unix socket, a
+/// Windows named pipe); everything these tests exercise sits above it.
 struct Conn {
-    reader: BufReader<UnixStream>,
-    writer: UnixStream,
+    reader: BufReader<std::io::PipeReader>,
+    writer: std::io::PipeWriter,
     next: u64,
 }
 
 impl Conn {
     fn open(d: &Arc<Daemon>) -> Conn {
-        let (a, b) = UnixStream::pair().unwrap();
+        // Client writes, server reads; server writes, client reads.
+        let (server_rx, client_tx) = std::io::pipe().unwrap();
+        let (client_rx, server_tx) = std::io::pipe().unwrap();
         let d = d.clone();
         thread::spawn(move || {
             let peer = Peer {
-                cred: PeerCred {
-                    uid: my_uid(),
-                    gid: 0,
-                },
-                user: user_name(my_uid()),
-                socket_owner_uid: my_uid(),
+                user: rue_engine::peer::my_account(),
+                owner: true,
+                uid: None,
             };
-            let reader = BufReader::new(b.try_clone().unwrap());
-            let writer: SharedWriter = Arc::new(Mutex::new(Box::new(b)));
-            handle(reader, writer, peer, &d);
+            let writer: SharedWriter = Arc::new(Mutex::new(Box::new(server_tx)));
+            handle(BufReader::new(server_rx), writer, peer, &d);
         });
         Conn {
-            reader: BufReader::new(a.try_clone().unwrap()),
-            writer: a,
+            reader: BufReader::new(client_rx),
+            writer: client_tx,
             next: 1,
         }
     }
@@ -238,8 +234,8 @@ fn identity_comes_from_peer_credentials_and_the_declared_operators() {
     c6.send(json!({ "id": 1, "verb": "status", "args": {} }));
     let h = c6.recv();
     assert_eq!(error_code(&h), "protocol", "{h}");
-    // Connections are journaled with their identity.
-    thread::sleep(Duration::from_millis(50));
+    // Connections are journaled with their identity, before the client
+    // is told it is in: having the reply is having the entry.
     let ev = sink.events();
     assert!(ev.contains(&J::OperatorConnected {
         identity: "ops".into(),
@@ -252,11 +248,18 @@ fn identity_comes_from_peer_credentials_and_the_declared_operators() {
     assert!(!ev
         .iter()
         .any(|e| matches!(e, J::OperatorConnected { identity, .. } if identity == "nobody")));
+    // The departure is journaled when the server notices the connection
+    // is gone, which is its own thread's business: awaited, not assumed.
     drop(c);
-    thread::sleep(Duration::from_millis(100));
-    assert!(sink.events().contains(&J::OperatorDisconnected {
-        identity: "ops".into()
-    }));
+    let gone = J::OperatorDisconnected {
+        identity: "ops".into(),
+    };
+    let mut waited = 0;
+    while !sink.events().contains(&gone) && waited < 200 {
+        thread::sleep(Duration::from_millis(10));
+        waited += 1;
+    }
+    assert!(sink.events().contains(&gone), "the departure is journaled");
 }
 
 #[test]
@@ -335,7 +338,9 @@ fn every_verb_runs_over_the_channel_within_the_operator_s_scope() {
     assert_eq!(error_code(&r), "R0102", "{r}");
     let r = c.call("recant", json!({ "instance": id, "force": [] }));
     assert_eq!(r.pointer("/result/state"), Some(&json!("Closed")), "{r}");
-    assert_eq!(r.pointer("/result/exit"), Some(&json!(1)));
+    // A recant that reverts cleanly did what was asked: exit 0. Exit 1 is
+    // for an instance that closed because something refused it.
+    assert_eq!(r.pointer("/result/exit"), Some(&json!(0)));
     // a verb on a closed instance: wrong_state
     let r = c.call("recant", json!({ "instance": id }));
     assert_eq!(error_code(&r), "wrong_state", "{r}");
@@ -408,8 +413,18 @@ fn a_hook_registers_by_a_declared_registrar_only_is_journaled_and_serves_execute
     assert_eq!(r.pointer("/register/ok"), Some(&json!(true)), "{r}");
     assert_eq!(hooks.names(), vec!["actuate".to_string()]);
     assert_eq!(hooks.serving("execute"), vec!["actuate".to_string()]);
-    thread::sleep(Duration::from_millis(50));
-    assert!(sink.events().iter().any(|e| matches!(e, J::HookRegistered { name, registrar, .. } if name == "actuate" && registrar == "host")));
+    // Journaled on the server's own thread: awaited, not assumed.
+    let registered = |sink: &MemorySink| {
+        sink.events().iter().any(
+            |e| matches!(e, J::HookRegistered { name, registrar, .. } if name == "actuate" && registrar == "host"),
+        )
+    };
+    let mut waited = 0;
+    while !registered(&sink) && waited < 200 {
+        thread::sleep(Duration::from_millis(10));
+        waited += 1;
+    }
+    assert!(registered(&sink), "the registration is journaled");
 
     // The hook serves: a plan on api-01 (reach api) runs through it. The
     // hook answers on the same connection from another thread while the
@@ -543,13 +558,22 @@ fn a_hook_that_goes_silent_refuses_the_step_and_its_departure_is_journaled() {
         .iter()
         .any(|e| matches!(e, J::StepFailed { error, .. } if error.contains("silent"))));
     // The hook connection closes: deregistered and journaled.
+    // The registry loses the hook first and the journal records it after,
+    // both on the server's own thread: the wait is for the entry, which
+    // is the later of the two.
     drop(c);
-    thread::sleep(Duration::from_millis(100));
-    assert!(hooks.names().is_empty());
-    assert!(sink
-        .events()
-        .iter()
-        .any(|e| matches!(e, J::HookDeregistered { name, .. } if name == "actuate")));
+    let journaled = |sink: &MemorySink| {
+        sink.events()
+            .iter()
+            .any(|e| matches!(e, J::HookDeregistered { name, .. } if name == "actuate"))
+    };
+    let mut waited = 0;
+    while !journaled(&sink) && waited < 200 {
+        thread::sleep(Duration::from_millis(10));
+        waited += 1;
+    }
+    assert!(journaled(&sink), "the departure is journaled");
+    assert!(hooks.names().is_empty(), "the hook is deregistered");
 }
 
 #[test]
@@ -672,4 +696,23 @@ fn a_secret_is_dropped_from_every_hook_message_but_the_two_that_may_carry_one() 
     });
     assert_eq!(guard_secrets(&mut notify), vec!["body".to_string()]);
     assert!(!serde_json::to_string(&notify).unwrap().contains("s3cr3t"));
+}
+
+#[test]
+fn a_hook_reply_missing_a_field_the_op_requires_is_r0303() {
+    // R0303: a hook that answers `ok: true` without what the op promised
+    // has violated the contract, and the step is refused with the code
+    // rather than proceeding on a guess.
+    use rue_engine::hook::field;
+    use serde_json::json;
+
+    // The reply shape is the contract; `field` is what reads it.
+    let good = json!({ "ok": true, "output": { "stdout": "", "outputs": {} } });
+    assert!(field(&good, "output").is_ok());
+    let bad = json!({ "ok": true });
+    let err = field(&bad, "output").unwrap_err().to_string();
+    assert!(err.contains("output"), "{err}");
+    // The executor turns that into a refusal naming R0303.
+    let e = rue_engine::executor::ExecError::Failed(format!("R0303: {err}"));
+    assert!(e.to_string().contains("R0303"), "{e}");
 }

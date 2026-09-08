@@ -187,6 +187,16 @@
           "ssh"
         ],
         "stdin_preamble": true
+      },
+      {
+        "artifact": null,
+        "filesystem": true,
+        "name": "fw-lnx-01",
+        "os": "linux",
+        "reach": [
+          "ssh"
+        ],
+        "stdin_preamble": true
       }
     ],
     "max_wait_s": null,
@@ -195,7 +205,8 @@
       "fw-win-01",
       "fw-02",
       "fw-win-02",
-      "fw-mac-01"
+      "fw-mac-01",
+      "fw-lnx-01"
     ],
     "secrets_deliver_to": [],
     "transports": [

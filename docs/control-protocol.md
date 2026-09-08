@@ -1,17 +1,21 @@
 # The control protocol, version 1
 
 The channel between `rue` (and any embedding host) and `rued`
-(docs/ROADMAP.md 7.4). One Unix socket, mode `0660`, group `rue` (a named
-pipe with a group DACL on Windows, a later unit). Frames are
+(docs/ROADMAP.md 7.4). On unix a socket, mode `0660`, group `rue`; on
+Windows a named pipe (`\\.\pipe\rue`) whose discretionary access-control
+list grants SYSTEM and the local administrators full access and the same
+group read and write, and no one else anything. Frames are
 newline-delimited JSON objects; every line is one frame. The version is the
-integer in the `hello`; `rued` refuses any other with R0501.
+integer in the `hello`; `rued` refuses any other with R0501. Nothing above
+the transport differs between the two.
 
 ## Identity
 
-Identity comes from the kernel, never from the client. `rued` reads the
-peer's effective uid (`SO_PEERCRED` on Linux, `LOCAL_PEERCRED` on FreeBSD,
-`getpeereid` on macOS), maps it to an account name, and matches that
-against the site's `operators` block:
+Identity comes from the operating system, never from the client. `rued`
+reads the peer's effective uid (`SO_PEERCRED` on Linux, `LOCAL_PEERCRED`
+on FreeBSD, `getpeereid` on macOS) or, on Windows, the client's SID by
+impersonating the pipe; it maps that to an account name and matches the
+name against the site's `operators` block:
 
 ```
 operators do
@@ -20,7 +24,8 @@ operators do
 end
 ```
 
-- `user:` is the account, or `:socket_owner` for the account `rued` runs as.
+- `user:` is the account, or `:socket_owner` for the account `rued` runs
+  as, which on Windows is the account the service runs under.
 - `operator_for:` is `:all` or the plan ids the identity may act on.
 - `admin: true` grants the admin verbs and nothing about plan scope.
 - `subscribe:` names the plans whose journal entries the connection

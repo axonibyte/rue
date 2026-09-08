@@ -1,0 +1,13 @@
+# Reverts: an instance that closes releases its umbras and its exclusivity (5.2, 7.1) -- invariant 13 of the simulation is that the ledger holds exactly the instances in a reserving state; here a closed instance keeps its reservation and the next plan is refused for nothing.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2166,7 +2166,7 @@
+ 
+     pub(crate) fn release(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+         for lid in rec.ledger_ids.drain(..) {
+-            self.ledger = self.ledger.release(&lid);
++            let _ = lid;
+         }
+         Ok(self.store.write_ledger(&self.ledger)?)
+     }

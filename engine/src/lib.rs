@@ -18,6 +18,7 @@ pub mod journal;
 pub mod lifecycle;
 pub mod notify;
 pub mod peer;
+pub mod pipe;
 pub mod region;
 pub mod resolve;
 pub mod scheduler;

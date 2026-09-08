@@ -1,6 +1,7 @@
 # T3 inventory: a FreeBSD firewall host and its Windows counterpart, the same
-# pair with their backstop artifacts rendered in Python (uv, PEP 723), and a
-# macOS pf host on the default sh artifact. `artifact` absent means the
+# pair with their backstop artifacts rendered in Python (uv, PEP 723), a
+# macOS pf host on the default sh artifact, and the Linux host the
+# end-to-end harness drives. `artifact` absent means the
 # host's native shell.
 [[host]]
 name = "fw-01"
@@ -48,6 +49,15 @@ roles = ["fw"]
 reach = ["ssh"]
 filesystem = true
 scheduler = "launchd"
+
+[[host]]
+name = "fw-lnx-01"
+address = "10.0.1.6"
+os = "linux"
+roles = ["fw"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "cron"
 
 [authenticators]
 netops = { human = true }

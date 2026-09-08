@@ -51,6 +51,11 @@ struct InvHost {
     artifact: Option<String>,
     #[serde(default)]
     stdin_preamble: Option<bool>,
+    /// Where rue keeps its instance directories on this host (7.7);
+    /// absent is the family's default (`/var/db/rue`,
+    /// `C:\\ProgramData\\rue`). Appendix C.
+    #[serde(default)]
+    rue_root: Option<String>,
 }
 
 /// A host's contract facts for clause dispatch: the inventory record's
@@ -62,6 +67,8 @@ pub struct Contract {
     pub os: String,
     pub roles: Vec<String>,
     pub reach: Vec<String>,
+    /// The host's `rue_root`, where the inventory names one.
+    pub rue_root: Option<String>,
 }
 
 /// What the site block declares, before derivation.
@@ -551,6 +558,7 @@ fn read_toml(p: &Path) -> Result<Inventory, String> {
             os: h.os,
             roles: h.roles,
             reach: h.reach,
+            rue_root: h.rue_root,
         });
     }
     let mut auths = Vec::new();

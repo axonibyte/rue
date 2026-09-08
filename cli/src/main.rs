@@ -722,7 +722,6 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
 /// A verb over the channel: connect, hello, call; print the result's line
 /// last on stdout; the exit code is the outcome's, or 2 for a contract,
 /// identity or scope error, 1 for a refusal, 75 for R0101.
-#[cfg(unix)]
 fn over_channel(
     ch: &Channel,
     verb: &str,
@@ -883,7 +882,6 @@ fn over_channel(
 
 /// Ask the daemon whether it runs in dry-run mode (a hello and nothing
 /// else); a connection or identity failure is reported as the verb would.
-#[cfg(unix)]
 fn daemon_dry_run(ch: &Channel) -> Result<bool, ExitCode> {
     use rue_engine::control::Client;
     let mut c = match Client::connect(&ch.socket) {
@@ -905,12 +903,6 @@ fn daemon_dry_run(ch: &Channel) -> Result<bool, ExitCode> {
     }
 }
 
-#[cfg(not(unix))]
-fn daemon_dry_run(_ch: &Channel) -> Result<bool, ExitCode> {
-    Ok(false)
-}
-
-#[cfg(unix)]
 fn status_line(r: &serde_json::Value) -> String {
     let s = |k: &str| r.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let mut line = format!(
@@ -942,17 +934,6 @@ fn status_line(r: &serde_json::Value) -> String {
         line.push_str(", rehearsal");
     }
     line
-}
-
-#[cfg(not(unix))]
-fn over_channel(
-    _ch: &Channel,
-    _verb: &str,
-    _args: serde_json::Value,
-    _out: &mut dyn Write,
-) -> Result<ExitCode> {
-    eprintln!("rue: the control channel on Windows (a named pipe) arrives with the Windows unit");
-    Ok(ExitCode::from(2))
 }
 
 /// `2h`, `30m`, `90s`, `1d` to seconds.

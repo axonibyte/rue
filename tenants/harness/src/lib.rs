@@ -253,6 +253,13 @@ pub const TENANT_CASES: &[TenantCase] = &[
     },
     TenantCase {
         tenant: "t3",
+        host: "fw-lnx-01",
+        owner: "fw-lnx-01",
+        plan: "open_mgmt_port",
+        requester: "netops_requester",
+    },
+    TenantCase {
+        tenant: "t3",
         host: "fw-mac-01",
         owner: "fw-mac-01",
         plan: "open_mgmt_port",

@@ -16,8 +16,9 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use rue_engine::store::{migrate, StoreError};
 
-#[cfg(unix)]
 mod run;
+#[cfg(windows)]
+mod service;
 
 #[derive(Parser)]
 #[command(
@@ -65,6 +66,14 @@ enum Verb {
         #[arg(long = "spawn", value_name = "NAME=COMMAND")]
         spawn: Vec<String>,
     },
+    /// Windows only: hand this process to the service-control manager.
+    /// The flags after it are the ones `run` takes; the manager passes
+    /// them through, so they are accepted here and parsed there.
+    #[cfg(windows)]
+    Service {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Migrate the instance store's schema to this build's, explicitly.
     /// Runs with the daemon stopped; refuses a store owned by another
     /// account or written by a newer rued.
@@ -81,6 +90,14 @@ enum Verb {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.verb {
+        #[cfg(windows)]
+        Verb::Service { args: _ } => match service::dispatch() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("rued: service: {e}");
+                ExitCode::from(1)
+            }
+        },
         Verb::Migrate { store, dry_run } => {
             let by = whoami();
             match migrate(&store, dry_run, &by) {
@@ -115,7 +132,6 @@ fn main() -> ExitCode {
                 }
             }
         }
-        #[cfg(unix)]
         Verb::Run {
             site,
             store,
@@ -145,11 +161,6 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        #[cfg(not(unix))]
-        Verb::Run { .. } => {
-            eprintln!("rued: the control channel on Windows (a named pipe with a group DACL) arrives with the Windows unit; run is refused here");
-            ExitCode::from(2)
-        }
     }
 }
 

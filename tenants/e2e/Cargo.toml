@@ -14,3 +14,8 @@ repository.workspace = true
 # the pipeline's and the Windows script's `cargo test` exclude the package by
 # name with that reason beside the exclusion.
 [dependencies]
+
+[target.'cfg(unix)'.dependencies]
+# The daemon's stderr is drained without blocking when a scenario has
+# waited long enough and wants to say why.
+libc = "0.2"

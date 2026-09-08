@@ -1,0 +1,121 @@
+{
+  "backstop": {
+    "armed_after": null,
+    "armed_before": 1,
+    "conditional": [
+      {
+        "on": "foreign region in file:/etc/nftables.conf",
+        "step": 1
+      }
+    ],
+    "covers": [
+      1
+    ],
+    "drift_policy": {
+      "1": "clobber"
+    },
+    "granularity_s": 60,
+    "installed_before": 1,
+    "late_arming_window": [],
+    "locus": "target",
+    "scheduler": "cron",
+    "self_enforced": true,
+    "snapshots": {
+      "cap_bytes": 1048576,
+      "location": "target"
+    },
+    "triggers": [
+      "unless confirmed within 10m"
+    ]
+  },
+  "commit_step": 4,
+  "controller_only_undos": [],
+  "deferred": [],
+  "diagnostics": [],
+  "dispatch": {
+    "host_contract_hash": "-",
+    "source": "inventory"
+  },
+  "fires_by_construction": false,
+  "gate": null,
+  "held_indefinitely": [],
+  "holds_at": [],
+  "host": "fw-lnx-01",
+  "hosts_touched": {
+    "1": [
+      {
+        "directory": "target",
+        "host": "fw-lnx-01"
+      }
+    ]
+  },
+  "induced_defer": [],
+  "intent": "permanent",
+  "may_conflicts": [],
+  "mode": "manual",
+  "plan": "open_mgmt_port",
+  "point_of_no_return": null,
+  "rehearsal": false,
+  "reversible_back_to": null,
+  "reversible_through": 1,
+  "status": "ok",
+  "steps": [
+    {
+      "conditional": "foreign region in file:/etc/nftables.conf",
+      "drift": "clobber",
+      "footprint": [
+        "region: file:/etc/nftables.conf anchor rue-mgmt"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "target",
+      "n": 1,
+      "op": "nft_allow",
+      "refusal": "revert",
+      "undo": "strip anchor rue-mgmt from file:/etc/nftables.conf",
+      "undo_locus": "target"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 2,
+      "op": "observe verify_reach",
+      "refusal": "n/a",
+      "undo": null,
+      "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 3,
+      "op": "confirm()",
+      "refusal": "n/a",
+      "undo": null,
+      "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": null,
+      "footprint": [],
+      "gate": null,
+      "knell": null,
+      "locus": "controller",
+      "n": 4,
+      "op": "commit()",
+      "refusal": "n/a",
+      "undo": null,
+      "undo_locus": "none"
+    }
+  ],
+  "unresolved_bindings": [],
+  "verdict_version": 1,
+  "wane_s": null
+}

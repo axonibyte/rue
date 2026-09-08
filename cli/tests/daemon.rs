@@ -294,10 +294,12 @@ fn a_plan_applies_through_a_registered_hook_and_every_verb_prints_its_line_last(
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("R0102"));
 
-    // recant: closed, exit 1, its line last
+    // recant: closed cleanly, exit 0, its line last. An instance that
+    // closes because something refused it is exit 1; one an operator
+    // recants did what was asked (section 6.8).
     let out = rue(&daemon.socket, &["recant", &id, "--identity", "ops"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    assert_eq!(out.status.code(), Some(0), "{stdout}");
     assert!(stdout.trim_end().ends_with("closed (reverted)"), "{stdout}");
 
     // a rehearsal against the real daemon: exit 0, nothing run

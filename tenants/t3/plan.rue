@@ -1,7 +1,8 @@
 rue 0
 # T3 -- commit-confirmed firewall change (docs/ROADMAP.md section 8.3).
-# Permanent. A FreeBSD pf anchor (region) and a Windows Firewall rule (owned),
-# dispatched by clause on the host's os; macOS takes the pf clause. The
+# Permanent. A FreeBSD pf anchor (region), a Linux packet-filter file
+# (region) and a Windows Firewall rule (owned), dispatched by clause on the
+# host's os; macOS takes the pf clause. The
 # inventory carries the same two firewalls a second time with `artifact =
 # "python"`, so the backstop is rendered for both families on both OSes.
 #
@@ -40,6 +41,14 @@ defop :pf_allow, %{os: [:freebsd, :macos]} do
   undo_locus: :target
 end
 
+defop :nft_allow, %{os: :linux} do
+  footprint region: file("/etc/nftables.conf", anchor: "rue-mgmt")
+  reach ssh(host)
+  do: [region_set(file("/etc/nftables.conf", anchor: "rue-mgmt"), content: "tcp dport #{port} accept"), run("nft -f /etc/nftables.conf")]
+  undo: :restore
+  undo_locus: :target
+end
+
 defop :winfw_allow, %{os: :windows} do
   footprint owned: winfw.rule("rue-mgmt")
   reach ssh(host)
@@ -52,6 +61,14 @@ end
 defplan :open_mgmt_port, %{os: [:freebsd, :macos]} do
   backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
   pf_allow(port: 8443)
+  observe verify_reach() as reach
+  confirm()
+  commit()
+end
+
+defplan :open_mgmt_port, %{os: :linux} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  nft_allow(port: 8443)
   observe verify_reach() as reach
   confirm()
   commit()

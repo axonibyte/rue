@@ -439,3 +439,40 @@ fn a_hold_under_auto_mode_is_not_refused_and_reverts_at_wane() {
         w.events()
     );
 }
+
+#[test]
+fn an_approval_binding_that_fails_is_r0302_and_opens_nothing() {
+    // R0302: a binding that fails at runtime is a refusal naming the
+    // binding, not a gate that quietly opens or a panic.
+    let (mut w, approval) = world("gate-r0302");
+    let mut plan = world::temp_plan("p", vec![world::step(world::op("a"))]);
+    plan.gate = Some(PlanGate {
+        expr: GateExpr::Single(auth("oncall")),
+        window: None,
+        allow_zero_human: false,
+    });
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    let id = out.id.clone();
+    approval.with(|f| f.broken = true);
+    let err = w
+        .engine
+        .approve_proof(&id, Scope::Plan, "oncall", "t", "ops")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("R0302"), "{err}");
+    assert_eq!(
+        w.engine.status(&id).unwrap().unwrap().state,
+        State::Pending,
+        "the gate did not open"
+    );
+    // The challenge fails the same way, and says which binding.
+    let err = w
+        .engine
+        .challenge(&id, Scope::Plan, "why")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("R0302"), "{err}");
+}

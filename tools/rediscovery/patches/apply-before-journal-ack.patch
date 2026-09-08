@@ -2,36 +2,29 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1094,17 +1094,15 @@
+@@ -1488,6 +1488,7 @@
                  }
              }
          }
--        // Write-ahead: the entry is acknowledged and the record persisted in
--        // Applying before anything runs.
--        self.log(
--            rec,
--            J::Applying {
--                step: n,
--                undo_line: undo_line(&op),
--            },
--        )?;
--        self.persist(rec)?;
-         if rec.rehearsal {
-+            self.log(
-+                rec,
-+                J::Applying {
-+                    step: n,
-+                    undo_line: undo_line(&op),
-+                },
-+            )?;
-+            self.persist(rec)?;
++        if rec.rehearsal {
+         // Write-ahead: the entry is acknowledged and the record persisted in
+         // Applying before anything runs.
+         self.log(
+@@ -1502,7 +1503,7 @@
+         // even though it was never marked applied.
+         rec.attempting = Some(AppliedStep { step: n, iteration });
+         self.persist(rec)?;
+-        if rec.rehearsal {
++
              self.log(rec, J::StepDone { step: n })?;
              return self.after_step(rec, n, iteration, &op, vars);
          }
-@@ -1121,6 +1119,14 @@
+@@ -1523,6 +1524,21 @@
                  .ok_or_else(|| EngineError::Internal("executor vanished".into()))?;
              ex.run(&host, &id, &body)
          };
++        // Write-ahead: the entry is acknowledged and the record persisted in
++        // Applying before anything runs.
 +        self.log(
 +            rec,
 +            J::Applying {
@@ -39,7 +32,12 @@
 +                undo_line: undo_line(&op),
 +            },
 +        )?;
++        // From here until the step ends, the record says which step is
++        // in flight: an engine that dies now must undo it on the way back
++        // even though it was never marked applied.
++        rec.attempting = Some(AppliedStep { step: n, iteration });
 +        self.persist(rec)?;
++
          match result {
              Ok(out) => {
                  // Every declared output must be present: silence is refusal.

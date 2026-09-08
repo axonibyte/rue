@@ -38,7 +38,18 @@ use rue_engine::host::Host;
 use rue_engine::journal::{Journal, Sink};
 use rue_engine::lifecycle::Engine;
 use rue_engine::notify::Notify;
-use rue_engine::peer::my_uid;
+/// The numeric uid where the platform has one, for the journal's account
+/// line; Windows names an account and has none.
+#[cfg(unix)]
+fn my_uid_opt() -> Option<u32> {
+    Some(rue_engine::peer::my_uid())
+}
+
+#[cfg(windows)]
+fn my_uid_opt() -> Option<u32> {
+    None
+}
+
 use rue_engine::scheduler::Scheduler;
 use rue_engine::secrets::{Acceptor, Mailbox};
 use rue_engine::sign::Signer;
@@ -57,6 +68,7 @@ pub struct Config {
     pub spawn: Vec<String>,
 }
 
+#[derive(Debug)]
 pub enum Refusal {
     Usage(String),
     Refused(String),
@@ -67,21 +79,22 @@ fn refused(m: impl Into<String>) -> Refusal {
 }
 
 /// A group by name or number.
-fn group_id(spec: &str) -> Result<u32, Refusal> {
-    if let Ok(n) = spec.parse::<u32>() {
-        return Ok(n);
-    }
-    let c = std::ffi::CString::new(spec).map_err(|_| Refusal::Usage("group name".into()))?;
-    // SAFETY: getgrnam reads a NUL-terminated name and returns a static
-    // entry or null.
-    let g = unsafe { libc::getgrnam(c.as_ptr()) };
-    if g.is_null() {
-        return Err(refused(format!(
+/// The control channel's group must exist before the daemon serves: on
+/// unix it owns the socket, on Windows it is named in the pipe's
+/// access-control list.
+#[cfg(unix)]
+fn check_group(spec: &str) -> Result<(), Refusal> {
+    match rue_engine::peer::gid_for(spec) {
+        Some(_) => Ok(()),
+        None => Err(refused(format!(
             "group {spec} does not exist; the control socket belongs to group rue (7.4), or name another with --group"
-        )));
+        ))),
     }
-    // SAFETY: g is a valid entry.
-    Ok(unsafe { (*g).gr_gid })
+}
+
+#[cfg(windows)]
+fn check_group(spec: &str) -> Result<(), Refusal> {
+    rue_engine::pipe::sddl(spec).map(|_| ()).map_err(refused)
 }
 
 fn sinks_of(
@@ -142,7 +155,7 @@ fn hosts_of(sb: &SiteBindings) -> Vec<Host> {
                 } else {
                     None
                 },
-                rue_root: None,
+                rue_root: c.and_then(|c| c.rue_root.clone()),
                 facts,
             }
         })
@@ -365,7 +378,6 @@ fn operators_of(decl: &SiteDecl, dry_run: bool) -> Operators {
                 may_register: r.may_register.clone(),
             })
             .collect(),
-        socket_owner_uid: my_uid(),
         dry_run,
     }
 }
@@ -414,12 +426,9 @@ fn spawn_child(spec: &str, daemon: &Arc<Daemon>) -> Result<(), Refusal> {
     // The child is the socket owner by construction; it must still be a
     // declared registrar's hook (R0505).
     let peer = control::Peer {
-        cred: rue_engine::peer::PeerCred {
-            uid: my_uid(),
-            gid: 0,
-        },
-        user: rue_engine::peer::user_name(my_uid()),
-        socket_owner_uid: my_uid(),
+        user: rue_engine::peer::my_account(),
+        owner: true,
+        uid: my_uid_opt(),
     };
     let registrar = daemon
         .operators
@@ -465,6 +474,12 @@ fn spawn_child(spec: &str, daemon: &Arc<Daemon>) -> Result<(), Refusal> {
 }
 
 pub fn run(cfg: Config) -> Result<(), Refusal> {
+    run_until(cfg, Arc::new(AtomicBool::new(false)))
+}
+
+/// The daemon, stopping when `stop` is set. `rued run` never sets it; a
+/// Windows service sets it from its control handler.
+pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
     let sb = match site_bindings_opts(&cfg.site, cfg.dry_run) {
         Ok(sb) => sb,
         Err(diags) => {
@@ -477,7 +492,7 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
             )));
         }
     };
-    let gid = group_id(&cfg.group)?;
+    check_group(&cfg.group)?;
     let store = match schema_of(&cfg.store) {
         Err(SchemaError::Missing)
             if !cfg.store.exists()
@@ -592,6 +607,5 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
         daemon.operators.registrars.len()
     );
     let _ = std::io::stderr().flush();
-    let stop = Arc::new(AtomicBool::new(false));
-    control::serve(&cfg.socket, Some(gid), daemon, stop).map_err(|e| refused(e.to_string()))
+    control::serve(&cfg.socket, Some(&cfg.group), daemon, stop).map_err(|e| refused(e.to_string()))
 }

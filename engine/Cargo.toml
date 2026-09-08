@@ -29,6 +29,20 @@ libc = "0.2"
 # A key that is not Ed25519, generated in-process for the signer's refusal.
 ssh-key = { version = "0.6", default-features = false, features = ["ed25519", "std", "rand_core", "p256"] }
 
+[target.'cfg(windows)'.dependencies]
+# The control channel's named pipe and its access-control list, and the
+# client's SID at the other end of it (docs/ROADMAP.md 7.4, 12).
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+] }
+
 [target.'cfg(unix)'.dependencies]
 # flock on the store's lock file; the effective uid the store must be owned by.
 libc = "0.2"

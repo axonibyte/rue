@@ -22,3 +22,9 @@ serde_json.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# rued as a Windows service: the service-control dispatcher and its stop
+# handler (docs/ROADMAP.md 7.9, 12). Built on the gnu target; run as a
+# service on no machine this phase (docs/TESTING.md).
+windows-service = "0.8"

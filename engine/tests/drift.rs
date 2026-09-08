@@ -525,3 +525,52 @@ fn bootstrap_reports_what_a_host_lacks_with_its_family_s_commands_and_runs_nothi
     assert!(!report.healthy(), "{report:?}");
     assert_eq!(report.sinks, vec!["mem".to_string()]);
 }
+
+#[test]
+fn a_fact_above_the_snapshot_cap_refuses_the_step_that_would_snapshot_it() {
+    // R0204: the cap the verdict states (`snapshot_cap`) is the cap the
+    // engine keeps. A step whose `modified` fact is larger than it is
+    // refused before `do`, rather than applied with an undo that cannot
+    // restore anything.
+    let mut w = World::new("drift-cap");
+    let big = vec![b'x'; (rue_engine::lifecycle::SNAPSHOT_CAP + 1) as usize];
+    w.ssh.with(|f| {
+        f.facts.insert("file:/conf".into(), big);
+        f.facts.insert("file:/shared".into(), b"top\n".to_vec());
+    });
+    let plan = world::temp_plan("p", vec![world::step(triple(None))]);
+    let err = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("R0204"), "{err}");
+    assert!(err.contains("above the"), "{err}");
+    // Nothing ran: the refusal is before the step's `do`.
+    assert!(w.commands().is_empty(), "{:?}", w.commands());
+}
+
+#[test]
+fn a_drift_held_instance_says_r0202_in_its_line() {
+    // R0202 is informational: the drift was observed and the step's
+    // policy applied to it. The line an operator sees names it.
+    let mut w = World::new("drift-r0202");
+    seed(&w);
+    let plan = world::temp_plan("p", vec![world::step(triple(Some(Drift::Defer)))]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    w.ssh.with(|f| {
+        f.facts.insert("file:/conf".into(), b"edited\n".to_vec());
+    });
+    let out = w.engine.recant(&out.id, &[]).unwrap();
+    assert_eq!(
+        out.state,
+        rue_core::states::State::DriftHeld,
+        "{}",
+        out.line
+    );
+    assert!(out.line.contains("R0202"), "{}", out.line);
+    assert_eq!(out.exit, 8);
+}

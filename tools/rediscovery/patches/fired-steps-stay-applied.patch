@@ -1,0 +1,13 @@
+# Reverts: the steps a fired artifact undid are no longer applied (5.6, R0402) -- invariant 2 of the simulation is that an applied step's owned fact is on its host; here the engine reads the marker and goes on calling the steps applied.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/backstop.rs
++++ b/engine/src/backstop.rs
+@@ -655,7 +655,7 @@
+                 },
+             )?;
+         }
+-        rec.applied.retain(|a| !undone.contains(&a.step));
++        let _ = &undone;
+         if let Some(b) = rec.backstop.as_mut() {
+             b.fired = true;
+             b.armed = false;

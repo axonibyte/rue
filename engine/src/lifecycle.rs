@@ -177,6 +177,12 @@ pub struct InstanceRecord {
     /// A secret this instance produced that no acceptor took: exit 7.
     #[serde(default)]
     pub secret_undelivered: bool,
+    /// The step whose `do` is running right now, written before it starts
+    /// and cleared when it ends. An engine that dies here left a step
+    /// half-done, and the write-ahead entry is what says how to undo it
+    /// (5.9, 7.8).
+    #[serde(default)]
+    pub attempting: Option<AppliedStep>,
     /// Knells acknowledged up front (`--ack`), by step.
     pub acks: Vec<u32>,
     /// Guard names forced by the request or a `recant --force`.
@@ -315,15 +321,25 @@ impl From<StoreError> for EngineError {
     }
 }
 
+/// The most a snapshot may be, in bytes: the number the verdict states
+/// (`snapshot_cap`), enforced where the snapshot is taken (R0204).
+pub const SNAPSHOT_CAP: u64 = 1_048_576;
+
 /// The exit code of section 6.8 for a state.
-pub fn exit_of(state: State, secret_undelivered: bool) -> u8 {
+/// `refused` is whether the instance closed *because* something refused
+/// it: a plan that reverted after a refusal is exit 1, and one an
+/// operator recanted, cancelled or abandoned, or that waned and reverted
+/// cleanly, is exit 0. Both end `Closed`, and only the reason tells them
+/// apart (section 6.8: `0` applied or ok, `1` refused).
+pub fn exit_of(state: State, refused: bool, secret_undelivered: bool) -> u8 {
     match state {
         State::Held => 3,
         State::Stuck => 4,
         State::Deferred => 5,
         State::Pending | State::Waiting => 6,
         State::DriftHeld => 8,
-        State::Closed => 1,
+        State::Closed if refused => 1,
+        State::Closed => 0,
         _ if secret_undelivered => 7,
         _ => 0,
     }
@@ -364,6 +380,9 @@ pub struct BootReport {
     pub reclaimed: Vec<(String, String)>,
     /// Held secrets a restart dropped: none survives it (5.13).
     pub secrets_dropped: usize,
+    /// Steps whose `do` the restart interrupted, undone on the way back:
+    /// (instance, step).
+    pub interrupted: Vec<(String, u32)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +690,7 @@ impl Engine {
     }
 
     pub(crate) fn outcome(&self, rec: &InstanceRecord) -> Outcome {
-        let exit = exit_of(rec.state, rec.secret_undelivered);
+        let exit = exit_of(rec.state, rec.refusal.is_some(), rec.secret_undelivered);
         let line = match rec.state {
             State::Closed => format!(
                 "{}: closed ({})",
@@ -695,7 +714,10 @@ impl Engine {
                 rec.deferred.as_ref().map(|d| d.step).unwrap_or(0)
             ),
             State::Stuck => format!("{}: stuck at steps {:?}", rec.id, rec.stuck),
-            State::DriftHeld => format!("{}: drift-held at steps {:?}", rec.id, rec.drift_held),
+            State::DriftHeld => format!(
+                "{}: R0202: drift-held at steps {:?}",
+                rec.id, rec.drift_held
+            ),
             State::Applied if rec.rehearsal => {
                 format!("{}: applied (rehearsal: no reservation)", rec.id)
             }
@@ -887,6 +909,7 @@ impl Engine {
             host_contract: String::new(),
             proofs: Vec::new(),
             secret_undelivered: false,
+            attempting: None,
             acks: opts.acks.clone(),
             forced: opts.forced.clone(),
             ledger_ids: Vec::new(),
@@ -1286,6 +1309,7 @@ impl Engine {
         iteration: u32,
     ) -> Result<(), EngineError> {
         rec.applied.push(AppliedStep { step: n, iteration });
+        rec.attempting = None;
         self.persist(rec)
     }
 
@@ -1473,6 +1497,10 @@ impl Engine {
                 undo_line: undo_line(&op),
             },
         )?;
+        // From here until the step ends, the record says which step is
+        // in flight: an engine that dies now must undo it on the way back
+        // even though it was never marked applied.
+        rec.attempting = Some(AppliedStep { step: n, iteration });
         self.persist(rec)?;
         if rec.rehearsal {
             self.log(rec, J::StepDone { step: n })?;
@@ -1505,13 +1533,15 @@ impl Engine {
                     .map(|o| o.name.as_str())
                     .collect();
                 if !missing.is_empty() {
+                    let why = format!("silent: no output for {}", missing.join(", "));
                     self.log(
                         rec,
                         J::StepFailed {
                             step: n,
-                            error: format!("silent: no output for {}", missing.join(", ")),
+                            error: why.clone(),
                         },
                     )?;
+                    rec.refusal = Some(format!("step {n}: {why}"));
                     self.undo_failed(rec, n, iteration, &op)?;
                     return self.refuse_applied(rec, n);
                 }
@@ -1572,6 +1602,9 @@ impl Engine {
                         error: e.to_string(),
                     },
                 )?;
+                // The step failed: the instance closes because something
+                // refused it, which is what exit 1 says (6.8).
+                rec.refusal = Some(format!("step {n}: {e}"));
                 self.undo_failed(rec, n, iteration, &op)?;
                 self.refuse_applied(rec, n)
             }
@@ -1588,6 +1621,7 @@ impl Engine {
         iteration: u32,
         op: &Op,
     ) -> Result<(), EngineError> {
+        rec.attempting = None;
         if let Err(why) = self.undo_step(rec, n, op) {
             rec.applied.push(AppliedStep { step: n, iteration });
             self.log(
@@ -1882,6 +1916,18 @@ impl Engine {
                 None => continue,
             };
             if let Ok(Some(bytes)) = ex.read_fact(host, &e.shape) {
+                // R0204: the cap the verdict states is the cap the engine
+                // keeps. A fact above it is not snapshotted, and the step
+                // that wanted the snapshot is refused rather than left
+                // with an undo it cannot perform.
+                if bytes.len() as u64 > SNAPSHOT_CAP {
+                    return Err(EngineError::Runtime(format!(
+                        "R0204: {} on {} is {} bytes, above the {SNAPSHOT_CAP}-byte snapshot cap",
+                        e.shape,
+                        host.name(),
+                        bytes.len()
+                    )));
+                }
                 if rec.dirs.contains(&host.name().to_string()) {
                     let _ = ex.replace_file(host, &rec.id, &format!("snapshots/{n}/{k}"), &bytes);
                 }
@@ -1988,6 +2034,8 @@ impl Engine {
                 }
                 Ok(report) => {
                     if !report.clobbered.is_empty() {
+                        // R0202 is informational: the drift was seen and
+                        // the step's policy applied to it.
                         self.log(
                             rec,
                             J::DriftClobbered {
@@ -2669,6 +2717,17 @@ impl Engine {
         for rec in self.instances()? {
             let mut rec = rec;
             if rec.state == State::Applying {
+                // The step whose `do` was in flight may have half
+                // happened; its write-ahead entry says how to undo it, so
+                // it is undone with the rest (5.9). An undo of a step that
+                // never took is harmless: that is what makes an undo an
+                // undo.
+                if let Some(a) = rec.attempting.take() {
+                    if !rec.is_applied(a.step, a.iteration) {
+                        report.interrupted.push((rec.id.clone(), a.step));
+                        rec.applied.push(a);
+                    }
+                }
                 rec.refusal = Some("the engine restarted while applying".into());
                 self.step(&mut rec, E::Refuse)?;
                 if rec.state == State::Held {

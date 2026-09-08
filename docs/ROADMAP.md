@@ -1234,11 +1234,11 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Tests.** Tier 1 units per driver with fakes; Tier 4 lifecycle truth table (every state × every event, generated from §5.9); Tier 5 real-host e2e; Tier 6 kill/death/race battery; Tier 7 minimal simulation; rediscovery.
 
-**Acceptance.** Everything in task 14 passes on FreeBSD, Linux and Windows guests: the Windows Firewall variant of T3, `rued` as a service, the named-pipe control channel and the Task Scheduler backstop pass on a real Windows guest, not against fakes; every R-code in Appendix D has a test that raises it.
+**Acceptance.** *(Amended 2026-09-08, by the owner's decision of 2026-09-07: Windows stays under wine this phase.)* Everything in task 14 passes on the FreeBSD and Linux guests, and every R-code in Appendix D has a test that raises it. The Windows half is built for `x86_64-pc-windows-gnu`, unit-tested under wine, and proven no further this phase: `rued` as a service, the named-pipe channel with its access-control list and client-SID identity, the Task Scheduler backstop and the Windows Firewall variant of T3 wait for **Phase 3W**, a named later item that runs task 14 on a real Windows guest against no fakes. Nothing about the Windows design is left unwritten; what is missing is a machine to run it on.
 
 **Exit criteria.** Acceptance met; `TESTING.md` published; tag v0.1.0.
 
-**Not proven.** `unless_heartbeat` under real network partition (a vnet stage in Phase 5); schedulers other than cron and Task Scheduler; multi-controller contention.
+**Not proven.** `unless_heartbeat` under real network partition (a vnet stage in Phase 5); schedulers other than cron and Task Scheduler; multi-controller contention. On Windows, what wine cannot show: the service-control manager (the dispatcher and its stop handler are unit-tested by argument, and no manager has started rued), the access-control list as the kernel enforces it against a client that should be refused, the Task Scheduler, and PowerShell as `local()`'s shell. Wine *does* carry the named pipe end to end, list and all, and names the client from its own SID, so the identity model is proven on Windows and only its enforcement against a stranger is not. On macOS, `launchd()`, which is written and unit-tested and has installed no job.
 
 **Rediscovery rows seeded.** `apply-before-journal-ack`, `drift-outside-footprint-ignored`, `undo-restores-over-actor`, `backstop-armed-after-reach-op`, `renew-commits-before-rearm`, `secret-journaled`, `stuck-swallowed`, `silent-executor-ok`, `settle-fires-wane`, `artifact-engine-drift-disagree`, `staged-file-survives-crash`, `same-anchor-two-plans-allowed`, `driftheld-releases-umbras`, `boot-reclaims-armed-artifact`, `manifest-read-unlocked`, `region-undo-releases-host-lock-early`, `unbootstrapped-target-dir-created`, `wrong-modes-armed`, `target-undo-no-filesystem-sticks`, `manifest-rewritten-in-place`, `driftheld-reverted-at-wane`, `bootstrap-runs-commands`, `register-before-hello`, `admin-verb-without-admin`, `hook-registration-unjournaled`, `force-reclaim-without-reason`, `rehearsal-reserves-umbras`, `hold-under-auto-refused`, `stuck-inescapable`, `abandon-leaves-artifact-unjournaled`, `deferred-no-way-out`, `temporary-heartbeat-refused`, `secret-held-past-revert`, `commit-leaves-backstop-armed`, `hook-registered-by-undeclared`, `scope-violation-allowed`, `ack-without-token`, `host-contract-change-ignored`, `secret-in-forbidden-hook-message`.
 
@@ -1306,7 +1306,8 @@ After every simulated event, the shadow model and the engine must agree on: (1) 
 | Byte-equality fallback for probes without a declared equivalence: allow with a warning, or require? | 2 | Lean: allow with a warning-class diagnostic |
 | Sidecar vs spawned-child default for `rued` hooks in docs | 4 | Both via the same protocol |
 | `winrm()` executor as a generic built-in, or OpenSSH-for-Windows only? | 3 | Lean: ssh only in v0 |
-| Windows service wrapper: `windows-service` crate (msvc) vs a gnu-target shim | 3 | Decide against a real Windows machine; wine does not answer it |
+| Windows service wrapper: `windows-service` crate (msvc) vs a gnu-target shim | 3 | **Settled 2026-09-08:** the `windows-service` crate on the gnu target. Its dispatcher and stop handler are unit-tested by argument under wine; whether a real service-control manager accepts the gnu build is Phase 3W's to answer |
+| **Phase 3W** — task 14 on a real Windows guest: `rued` as a service under the service-control manager, the named pipe's access-control list and client-SID identity as the kernel enforces them, the Task Scheduler backstop armed and fired, the Windows Firewall variant of T3, and PowerShell as `local()`'s shell | 3W | Named by the Phase 3 acceptance amendment of 2026-09-08. Everything it needs is written and built for `x86_64-pc-windows-gnu`; what is missing is the machine |
 | `elevate via:` binding (sudo/doas/runas) so `rue bootstrap` could act, not only verify | v1 | v0 is free of elevation |
 | Independent backstop watchdog (separate machine, separate credential; reads deadlines, re-asserts or pages) | v1 | Accepted out of v0 (§7.12) |
 | Editor tooling before or after v0.1.0? | 5 | After; keep the grammar settled first |
@@ -1359,7 +1360,7 @@ Secrets render as `<secret:label>`. Undo lines are printed before the step runs 
 { "name": "db-01", "address": "10.0.4.11", "os": "freebsd", "roles": ["db", "primary"], "reach": ["ssh"], "facts": { } }
 ```
 
-`name` unique and non-empty; `address` non-empty; `os` from a declared vocabulary the site may extend (`windows` is the PowerShell family; every other name is POSIX); `roles` a set; `reach` non-empty; `facts` free-form, available to clause dispatch (when `static`) and guards; `artifact` optional, `sh`, `powershell` or `python`, the language the host's backstop artifact is rendered in, the native shell when absent (§4.5).
+`name` unique and non-empty; `address` non-empty; `os` from a declared vocabulary the site may extend (`windows` is the PowerShell family; every other name is POSIX); `roles` a set; `reach` non-empty; `facts` free-form, available to clause dispatch (when `static`) and guards; `artifact` optional, `sh`, `powershell` or `python`, the language the host's backstop artifact is rendered in, the native shell when absent (§4.5); `rue_root` optional, where rue keeps this host's instance directories (§7.7), the family's default when absent (`/var/db/rue`, `C:\ProgramData\rue`).
 
 ## Appendix D — Runtime codes
 

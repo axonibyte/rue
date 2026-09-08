@@ -255,6 +255,26 @@ fn decoded(s: &str) -> String {
     format!("\"$(printf '%b' '{}')\"", octal(s))
 }
 
+/// The shell function every mode reading goes through. The two `stat`
+/// dialects disagree twice over: GNU's `-c %a` is the whole mode, BSD's
+/// `-f %OLp` is the permission bits without the setgid bit (which is
+/// `%OMp`), and GNU reads `-f` as "the file system", which succeeds on a
+/// real path and prints something else entirely. So GNU is tried first,
+/// by a flag BSD refuses outright.
+const MODE_FN: &str = "rue_mode() { stat -c %a \"$1\" 2>/dev/null || stat -f '%OMp%OLp' \"$1\" 2>/dev/null || echo 0; }\n";
+
+/// A mode as the two dialects print it, without its leading zeros: BSD's
+/// `%OMp%OLp` gives `0664`, GNU's `%a` gives `664`, and both mean the
+/// same file.
+fn octal_mode(s: &str) -> String {
+    let t = s.trim().trim_start_matches('0');
+    if t.is_empty() {
+        "0".to_string()
+    } else {
+        t.to_string()
+    }
+}
+
 fn q(s: &str) -> Result<String, ExecError> {
     quote::posix(s).map_err(|e| ExecError::Unsupported(format!("cannot quote for sh: {e}")))
 }
@@ -506,8 +526,9 @@ impl Executor for SshExecutor {
              g=0; if getent group rue >/dev/null 2>&1 || pw groupshow rue >/dev/null 2>&1; then g=1; fi\n\
              i=0; [ -d \"$ROOT/instances\" ] && i=1\n\
              l=0; [ -f \"$ROOT/lock\" ] && l=1\n\
-             mi=$(stat -f %Lp \"$ROOT/instances\" 2>/dev/null || stat -c %a \"$ROOT/instances\" 2>/dev/null || echo 0)\n\
-             ml=$(stat -f %Lp \"$ROOT/lock\" 2>/dev/null || stat -c %a \"$ROOT/lock\" 2>/dev/null || echo 0)\n\
+             {MODE_FN}\
+             mi=$(rue_mode \"$ROOT/instances\")\n\
+             ml=$(rue_mode \"$ROOT/lock\")\n\
              echo \"root=$r group=$g instances=$i lock=$l mi=$mi ml=$ml\"\n",
             prelude(host, None).replacen("set -e\n", "", 1)
         );
@@ -523,7 +544,11 @@ impl Executor for SshExecutor {
             group: field("group") == "1",
             instances_dir: field("instances") == "1",
             lock: field("lock") == "1",
-            modes_ok: field("mi") == "2770" && field("ml") == "664",
+            // BSD's `stat -f %OLp` is the permission bits alone and the
+            // setgid bit is `%OMp`, so the two are read together; GNU's
+            // `%a` is the whole mode already. Either way a leading zero
+            // is a spelling, not a difference.
+            modes_ok: octal_mode(&field("mi")) == "2770" && octal_mode(&field("ml")) == "664",
         })
     }
 
@@ -542,7 +567,7 @@ impl Executor for SshExecutor {
 
     fn instance_dir_list(&mut self, host: &Host) -> Result<Vec<InstanceDirState>, ExecError> {
         let script = format!(
-            "{}for d in \"$ROOT\"/instances/*/; do [ -d \"$d\" ] || continue; n=$(basename \"$d\"); a=0; f=0; [ -f \"$d/fired\" ] && f=1; for x in artifact.sh artifact.ps1 artifact.py; do [ -f \"$d/$x\" ] && [ \"$f\" -eq 0 ] && a=1; done; m=$(stat -f %Lp \"$d\" 2>/dev/null || stat -c %a \"$d\" 2>/dev/null || echo 0); echo \"$n $a $f $m\"; done\n",
+            "{}{MODE_FN}for d in \"$ROOT\"/instances/*/; do [ -d \"$d\" ] || continue; n=$(basename \"$d\"); a=0; f=0; [ -f \"$d/fired\" ] && f=1; for x in artifact.sh artifact.ps1 artifact.py; do [ -f \"$d/$x\" ] && [ \"$f\" -eq 0 ] && a=1; done; m=$(rue_mode \"$d\"); echo \"$n $a $f $m\"; done\n",
             prelude(host, None)
         );
         let out = self.exec_ok(host, &script)?;
@@ -553,7 +578,7 @@ impl Executor for SshExecutor {
                 let n = it.next()?;
                 let a = it.next()? == "1";
                 let f = it.next()? == "1";
-                let m = it.next().unwrap_or("0");
+                let m = octal_mode(it.next().unwrap_or("0"));
                 Some(InstanceDirState {
                     instance: n.to_string(),
                     armed: a,
