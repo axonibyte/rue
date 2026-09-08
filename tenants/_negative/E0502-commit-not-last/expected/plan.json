@@ -1,5 +1,5 @@
 {
-  "ir_version": 3,
+  "ir_version": 4,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -100,6 +100,30 @@
     "id": "open_mgmt_port",
     "mode": "manual",
     "owner": "fw-01",
+    "probes": [
+      {
+        "body": [
+          {
+            "run": {
+              "cmd": [
+                {
+                  "lit": "true"
+                }
+              ],
+              "env": [],
+              "stdin": null
+            }
+          }
+        ],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "t3.verify_reach",
+        "produces": [
+          "reach"
+        ],
+        "static": false
+      }
+    ],
     "renew_within_s": null,
     "require_journal": null,
     "strictness": "strict",

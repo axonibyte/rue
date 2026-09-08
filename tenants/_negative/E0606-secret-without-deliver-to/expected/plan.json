@@ -1,5 +1,5 @@
 {
-  "ir_version": 3,
+  "ir_version": 4,
   "plan": {
     "backstop": null,
     "body": [
@@ -72,6 +72,7 @@
     "id": "token",
     "mode": "manual",
     "owner": "db-01",
+    "probes": [],
     "renew_within_s": null,
     "require_journal": null,
     "strictness": "strict",

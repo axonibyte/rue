@@ -4,3 +4,5 @@
 //! and `stdout()` (7.6) and the signing key `key(path)` (5.10).
 
 pub mod journal;
+pub mod local;
+pub mod ssh;

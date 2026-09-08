@@ -418,7 +418,7 @@ fn site_bindings_carry_operators_registrars_and_the_inventory_and_refuse_an_iden
 site do
   inventory from: file("inventory.toml")
   journal to: file("journal.ndjson")
-  execute via: [ssh(), hook(:actuate, transport: :api)]
+  execute via: [ssh(identity: "keys/id_ed25519", known_hosts: "known_hosts", user: "root"), hook(:actuate, transport: :api)]
   max_wait 20m
   operators do
     identity :ops, user: "ops", operator_for: :all, admin: true, subscribe: [:p]

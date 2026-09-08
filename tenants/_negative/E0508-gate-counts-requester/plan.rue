@@ -12,7 +12,7 @@ site do
   journal to: local()
   approval via: hook(:authority)
   secrets deliver_to: [requester(), hook(:escrow)]
-  execute via: [ssh(), hook(:bmc_api, transport: :api)]
+  execute via: [ssh(identity: "keys/id_ed25519", known_hosts: "known_hosts", user: "root"), hook(:bmc_api, transport: :api)]
   backstop scheduler: cron()
   operators do
     identity :ops_requester, user: "ops", operator_for: :all, admin: true

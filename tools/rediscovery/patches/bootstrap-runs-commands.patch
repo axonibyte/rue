@@ -1,0 +1,26 @@
+# Reverts: rue bootstrap verifies and prints, never runs (7.7: rue has no elevation mechanism); here it runs the commands through the executor.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1982,10 +1982,17 @@
+             rue_render::Instance::default_root(rue_core::artifact::shell_of(&h.record.os))
+                 .to_string()
+         });
+-        Ok((
+-            state.clone(),
+-            bootstrap_commands(&h.record.os, &root, &state),
+-        ))
++        let commands = bootstrap_commands(&h.record.os, &root, &state);
++        let body: Vec<RPrim> = commands
++            .iter()
++            .map(|c| RPrim::Run {
++                cmd: Resolved::plain(c),
++                env: Vec::new(),
++                stdin: None,
++            })
++            .collect();
++        let _ = ex.run(&h, "bootstrap", &body);
++        Ok((state.clone(), commands))
+     }
+ 
+     /// `rue doctor`: every host's reach and bootstrap, the sinks, signing,

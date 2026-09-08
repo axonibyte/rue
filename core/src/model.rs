@@ -519,6 +519,25 @@ pub enum JournalRequirement {
     Signed,
 }
 
+/// A probe declaration (section 5.1) as the engine runs it: its body on
+/// its locus produces facts. A probe's command answers a guard by its exit
+/// status (0 yes, 1 no, anything else unknown) and its stdout is the
+/// fact's value.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProbeDecl {
+    pub name: String,
+    pub locus: Locus,
+    pub body: Body,
+    pub produces: Vec<String>,
+    /// A host-contract fact, frozen at request (5.1).
+    #[serde(rename = "static")]
+    pub static_: bool,
+    /// The notion of "restored" for the facts it produces: `bytes`,
+    /// `line_set`, `json`, or a tenant-declared name.
+    pub equivalence: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Plan {
@@ -536,6 +555,9 @@ pub struct Plan {
     pub exclusivity: Option<String>,
     pub require_journal: Option<JournalRequirement>,
     pub body: Vec<Item>,
+    /// The probes the plan's guards, observes and asserts may name (IR 4).
+    #[serde(default)]
+    pub probes: Vec<ProbeDecl>,
 }
 
 impl Plan {
@@ -553,6 +575,7 @@ impl Plan {
             exclusivity: None,
             require_journal: None,
             body,
+            probes: Vec::new(),
         }
     }
 }

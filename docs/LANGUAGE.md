@@ -166,7 +166,7 @@ site do
   journal to: local()
   approval via: hook(:authority)
   secrets deliver_to: [requester(), hook(:escrow)]
-  execute via: [ssh(), hook(:bmc_api, transport: :api)]
+  execute via: [ssh(identity: "keys/id_ed25519", known_hosts: "known_hosts", user: "root"), hook(:bmc_api, transport: :api)]
   backstop scheduler: cron()
   max_wait 30m
   operators do
@@ -187,11 +187,19 @@ via:` `always` or `hook`; `secrets from:` `file` or `hook`; `secrets
 deliver_to:` `requester`, `hold` or `hook`; `notify via:` `stdout` or
 `hook`; `execute via:` `local`, `ssh` or `hook`; `backstop scheduler:`
 `cron`, `task_scheduler`, `launchd` or `hook`), each with the argument
-its contract asks (E0602: a path string for `file` and `rue_toml`, the
-hook's atom for `hook`, `until:` for `hold`, none for the rest, and
-`transport:` on an execute hook), a journal is declared (E0603), an
+its contract asks (E0602: a path string for `file`, `rue_toml` and `key`,
+the hook's atom for `hook`, `until:` for `hold`, none for the rest,
+`transport:` on an execute hook, and `identity:` and `known_hosts:` on
+`ssh()`, which reads nothing under the daemon user's `~/.ssh`: `ssh(identity:
+"keys/id_ed25519", known_hosts: "known_hosts", user: "root")`, paths
+relative to the file that declares them), a journal is declared (E0603), an
 operators block declares an identity (E0604), and every `hook(:x)` has a
 registrar whose `may_register` names it (E0605).
+
+At runtime a probe's `run` answers a guard by its exit status (0 is yes, 1
+is no, anything else is unknown) and its stdout is the fact's value; a
+`run` in an op binds a declared output with a line `rue-output NAME=VALUE`
+on its stdout, which the executor removes from the run's text.
 
 The `operators` block is the daemon's identity model (docs/control-protocol.md):
 `identity :name, user: "account" | :socket_owner, operator_for: :all |

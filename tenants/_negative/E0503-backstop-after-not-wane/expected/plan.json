@@ -1,5 +1,5 @@
 {
-  "ir_version": 3,
+  "ir_version": 4,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -65,6 +65,7 @@
     "id": "posture",
     "mode": "manual",
     "owner": "db-01",
+    "probes": [],
     "renew_within_s": null,
     "require_journal": null,
     "strictness": "strict",

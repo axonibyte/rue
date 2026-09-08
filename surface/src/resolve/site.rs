@@ -280,6 +280,19 @@ pub fn validate(
                 "an execute hook names its transport: hook(:x, transport: :t)".into(),
             );
         }
+        // ssh() reads nothing of the daemon's user: the identity and the
+        // known_hosts file are declared, or the binding is not.
+        if b.slot == "execute" && b.kind == "ssh" {
+            for needed in ["identity", "known_hosts"] {
+                if !b.kws.iter().any(|(k, _)| k == needed) {
+                    with(
+                        b.range,
+                        Code::E0602,
+                        format!("ssh() names its {needed}: ssh(identity: \"path\", known_hosts: \"path\", user: \"name\"); the daemon reads nothing under ~/.ssh"),
+                    );
+                }
+            }
+        }
         if b.kind == "hook" {
             if let Some(name) = &b.arg {
                 let registered = decl

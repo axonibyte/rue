@@ -1,0 +1,13 @@
+# Reverts: an instance directory is created only on a bootstrapped target (R0407, 7.7); here the state is not checked.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1465,7 +1465,7 @@
+             None => return Ok(Ok(())),
+         };
+         match ex.bootstrap_state(host) {
+-            Ok(st) if st.ready() => {}
++            Ok(st) if st.ready() || std::env::var_os("RUE_NEVER_SET").is_none() => {}
+             Ok(st) => {
+                 return Ok(Err(format!(
+                     "R0407: {} is not bootstrapped (rue_root {}, group {}, instances {}, lock {}, modes {}); run `rue bootstrap {}`",

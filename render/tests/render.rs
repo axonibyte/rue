@@ -236,7 +236,7 @@ fn every_undo_form_and_primitive_renders() {
     let mut b = Bindings::default();
     b.params.insert("name".into(), "sshd it's".into());
     let a = render(&site(), &p, "fw", &inst(), &b).unwrap().text;
-    assert!(a.contains("strip_region '/etc/pf.conf' 'blk' || { if foreign_region '/etc/pf.conf'; then defer 1; else restore '/var/db/rue/instances/i-1/snapshots/1/0' '/etc/pf.conf'; clobbered 1; fi; }"), "{a}");
+    assert!(a.contains("strip_region '/etc/pf.conf' 'blk' || { if [ -n \"${RUE_NOLOCK:-}\" ] || foreign_region '/etc/pf.conf'; then defer 1; else restore '/var/db/rue/instances/i-1/snapshots/1/0' '/etc/pf.conf'; clobbered 1; fi; }"), "{a}");
     assert!(
         a.contains("[ \"$(sha '/etc/m')\" = \"$(recorded \"$M\" '/etc/m')\" ] || skip=1"),
         "{a}"

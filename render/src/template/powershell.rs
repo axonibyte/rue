@@ -33,6 +33,9 @@ pub fn render(ctx: &Context<'_>) -> Result<String, RenderError> {
         o.push_str(&format!("$hb = Join-Path $Inst 'heartbeat'\nif (Test-Path $hb) {{ if (($now - [int64](Get-Content $hb -Raw).Trim()) -gt {hb}) {{ $due = $true }} }} else {{ $due = $true }}\n"));
     }
     o.push_str("if (-not $due) { exit 0 }\n");
+    // The host lock for the whole run (7.7): the lock file opened with no
+    // sharing, waited for up to five minutes, held until the process ends.
+    o.push_str("$HostLock = $null\nfor ($i = 0; $i -lt 300 -and -not $HostLock; $i++) { try { $HostLock = [System.IO.File]::Open((Join-Path $Root 'lock'), 'OpenOrCreate', 'ReadWrite', 'None') } catch { Start-Sleep -Seconds 1 } }\nif (-not $HostLock) { exit 1 }\n");
     o.push_str(HELPERS);
     for s in &ctx.steps {
         let n = s.n;

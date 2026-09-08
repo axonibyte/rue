@@ -1,0 +1,16 @@
+# Reverts: DriftHeld outlives wane (rule 3 of 5.9); here wane elapsing reverts it.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2254,6 +2254,11 @@
+                         // (rule 3); the notification above is the response.
+                         Verdict_::Stay => {
+                             self.step(&mut rec, E::WaneElapses)?;
++                            if rec.state == State::DriftHeld {
++                                rec.force_drift = true;
++                                self.revert(&mut rec)?;
++                                continue;
++                            }
+                         }
+                         _ => {}
+                     }

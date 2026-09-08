@@ -1,0 +1,14 @@
+# Reverts: a fact another actor changed is left alone under :defer and the instance is DriftHeld (5.2); here it is restored over them as if :clobber.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/footprint.rs
++++ b/engine/src/footprint.rs
+@@ -154,7 +154,8 @@
+             } else {
+                 match policy {
+                     Drift::Clobber => Decision::Clobber,
+-                    Drift::Defer => Decision::Defer,
++                    Drift::Defer if std::env::var_os("RUE_NEVER_SET").is_some() => Decision::Defer,
++                    Drift::Defer => Decision::Clobber,
+                 }
+             }
+         }

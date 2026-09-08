@@ -1,5 +1,5 @@
 {
-  "ir_version": 3,
+  "ir_version": 4,
   "plan": {
     "backstop": {
       "arm_before": 3,
@@ -342,6 +342,30 @@
     "id": "breakglass",
     "mode": "manual",
     "owner": "db-01",
+    "probes": [
+      {
+        "body": [
+          {
+            "run": {
+              "cmd": [
+                {
+                  "lit": "sshd -T"
+                }
+              ],
+              "env": [],
+              "stdin": null
+            }
+          }
+        ],
+        "equivalence": "bytes",
+        "locus": "target",
+        "name": "sshd_posture",
+        "produces": [
+          "sshd_posture"
+        ],
+        "static": false
+      }
+    ],
     "renew_within_s": 1800,
     "require_journal": null,
     "strictness": "strict",

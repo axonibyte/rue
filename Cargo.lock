@@ -801,8 +801,10 @@ dependencies = [
 name = "rue-bindings"
 version = "0.0.3"
 dependencies = [
+ "libc",
  "rue-core",
  "rue-engine",
+ "rue-render",
  "serde_json",
 ]
 
@@ -830,6 +832,7 @@ dependencies = [
  "rue-render",
  "serde",
  "serde_json",
+ "sha2",
  "ssh-encoding",
  "ssh-key",
 ]

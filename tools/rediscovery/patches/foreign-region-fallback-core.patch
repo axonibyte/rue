@@ -2,11 +2,11 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/render/src/template/sh.rs
 +++ b/render/src/template/sh.rs
-@@ -67,7 +67,7 @@
+@@ -74,7 +74,7 @@
                      let snap = q(n, &format!("{inst}/snapshots/{n}/{k}"))?;
                      let fallback = match s.drift {
                          Drift::Clobber => format!(
--                            "if foreign_region {p}; then defer {n}; else restore {snap} {p}; clobbered {n}; fi"
+-                            "if [ -n \"${{RUE_NOLOCK:-}}\" ] || foreign_region {p}; then defer {n}; else restore {snap} {p}; clobbered {n}; fi"
 +                            "restore {snap} {p}; clobbered {n}"
                          ),
                          Drift::Defer => format!("defer {n}"),

@@ -9,11 +9,13 @@
 pub mod clock;
 pub mod control;
 pub mod executor;
+pub mod footprint;
 pub mod hook;
 pub mod host;
 pub mod journal;
 pub mod lifecycle;
 pub mod peer;
+pub mod region;
 pub mod resolve;
 pub mod sign;
 pub mod store;

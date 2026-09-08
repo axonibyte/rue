@@ -23,13 +23,10 @@ use rue_engine::lifecycle::{
 
 /// Events no verb, walk, reap or boot of this unit can produce, with the
 /// unit that brings each.
-const UNDRIVEN: &[(E, &str)] = &[
-    (
-        E::HostContractChanged,
-        "unit E: the host contract re-derived at request, approval and apply",
-    ),
-    (E::DriftOnDefer, "unit C: undo-time drift under :defer"),
-];
+const UNDRIVEN: &[(E, &str)] = &[(
+    E::HostContractChanged,
+    "unit E: the host contract re-derived at request, approval and apply",
+)];
 
 fn plan_for(ctx: Ctx, ev: E) -> rue_core::model::Plan {
     let mut a = world::op("a");
@@ -49,6 +46,11 @@ fn plan_for(ctx: Ctx, ev: E) -> rue_core::model::Plan {
             a.footprint = vec![FootprintEntry::entry(Kind::Held, "proc:tunnel")];
             a.suspend = Some(world::run("suspend"));
             a.reestablish = Some(world::run("resume"));
+        }
+        E::DriftOnDefer => {
+            // Step 2's file drifted under :defer: its marker names a digest
+            // the fake's world does not hold.
+            b.drift = Some(rue_core::model::Drift::Defer);
         }
         _ => {}
     }
@@ -113,6 +115,10 @@ fn seed(ctx: Ctx, state: State, ev: E) -> InstanceRecord {
         deferred: None,
         stuck: Vec::new(),
         drift_held: Vec::new(),
+        markers: BTreeMap::new(),
+        dirs: Vec::new(),
+        staged: Vec::new(),
+        force_drift: false,
         acks: Vec::new(),
         forced: Vec::new(),
         ledger_ids: Vec::new(),
@@ -153,6 +159,16 @@ fn seed(ctx: Ctx, state: State, ev: E) -> InstanceRecord {
         }
         State::Applied | State::Suspended | State::Expired | State::Reverting => {
             rec.applied = applied(&[1, 2]);
+            if ev == E::DriftOnDefer {
+                rec.markers.insert(
+                    "2".into(),
+                    vec![rue_engine::footprint::Marker {
+                        kind: Kind::Owned,
+                        path: "/b".into(),
+                        digest: "stale".into(),
+                    }],
+                );
+            }
         }
         State::Stuck => {
             rec.applied = applied(&[1]);
@@ -227,7 +243,7 @@ fn fire(w: &mut World, ctx: Ctx, state: State, ev: E) -> Result<(), EngineError>
             w.advance(3600);
             w.engine.reap().map(|_| ())
         }
-        E::UndoClean => w.engine.reap().map(|_| ()),
+        E::UndoClean | E::DriftOnDefer => w.engine.reap().map(|_| ()),
         E::UndoFailed => {
             w.ssh.script(vec![Scripted::Fail("undo broke".into())]);
             w.engine.reap().map(|_| ())
@@ -235,7 +251,7 @@ fn fire(w: &mut World, ctx: Ctx, state: State, ev: E) -> Result<(), EngineError>
         E::Retry => w.engine.reap().map(|_| ()),
         E::ForceDrift => w.engine.recant(id, &[ForceName::Drift]).map(|_| ()),
         E::Abandon => w.engine.abandon(id, "admin", "why").map(|_| ()),
-        E::HostContractChanged | E::DriftOnDefer => unreachable!("undriven"),
+        E::HostContractChanged => unreachable!("undriven"),
     };
     r
 }
@@ -324,7 +340,7 @@ fn the_undriven_rows_are_named_with_the_unit_that_brings_them() {
     }
     assert_eq!(
         UNDRIVEN.len(),
-        2,
+        1,
         "a new undriven event needs its unit named here"
     );
     let _ = RCode::R0102;

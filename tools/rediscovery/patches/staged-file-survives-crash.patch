@@ -1,0 +1,12 @@
+# Reverts: boot recovery removes staged files for any instance not Applying (7.8); here boot leaves them.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2406,7 +2406,6 @@
+             if states::terminal(rec.state) {
+                 continue;
+             }
+-            self.remove_staged(&mut rec, None, "boot recovery")?;
+             // Held resources of applied steps.
+             for a in rec.applied.clone() {
+                 let op = match rec.op_at(a.step) {

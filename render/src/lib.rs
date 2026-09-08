@@ -36,6 +36,13 @@ use rue_core::model::{ArtifactLanguage, HostRecord, Plan, Site, Trigger};
 pub use actions::{Action, Bindings, FileFact, Step};
 pub use quote::{Family, Unquotable};
 
+/// The shell helpers the `sh` artifact carries (region markers, digests,
+/// atomic restore): the `ssh()` executor runs the same text on a target,
+/// so the engine and the artifact strip and restore by one rule.
+pub fn sh_helpers() -> &'static str {
+    template::sh::HELPERS
+}
+
 /// Where the artifact lives on the target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instance {

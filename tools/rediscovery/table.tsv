@@ -92,3 +92,15 @@ hook-registration-unjournaled.patch	1	-	cargo	a_hook_registers_by_a_declared_reg
 hook-registered-by-undeclared.patch	1	-	cargo	a_hook_registers_by_a_declared_registrar_only	-
 scope-violation-allowed.patch	1	-	cargo	every_verb_runs_over_the_channel_within_the_operator_s_scope	-
 rehearsal-reserves-umbras.patch	1	-	cargo	a_rehearsal_journals_every_step_calls_no_executor_and_reserves_nothing	-
+drift-outside-footprint-ignored.patch	1	-	cargo	a_do_that_touches_another_op_s_fact_is_r0201_and_reverts	-
+undo-restores-over-actor.patch	1	-	cargo	a_changed_fact_under_defer_holds_the_instance_until_forced	-
+artifact-engine-drift-disagree.patch	1	-	cargo	a_damaged_region_is_restored_whole_unless_a_sibling_holds_a_region_on_the_file	-
+staged-file-survives-crash.patch	1	-	cargo	staged_files_of_an_instance_not_applying_are_removed_at_boot	-
+driftheld-releases-umbras.patch	1	-	cargo	a_changed_fact_under_defer_holds_the_instance_until_forced	-
+region-undo-releases-host-lock-early.patch	1	-	cargo	a_region_undo_holds_the_host_lock_from_decision_to_write_and_the_manifest_is_never_written_in_place	-
+manifest-rewritten-in-place.patch	1	-	cargo	a_region_undo_holds_the_host_lock_from_decision_to_write_and_the_manifest_is_never_written_in_place	-
+unbootstrapped-target-dir-created.patch	1	-	cargo	an_unbootstrapped_host_is_r0407_and_a_target_undo_without_a_filesystem_is_r0408	-
+target-undo-no-filesystem-sticks.patch	1	-	cargo	an_unbootstrapped_host_is_r0407_and_a_target_undo_without_a_filesystem_is_r0408	-
+driftheld-reverted-at-wane.patch	1	-	cargo	a_changed_fact_under_defer_holds_the_instance_until_forced	-
+bootstrap-runs-commands.patch	1	-	cargo	bootstrap_reports_what_a_host_lacks_with_its_family_s_commands_and_runs_nothing	-
+deferred-no-way-out.patch	1	-	cargo	a_step_on_a_host_no_transport_reaches_is_deferred_and_handoff_done_continues	-

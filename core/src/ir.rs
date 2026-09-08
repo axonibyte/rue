@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::{Plan, Site};
 
 /// The IR version this crate reads. Any other is refused.
-pub const IR_VERSION: u32 = 3;
+pub const IR_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

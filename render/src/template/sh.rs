@@ -34,6 +34,13 @@ pub fn render(ctx: &Context<'_>) -> Result<String, RenderError> {
         ));
     }
     o.push_str("[ \"$due\" -eq 1 ] || exit 0\n");
+    // The host lock for the whole run (7.7), so the artifact and the engine
+    // never edit a region's file at once: lockf on FreeBSD, flock on Linux.
+    // With neither in base (macOS) the run proceeds unlocked and a damaged
+    // region is deferred, never restored whole.
+    o.push_str(
+        "if [ -z \"${RUE_LOCKED:-}\" ]; then\n  if command -v lockf >/dev/null 2>&1; then RUE_LOCKED=1 exec lockf -k -t 300 \"$ROOT/lock\" sh \"$0\"\n  elif command -v flock >/dev/null 2>&1; then RUE_LOCKED=1 exec flock -w 300 \"$ROOT/lock\" sh \"$0\"\n  else RUE_NOLOCK=1; fi\nfi\n",
+    );
     o.push_str(HELPERS);
     for s in &ctx.steps {
         let n = s.n;
@@ -67,7 +74,7 @@ pub fn render(ctx: &Context<'_>) -> Result<String, RenderError> {
                     let snap = q(n, &format!("{inst}/snapshots/{n}/{k}"))?;
                     let fallback = match s.drift {
                         Drift::Clobber => format!(
-                            "if foreign_region {p}; then defer {n}; else restore {snap} {p}; clobbered {n}; fi"
+                            "if [ -n \"${{RUE_NOLOCK:-}}\" ] || foreign_region {p}; then defer {n}; else restore {snap} {p}; clobbered {n}; fi"
                         ),
                         Drift::Defer => format!("defer {n}"),
                     };
@@ -115,7 +122,7 @@ pub fn render(ctx: &Context<'_>) -> Result<String, RenderError> {
     Ok(o)
 }
 
-const HELPERS: &str = r##"sha() {
+pub(crate) const HELPERS: &str = r##"sha() {
   [ -f "$1" ] || { echo missing; return; }
   if command -v sha256 >/dev/null 2>&1; then sha256 -q "$1"
   elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1

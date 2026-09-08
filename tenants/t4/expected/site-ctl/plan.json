@@ -1,5 +1,5 @@
 {
-  "ir_version": 3,
+  "ir_version": 4,
   "plan": {
     "backstop": null,
     "body": [
@@ -74,6 +74,7 @@
     "id": "shed_load",
     "mode": "manual",
     "owner": "site-ctl",
+    "probes": [],
     "renew_within_s": null,
     "require_journal": null,
     "strictness": "strict",

@@ -150,6 +150,16 @@ pub struct Output {
     pub outputs: BTreeMap<String, String>,
 }
 
+/// A probe as the engine asks an executor to run it: its name (what a hook
+/// knows it by) and its resolved body (what `local()` and `ssh()` run).
+/// A probe's command answers a guard by its exit status: 0 yes, 1 no,
+/// anything else unknown; its stdout is the fact's value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProbeRun {
+    pub name: String,
+    pub body: Vec<RPrim>,
+}
+
 /// A probe's answer: its text, and the three-valued reading a guard takes
 /// (`None` reads as `Unknown`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -243,8 +253,8 @@ pub trait Executor: Send {
     fn capabilities(&self) -> ExecCaps;
     /// Run a resolved body on a host for an instance.
     fn run(&mut self, host: &Host, instance: &str, body: &[RPrim]) -> Result<Output, ExecError>;
-    /// Observe a probe (by name) or a footprint fact (by shape).
-    fn observe(&mut self, host: &Host, probe: &str) -> Result<Observation, ExecError>;
+    /// Observe a probe: a hook by its name, `local()` and `ssh()` by its body.
+    fn observe(&mut self, host: &Host, probe: &ProbeRun) -> Result<Observation, ExecError>;
     /// The bytes of a file fact (`file:<path>`) as it is now; `None` when
     /// the file is absent. What a snapshot before `do` reads.
     fn read_fact(&mut self, host: &Host, shape: &str) -> Result<Option<Vec<u8>>, ExecError>;
@@ -270,6 +280,9 @@ pub trait Executor: Send {
         bytes: &[u8],
     ) -> Result<(), ExecError>;
     fn get_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<Vec<u8>, ExecError>;
+    /// Remove a file of the instance directory (a marker after its undo, a
+    /// staged file after its step); absent is fine.
+    fn remove_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<(), ExecError>;
     fn host_lock(&mut self, host: &Host) -> Result<Box<dyn HostLockGuard>, ExecError>;
 }
 
@@ -305,6 +318,10 @@ pub struct FakeExecutor {
     /// `Unsupported`.
     pub observations: BTreeMap<String, Observation>,
     pub calls: Vec<Call>,
+    /// Every operation in order (`lock`, `unlock`, `run`, `put <rel>`,
+    /// `replace <rel>`, `remove <rel>`), for tests of ordering and of which
+    /// write went through which door.
+    pub events: Arc<Mutex<Vec<String>>>,
     pub observed: Vec<(String, String)>,
     /// File facts by shape, as the target holds them; `read_fact` reads
     /// here and a `Write`/`Remove`/`RegionSet`/`RegionClear` in a run body
@@ -326,6 +343,7 @@ impl FakeExecutor {
             script: VecDeque::new(),
             observations: BTreeMap::new(),
             calls: Vec::new(),
+            events: Arc::new(Mutex::new(Vec::new())),
             observed: Vec::new(),
             facts: BTreeMap::new(),
             dirs: BTreeSet::new(),
@@ -364,10 +382,23 @@ impl FakeHandle {
             f.observations.insert(probe.to_string(), o);
         });
     }
+    pub fn events(&self) -> Vec<String> {
+        self.with(|f| f.events.lock().unwrap_or_else(|e| e.into_inner()).clone())
+    }
 }
 
-struct FakeLock;
+fn note(events: &Arc<Mutex<Vec<String>>>, what: String) {
+    events.lock().unwrap_or_else(|e| e.into_inner()).push(what);
+}
+
+/// The fake lock: its drop is the release, recorded.
+struct FakeLock(Arc<Mutex<Vec<String>>>);
 impl HostLockGuard for FakeLock {}
+impl Drop for FakeLock {
+    fn drop(&mut self) {
+        note(&self.0, "unlock".into());
+    }
+}
 
 impl Executor for FakeHandle {
     fn locus(&self) -> LocusKind {
@@ -378,6 +409,7 @@ impl Executor for FakeHandle {
     }
     fn run(&mut self, host: &Host, instance: &str, body: &[RPrim]) -> Result<Output, ExecError> {
         self.with(|f| {
+            note(&f.events, "run".into());
             f.calls.push(Call {
                 host: host.name().to_string(),
                 instance: instance.to_string(),
@@ -441,14 +473,14 @@ impl Executor for FakeHandle {
             }
         })
     }
-    fn observe(&mut self, host: &Host, probe: &str) -> Result<Observation, ExecError> {
+    fn observe(&mut self, host: &Host, probe: &ProbeRun) -> Result<Observation, ExecError> {
         self.with(|f| {
             f.observed
-                .push((host.name().to_string(), probe.to_string()));
+                .push((host.name().to_string(), probe.name.clone()));
             f.observations
-                .get(probe)
+                .get(&probe.name)
                 .cloned()
-                .ok_or_else(|| ExecError::Unsupported(format!("no such probe: {probe}")))
+                .ok_or_else(|| ExecError::Unsupported(format!("no such probe: {}", probe.name)))
         })
     }
     fn read_fact(&mut self, _host: &Host, shape: &str) -> Result<Option<Vec<u8>>, ExecError> {
@@ -499,6 +531,7 @@ impl Executor for FakeHandle {
         _mode: u32,
     ) -> Result<(), ExecError> {
         self.with(|f| {
+            note(&f.events, format!("put {rel}"));
             f.files.insert(
                 (
                     host.name().to_string(),
@@ -517,7 +550,18 @@ impl Executor for FakeHandle {
         rel: &str,
         bytes: &[u8],
     ) -> Result<(), ExecError> {
-        self.put_file(host, instance, rel, bytes, 0o640)
+        self.with(|f| {
+            note(&f.events, format!("replace {rel}"));
+            f.files.insert(
+                (
+                    host.name().to_string(),
+                    instance.to_string(),
+                    rel.to_string(),
+                ),
+                bytes.to_vec(),
+            );
+            Ok(())
+        })
     }
     fn get_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<Vec<u8>, ExecError> {
         self.with(|f| {
@@ -531,7 +575,21 @@ impl Executor for FakeHandle {
                 .ok_or_else(|| ExecError::Io(format!("no such file: {rel}")))
         })
     }
+    fn remove_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<(), ExecError> {
+        self.with(|f| {
+            note(&f.events, format!("remove {rel}"));
+            f.files.remove(&(
+                host.name().to_string(),
+                instance.to_string(),
+                rel.to_string(),
+            ));
+            Ok(())
+        })
+    }
     fn host_lock(&mut self, _host: &Host) -> Result<Box<dyn HostLockGuard>, ExecError> {
-        Ok(Box::new(FakeLock))
+        self.with(|f| {
+            note(&f.events, "lock".into());
+            Ok(Box::new(FakeLock(f.events.clone())) as Box<dyn HostLockGuard>)
+        })
     }
 }

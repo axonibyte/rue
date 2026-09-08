@@ -41,7 +41,7 @@ pub fn render(ctx: &Context<'_>) -> Result<String, RenderError> {
     if let Some(hb) = ctx.heartbeat_s {
         o.push_str(&format!("if not os.path.isfile(p('heartbeat')) or now - int(read(p('heartbeat')).strip()) > {hb}:\n    due = True\n"));
     }
-    o.push_str("if not due:\n    sys.exit(0)\n\n");
+    o.push_str("if not due:\n    sys.exit(0)\nHOST_LOCK = take_host_lock()\n\n");
     for s in &ctx.steps {
         let n = s.n;
         o.push_str(&format!("# step {}: {}\n", n, s.id));
@@ -137,6 +137,19 @@ def recorded(marker, path):
         if len(f) == 3 and f[1] == path:
             return f[2]
     return ''
+
+
+def take_host_lock():
+    # The host lock for the whole run (7.7): flock where there is fcntl,
+    # a byte lock on Windows; released when the process ends.
+    f = open(os.path.join(ROOT, 'lock'), 'a+')
+    try:
+        import fcntl
+        fcntl.flock(f, fcntl.LOCK_EX)
+    except ImportError:
+        import msvcrt
+        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+    return f
 
 
 def foreign_region(path):

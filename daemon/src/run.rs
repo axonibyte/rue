@@ -37,7 +37,7 @@ use rue_engine::lifecycle::Engine;
 use rue_engine::peer::my_uid;
 use rue_engine::sign::Signer;
 use rue_engine::store::{schema_of, SchemaError, Store};
-use rue_surface::resolve::site::{Binding, SiteDecl};
+use rue_surface::resolve::site::SiteDecl;
 use rue_surface::resolve::{site_bindings_opts, SiteBindings};
 
 pub struct Config {
@@ -144,31 +144,58 @@ fn hosts_of(sb: &SiteBindings) -> Vec<Host> {
 
 fn executors_of(
     decl: &SiteDecl,
+    dir: &Path,
     hooks: &Arc<HookRegistry>,
     deadline: Duration,
     dry_run: bool,
-) -> Vec<Box<dyn Executor>> {
+) -> Result<Vec<Box<dyn Executor>>, Refusal> {
     if dry_run {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    decl.execute
-        .iter()
-        .filter(|b: &&Binding| b.kind == "hook")
-        .map(|b| {
-            let transport = b
-                .kws
+    let mut v: Vec<Box<dyn Executor>> = Vec::new();
+    // The controller's own executor is always present for :controller steps.
+    v.push(Box::new(rue_bindings::local::LocalExecutor::default()));
+    for b in &decl.execute {
+        let kw = |name: &str| {
+            b.kws
                 .iter()
-                .find(|(k, _)| k == "transport")
+                .find(|(k, _)| k == name)
                 .map(|(_, v)| v.clone())
-                .unwrap_or_default();
-            Box::new(HookExecutor {
+        };
+        match b.kind.as_str() {
+            "hook" => v.push(Box::new(HookExecutor {
                 name: b.arg.clone().unwrap_or_default(),
-                transport,
+                transport: kw("transport").unwrap_or_default(),
                 registry: hooks.clone(),
                 deadline,
-            }) as Box<dyn Executor>
-        })
-        .collect()
+            })),
+            "ssh" => {
+                let identity =
+                    dir.join(kw("identity").ok_or_else(|| refused("ssh() names its identity"))?);
+                let known_hosts = dir
+                    .join(kw("known_hosts").ok_or_else(|| refused("ssh() names its known_hosts"))?);
+                if !identity.is_file() {
+                    return Err(refused(format!(
+                        "ssh() identity {} is not a file",
+                        identity.display()
+                    )));
+                }
+                let user = kw("user").unwrap_or_else(|| "root".into());
+                v.push(Box::new(rue_bindings::ssh::SshExecutor::open_ssh(
+                    identity,
+                    known_hosts,
+                    &user,
+                )));
+            }
+            "local" => {}
+            other => {
+                return Err(refused(format!(
+                    "execute via: {other}() is not an executor"
+                )))
+            }
+        }
+    }
+    Ok(v)
 }
 
 fn operators_of(decl: &SiteDecl, dry_run: bool) -> Operators {
@@ -323,7 +350,7 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
     let sinks = sinks_of(&sb.decl, &sb.dir, &hooks, deadline, &subscribers)?;
     let signer = signer_of(&sb.decl, &sb.dir)?;
     let journal = Journal::open(&store, sinks, signer).map_err(|e| refused(e.to_string()))?;
-    let executors = executors_of(&sb.decl, &hooks, deadline, cfg.dry_run);
+    let executors = executors_of(&sb.decl, &sb.dir, &hooks, deadline, cfg.dry_run)?;
     let hosts = hosts_of(&sb);
     let mut engine = Engine::open(store, journal, Arc::new(SystemClock), executors, hosts)
         .map_err(|e| refused(e.to_string()))?;

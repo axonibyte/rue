@@ -357,6 +357,7 @@ impl<'a> Context<'a> {
                 _ => {}
             }
         }
+        plan.probes = self.probes_of(module, &scope, diags);
         plan.body = self.expand_items(module, &def.body, owner, &mut scope, diags);
         self.fill_slots(module, &mut plan.body, owner, &mut scope, diags);
         Some(plan)
@@ -1741,6 +1742,92 @@ impl<'a> Context<'a> {
     }
 
     /// A string as a template: literal parts and classified references.
+    /// Every probe the plan's module and its imports declare, as the engine
+    /// runs them (IR 4): the `run` line's template, the locus, the produced
+    /// facts, `static` and `equivalence`.
+    fn probes_of(
+        &self,
+        module: usize,
+        scope: &Scope,
+        diags: &mut Vec<Diagnostic>,
+    ) -> Vec<ProbeDecl> {
+        let mut out = Vec::new();
+        let mut defs: Vec<(String, usize, &Def)> = self
+            .program
+            .defs(module, "defprobe")
+            .into_iter()
+            .map(|(m, p)| (p.name.clone(), m, p))
+            .collect();
+        for (alias, &m) in &self.program.modules[module].imports {
+            for (_, p) in self.program.defs(m, "defprobe") {
+                defs.push((format!("{alias}.{}", p.name), m, p));
+            }
+        }
+        let bindings = Bindings::new();
+        for (name, m, p) in defs {
+            let cx = OpCx {
+                module: m,
+                def: p,
+                bindings: &bindings,
+                scope,
+            };
+            let mut decl = ProbeDecl {
+                name,
+                locus: Locus::Target,
+                body: Vec::new(),
+                produces: Vec::new(),
+                static_: false,
+                equivalence: "bytes".into(),
+            };
+            for l in super::lines(&p.body) {
+                match l.keyword.as_str() {
+                    "run" => {
+                        if let Some(Arg::Expr(Expr::Lit {
+                            lit: Lit::Str(s), ..
+                        })) = l.args.first()
+                        {
+                            decl.body.push(Prim::Run(b::Run {
+                                cmd: self.template(&cx, s, diags),
+                                env: Vec::new(),
+                                stdin: None,
+                            }));
+                        }
+                    }
+                    "locus" => {
+                        if l.args.iter().any(|a| {
+                            matches!(a, Arg::Expr(Expr::Lit { lit: Lit::Atom(x), .. }) if x == "controller")
+                        }) {
+                            decl.locus = Locus::Controller;
+                        }
+                    }
+                    "produces" => {
+                        for a in &l.args {
+                            if let Arg::Expr(Expr::Ref { path, .. }) = a {
+                                decl.produces.push(path.join("."));
+                            }
+                        }
+                    }
+                    "static" => {
+                        decl.static_ = l.args.iter().any(|a| {
+                            matches!(a, Arg::Expr(Expr::Lit { lit: Lit::Bool(true), .. }))
+                        });
+                    }
+                    "equivalence" => {
+                        if let Some(Arg::Expr(Expr::Lit {
+                            lit: Lit::Atom(x), ..
+                        })) = l.args.first()
+                        {
+                            decl.equivalence = x.clone();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            out.push(decl);
+        }
+        out
+    }
+
     fn template(&self, cx: &OpCx, raw: &str, diags: &mut Vec<Diagnostic>) -> Template {
         value::string_parts(raw, &parse_expr)
             .into_iter()

@@ -32,6 +32,7 @@ boolean `ok` is R0303.
 | `execute` | `put_file` | `host`, `instance`, `rel`, `content`, `mode` | |
 | `execute` | `replace_file` | `host`, `instance`, `rel`, `content` | |
 | `execute` | `get_file` | `host`, `instance`, `rel` | `content` |
+| `execute` | `remove_file` | `host`, `instance`, `rel` | |
 | `execute` | `host_lock` | `host` | (held until the next request on the host) |
 | `probe` | `observe` | `host`, `probe` | `fact: {text, tri}` with `tri` one of `yes`, `no`, `unknown` |
 | `approval` | `authenticators` | | `authenticators: [{id, human}]` |

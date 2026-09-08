@@ -9,7 +9,7 @@ use rue_core::model::*;
 // A small plan in canonical form: one step with a knell ack gate, a wait
 // factor, a bound-host locus, a heartbeat backstop, and every item kind.
 const DOC: &str = r#"{
-  "ir_version": 3,
+  "ir_version": 4,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -439,6 +439,30 @@ const DOC: &str = r#"{
     "id": "p",
     "mode": "auto",
     "owner": "db-01",
+    "probes": [
+      {
+        "body": [
+          {
+            "run": {
+              "cmd": [
+                {
+                  "lit": "sshd -T"
+                }
+              ],
+              "env": [],
+              "stdin": null
+            }
+          }
+        ],
+        "equivalence": "bytes",
+        "locus": "target",
+        "name": "posture",
+        "produces": [
+          "posture"
+        ],
+        "static": false
+      }
+    ],
     "renew_within_s": null,
     "require_journal": "chained",
     "strictness": "warn",
@@ -483,6 +507,8 @@ fn the_documented_spelling_parses_and_writes_back_identically() {
     let ir = parse(DOC.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(ir.ir_version, IR_VERSION);
     assert_eq!(ir.requester, "req");
+    assert_eq!(ir.plan.probes.len(), 1);
+    assert_eq!(ir.plan.probes[0].produces, vec!["posture".to_string()]);
     assert_eq!(ir.plan.mode, Mode::Auto);
     assert_eq!(ir.plan.require_journal, Some(JournalRequirement::Chained));
     match &ir.plan.body[3] {
@@ -543,12 +569,12 @@ fn an_unknown_field_is_refused() {
 #[test]
 fn another_version_is_refused_before_the_shape_is_read() {
     let doc = DOC.replacen(
-        "\"ir_version\": 3,",
-        "\"ir_version\": 4,\n  \"future\": true,",
+        &format!("\"ir_version\": {IR_VERSION},"),
+        &format!("\"ir_version\": {},\n  \"future\": true,", IR_VERSION + 1),
         1,
     );
     match parse(doc.as_bytes()) {
-        Err(IrError::Version { found: 4 }) => {}
+        Err(IrError::Version { found }) if found == IR_VERSION + 1 => {}
         other => panic!("{other:?}"),
     }
 }

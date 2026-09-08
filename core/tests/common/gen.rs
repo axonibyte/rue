@@ -467,6 +467,7 @@ pub fn gen_plan(rng: &mut Rng, site: &Site) -> Plan {
         require_journal: rng
             .maybe(|r| *r.pick(&[JournalRequirement::Chained, JournalRequirement::Signed])),
         body,
+        probes: Vec::new(),
     }
 }
 

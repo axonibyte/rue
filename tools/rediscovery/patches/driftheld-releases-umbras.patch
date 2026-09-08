@@ -1,0 +1,12 @@
+# Reverts: DriftHeld holds its umbras like every non-terminal state after Pending (5.9's table); here the ledger is released on the way into it.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1792,6 +1792,7 @@
+                         },
+                     )?;
+                     self.step(rec, E::DriftOnDefer)?;
++                    self.release(rec)?;
+                     return Ok(());
+                 }
+                 Ok(report) => {

@@ -834,6 +834,21 @@ pub fn dispatch(
             let out = e.abandon(id, &op.name, reason).map_err(engine_error)?;
             Ok(outcome_json(&out))
         }
+        "bootstrap" => {
+            admin(op, verb)?;
+            let host = arg_str(args, "host")?;
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            let (state, commands) = e.bootstrap(host).map_err(engine_error)?;
+            Ok(
+                json!({ "host": host, "state": state, "ready": state.ready(), "commands": commands }),
+            )
+        }
+        "doctor" => {
+            admin(op, verb)?;
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            let r = e.doctor().map_err(engine_error)?;
+            Ok(json!({ "report": r, "healthy": r.healthy(), "hooks": daemon.hooks.names() }))
+        }
         "hooks" => Ok(json!(daemon.hooks.names())),
         other => Err(ControlError::new(
             "protocol",

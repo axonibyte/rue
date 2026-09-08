@@ -10,4 +10,9 @@ repository.workspace = true
 [dependencies]
 rue-core = { path = "../core" }
 rue-engine = { path = "../engine" }
+rue-render = { path = "../render" }
 serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# flock on the host lock; the rue group's existence for bootstrap.
+libc = "0.2"

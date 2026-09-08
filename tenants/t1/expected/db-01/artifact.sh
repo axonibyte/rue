@@ -9,6 +9,11 @@ due=0
 if [ -f "$INST/deadline" ]; then d=$(cat "$INST/deadline"); [ "$now" -ge "$d" ] && due=1; fi
 if [ -f "$INST/heartbeat" ]; then h=$(cat "$INST/heartbeat"); [ $((now - h)) -gt 60 ] && due=1; else due=1; fi
 [ "$due" -eq 1 ] || exit 0
+if [ -z "${RUE_LOCKED:-}" ]; then
+  if command -v lockf >/dev/null 2>&1; then RUE_LOCKED=1 exec lockf -k -t 300 "$ROOT/lock" sh "$0"
+  elif command -v flock >/dev/null 2>&1; then RUE_LOCKED=1 exec flock -w 300 "$ROOT/lock" sh "$0"
+  else RUE_NOLOCK=1; fi
+fi
 sha() {
   [ -f "$1" ] || { echo missing; return; }
   if command -v sha256 >/dev/null 2>&1; then sha256 -q "$1"
@@ -42,7 +47,7 @@ M="$INST/markers/2"
 if [ -f "$M" ]; then
   skip=0
   if [ "$skip" -eq 1 ]; then defer 2; else
-    strip_region '/root/.ssh/authorized_keys' 'rue-breakglass' || { if foreign_region '/root/.ssh/authorized_keys'; then defer 2; else restore '/var/db/rue/instances/golden/snapshots/2/0' '/root/.ssh/authorized_keys'; clobbered 2; fi; }
+    strip_region '/root/.ssh/authorized_keys' 'rue-breakglass' || { if [ -n "${RUE_NOLOCK:-}" ] || foreign_region '/root/.ssh/authorized_keys'; then defer 2; else restore '/var/db/rue/instances/golden/snapshots/2/0' '/root/.ssh/authorized_keys'; clobbered 2; fi; }
     rm -f "$M"
   fi
 fi

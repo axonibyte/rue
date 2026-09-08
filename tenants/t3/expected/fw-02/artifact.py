@@ -41,6 +41,19 @@ def recorded(marker, path):
     return ''
 
 
+def take_host_lock():
+    # The host lock for the whole run (7.7): flock where there is fcntl,
+    # a byte lock on Windows; released when the process ends.
+    f = open(os.path.join(ROOT, 'lock'), 'a+')
+    try:
+        import fcntl
+        fcntl.flock(f, fcntl.LOCK_EX)
+    except ImportError:
+        import msvcrt
+        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+    return f
+
+
 def foreign_region(path):
     base = os.path.join(ROOT, 'instances')
     for d in os.listdir(base):
@@ -129,6 +142,7 @@ if os.path.isfile(p('deadline')) and now >= int(read(p('deadline')).strip()):
     due = True
 if not due:
     sys.exit(0)
+HOST_LOCK = take_host_lock()
 
 # step 1: pf_allow
 m = p('markers', '1')

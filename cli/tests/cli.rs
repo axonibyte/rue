@@ -111,17 +111,19 @@ fn a_missing_file_a_wrong_version_and_a_usage_error_exit_two_with_nothing_on_std
     assert!(String::from_utf8_lossy(&out.stderr).contains("cannot read"));
 
     let doc = golden(&root, &tenant_case("t4", "site-ctl").input());
-    let doctored =
-        String::from_utf8(doc)
-            .unwrap()
-            .replacen("\"ir_version\": 3,", "\"ir_version\": 4,", 1);
+    let current = rue_core::ir::IR_VERSION;
+    let doctored = String::from_utf8(doc).unwrap().replacen(
+        &format!("\"ir_version\": {current},"),
+        &format!("\"ir_version\": {},", current + 1),
+        1,
+    );
     let tmp = std::env::temp_dir().join(format!("rue-cli-test-{}.json", std::process::id()));
     fs::write(&tmp, doctored).unwrap();
     let out = rue(&["check", tmp.to_str().unwrap()]);
     let _ = fs::remove_file(&tmp);
     assert_eq!(out.status.code(), Some(2));
     assert!(out.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("version 4"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains(&format!("version {}", current + 1)));
 
     let out = rue(&["frobnicate"]);
     assert_eq!(out.status.code(), Some(2));

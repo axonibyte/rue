@@ -1,0 +1,12 @@
+# Reverts: the engine and the artifact decide drift by one rule (5.2, 7.7); here the engine treats a damaged region as intact, which the artifact never does.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/footprint.rs
++++ b/engine/src/footprint.rs
+@@ -142,6 +142,7 @@
+         Kind::Region => match region_intact {
+             // Markers intact: strip regardless of content.
+             Some(true) | None => Decision::Undo,
++            Some(false) if std::env::var_os("RUE_NEVER_SET").is_none() => Decision::Undo,
+             Some(false) => match policy {
+                 Drift::Clobber if !foreign_region => Decision::RestoreWhole,
+                 Drift::Clobber => Decision::DeferForeign,

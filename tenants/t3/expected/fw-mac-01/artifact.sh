@@ -8,6 +8,11 @@ now=$(date +%s)
 due=0
 if [ -f "$INST/deadline" ]; then d=$(cat "$INST/deadline"); [ "$now" -ge "$d" ] && due=1; fi
 [ "$due" -eq 1 ] || exit 0
+if [ -z "${RUE_LOCKED:-}" ]; then
+  if command -v lockf >/dev/null 2>&1; then RUE_LOCKED=1 exec lockf -k -t 300 "$ROOT/lock" sh "$0"
+  elif command -v flock >/dev/null 2>&1; then RUE_LOCKED=1 exec flock -w 300 "$ROOT/lock" sh "$0"
+  else RUE_NOLOCK=1; fi
+fi
 sha() {
   [ -f "$1" ] || { echo missing; return; }
   if command -v sha256 >/dev/null 2>&1; then sha256 -q "$1"
@@ -41,7 +46,7 @@ M="$INST/markers/1"
 if [ -f "$M" ]; then
   skip=0
   if [ "$skip" -eq 1 ]; then defer 1; else
-    strip_region '/etc/pf.conf' 'rue-mgmt' || { if foreign_region '/etc/pf.conf'; then defer 1; else restore '/var/db/rue/instances/golden/snapshots/1/0' '/etc/pf.conf'; clobbered 1; fi; }
+    strip_region '/etc/pf.conf' 'rue-mgmt' || { if [ -n "${RUE_NOLOCK:-}" ] || foreign_region '/etc/pf.conf'; then defer 1; else restore '/var/db/rue/instances/golden/snapshots/1/0' '/etc/pf.conf'; clobbered 1; fi; }
     rm -f "$M"
   fi
 fi

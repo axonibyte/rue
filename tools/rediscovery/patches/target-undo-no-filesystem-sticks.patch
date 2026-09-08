@@ -1,0 +1,17 @@
+# Reverts: a :target undo on a host whose executor reports no filesystem is refused before do (R0408); here it proceeds and the undo would never be possible.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1230,7 +1230,11 @@
+         // R0408: a :target undo needs a filesystem on the host, decided
+         // before do.
+         let caps = self.caps_of(&host);
+-        if op.undo_locus == UndoLocus::Target && !caps.filesystem && !rec.rehearsal {
++        if op.undo_locus == UndoLocus::Target
++            && !caps.filesystem
++            && !rec.rehearsal
++            && std::env::var_os("RUE_NEVER_SET").is_some()
++        {
+             return self.refuse(
+                 rec,
+                 n,

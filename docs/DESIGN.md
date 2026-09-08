@@ -78,7 +78,7 @@ listing (Appendix B); both read only the verdict and the plan.
 
 The checker's input as data, `docs/TESTING.md` "The plan IR": one
 canonical-JSON document holding the site, the requester and one host's
-plan, `ir_version` 3. It is `rue_core::model`'s serde form, spelled field by
+plan, `ir_version` 4 (3 plus the plan's probe declarations). It is `rue_core::model`'s serde form, spelled field by
 field, with unknown fields refused. The tenants' terms are the IR's only
 emitter until Phase 2's front end; `core/tests/ir.rs` holds a document that
 exercises every primitive and reference and round-trips byte for byte.
@@ -135,6 +135,43 @@ unit. What is in place:
   where an op promised one is `Silent`, a refusal. The fake records every
   call, runs a scripted outcome per body, and keeps file facts so a restore
   can be checked end to end.
+- **The executors** (`bindings/src/local.rs`, `bindings/src/ssh.rs`, 7.2,
+  7.4): `local()` runs on the controller with `env:` on the child process
+  and `stdin:` piped, files in process, regions by `engine::region`'s rule;
+  `ssh()` drives the system OpenSSH client through a transport seam (a fake
+  in the tests), with `-F none`, only the declared identity and
+  `known_hosts`, and every remote operation one `sh` reading its script
+  from stdin: the stdin preamble is octal-escaped assignments decoded by
+  `printf '%b'` inside that script, never `SendEnv`, never argv, and the
+  script carries the artifact's own helpers (`rue_render::sh_helpers`). A
+  probe's command answers a guard by its exit status (0 yes, 1 no, else
+  unknown), its stdout the fact; a `run` binds a declared output with a
+  stdout line `rue-output NAME=VALUE`. Stdout and stderr reported back are
+  scrubbed of every secret the body carried. The host lock is `flock` on
+  `<rue_root>/lock` locally and a long-lived `lockf` (FreeBSD) or `flock`
+  (Linux) over ssh; a family with neither in base has none (macOS).
+- **Footprints at runtime** (`engine/src/footprint.rs`, 4.3, 5.2, 7.7):
+  before `do`, snapshots of `Modified` and `Region` files (to the record
+  and to the instance directory); after `do`, the digest of every file
+  fact of the plan on that host outside the step's own footprint is
+  compared with its digest before, and a change is R0201 (`FootprintViolation`,
+  the step undone, the plan reverted); the step's markers (`<kind> <path>
+  <sha256>`) and the host's manifest of regions are written. At undo time
+  each file fact is read against its marker and decided by the artifact's
+  rule (`footprint::decide`): unchanged undoes; changed clobbers under
+  `:clobber` (`DriftClobbered`) or holds under `:defer` (`DriftHeld`, the
+  instance DriftHeld, `--force=drift` to proceed); a region with damaged
+  markers is restored whole from its snapshot unless another active
+  instance holds a region on the file (the ledger says), in which case it
+  defers. The undo of a step with a region runs under the host lock, from
+  the decision through the write and the marker's removal. An instance
+  directory is created on a run-capable host before its first step, only
+  when the host is bootstrapped (R0407); a `:target` undo on a host without
+  a filesystem is refused before `do` (R0408); staged files are removed
+  after their step and at boot for any instance not applying; the
+  directory goes at close or commit. `rue bootstrap` prints the commands a
+  target lacks, per family, and runs nothing; `rue doctor` reports every
+  host's reach and bootstrap, the sinks, signing and settle.
 - **The lifecycle** (`engine/src/lifecycle.rs`, 5.9, 7.1, 7.8): the driver
   over core's `states::transition`. Events come from verbs, from a step's
   outcome, or from the reap pass observing time. Progress is a set (the
@@ -230,6 +267,7 @@ writes the last line. Paths are relative to
 | `manifest` | engine | one line `region <path> <anchor>` per region this instance holds on the host |
 | `artifact.sh` / `.ps1` / `.py` | engine, at install | the rendered artifact |
 | `fired`, `drift`, `clobbered` | the artifact | `fired` once it has run; a step number per line as its policy decided |
+| `<rue_root>/lock` | bootstrap | the host lock (7.7): `flock` for the engine, `lockf`/`flock` for a fired `sh` artifact, `fcntl.flock` for Python, an exclusive open for PowerShell; held for the whole of an artifact's run and across the engine's region undo |
 
 Region markers in a file are the lines `# rue-region <anchor> begin` and
 `# rue-region <anchor> end`; `region_set` writes them and the artifact

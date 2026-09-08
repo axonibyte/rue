@@ -1,0 +1,13 @@
+# Reverts: a Deferred instance continues by handoff-done, the verb or the probe (5.9, 5.12); here the verb refuses every step.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2115,7 +2115,7 @@
+     pub fn handoff_done(&mut self, id: &str, step: u32, by: &str) -> Result<Outcome, EngineError> {
+         let mut rec = self.load(id)?;
+         let d = rec.deferred.clone();
+-        if d.as_ref().map(|d| d.step) != Some(step) {
++        if d.as_ref().map(|d| d.step) != Some(step) || std::env::var_os("RUE_NEVER_SET").is_none() {
+             return Err(EngineError::WrongState {
+                 state: rec.state,
+                 verb: format!("handoff-done {step}"),

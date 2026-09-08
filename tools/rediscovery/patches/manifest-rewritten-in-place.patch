@@ -1,0 +1,18 @@
+# Reverts: the manifest is written to a temporary name and renamed, never in place (7.7); here it goes through put_file.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1573,11 +1573,12 @@
+         if has_dir {
+             let regions = self.regions_on(rec, host);
+             if let Some(ex) = self.executor_for(host) {
+-                ex.replace_file(
++                ex.put_file(
+                     host,
+                     &id,
+                     "manifest",
+                     footprint::manifest_text(&regions).as_bytes(),
++                    0o640,
+                 )
+                 .map_err(|e| EngineError::Internal(format!("manifest on {}: {e}", host.name())))?;
+             }

@@ -12,6 +12,8 @@ rue-core = { path = "../core" }
 rue-render = { path = "../render" }
 serde.workspace = true
 serde_json.workspace = true
+# File digests for markers and drift (the same SHA-256 the artifact reads).
+sha2.workspace = true
 # The journal's optional signing: OpenSSH Ed25519 keys and SSHSIG
 # signatures, pure Rust (docs/ROADMAP.md 5.10).
 ssh-key = { version = "0.6", default-features = false, features = ["ed25519", "std", "rand_core"] }

@@ -9,6 +9,9 @@ $due = $false
 $dl = Join-Path $Inst 'deadline'
 if (Test-Path $dl) { if ($now -ge [int64](Get-Content $dl -Raw).Trim()) { $due = $true } }
 if (-not $due) { exit 0 }
+$HostLock = $null
+for ($i = 0; $i -lt 300 -and -not $HostLock; $i++) { try { $HostLock = [System.IO.File]::Open((Join-Path $Root 'lock'), 'OpenOrCreate', 'ReadWrite', 'None') } catch { Start-Sleep -Seconds 1 } }
+if (-not $HostLock) { exit 1 }
 function Sha($p) { if (Test-Path $p) { (Get-FileHash -Algorithm SHA256 -Path $p).Hash.ToLower() } else { 'missing' } }
 function Recorded($m, $p) { foreach ($l in Get-Content $m) { $f = $l -split ' ', 3; if ($f.Count -eq 3 -and $f[1] -eq $p) { return $f[2] } }; return '' }
 function ForeignRegion($p) {

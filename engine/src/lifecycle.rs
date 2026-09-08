@@ -36,8 +36,8 @@ use rue_core::ir::PlanIr;
 use rue_core::journal::Event as J;
 use rue_core::ledger::{Instance as Held, Ledger, LedgerCode};
 use rue_core::model::{
-    Ack, Duration, FootprintEntry, ForceName, Guard, HostRef, Instant, Item, Kind, Locus, Mode,
-    OnLapse, Op, Plan, Refusal, RepeatForm, StepI, Tri, Undo,
+    Ack, Drift, Duration, FootprintEntry, ForceName, Guard, HostRef, Instant, Item, Kind, Locus,
+    Mode, OnLapse, Op, Plan, Refusal, RepeatForm, StepI, Tri, Undo, UndoLocus,
 };
 use rue_core::request::hash_json;
 use rue_core::states::{self, Ctx, Event as E, Outcome as Verdict_, RCode, State};
@@ -45,9 +45,11 @@ use rue_core::verdict::{Status, Verdict};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::Clock;
-use crate::executor::{Executor, RPrim, Resolved};
+use crate::executor::{BootstrapState, ExecCaps, Executor, Observation, ProbeRun, RPrim, Resolved};
+use crate::footprint::{self, Decision, Marker, Watched};
 use crate::host::Host;
 use crate::journal::{About, Journal, JournalError};
+use crate::region;
 use crate::resolve::{resolve_body, Env};
 use crate::store::{Store, StoreError};
 
@@ -105,6 +107,15 @@ pub struct DeferredAt {
     pub handoff: String,
 }
 
+/// A file `stage()`d for a step, removed after it (7.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Staged {
+    pub host: String,
+    pub step: u32,
+    pub name: String,
+}
+
 /// One instance, as the store keeps it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,6 +145,18 @@ pub struct InstanceRecord {
     pub deferred: Option<DeferredAt>,
     pub stuck: Vec<u32>,
     pub drift_held: Vec<u32>,
+    /// The markers of every applied step's file facts as `do` left them
+    /// (the controller's copy of `markers/<n>`), by step.
+    #[serde(default)]
+    pub markers: BTreeMap<String, Vec<Marker>>,
+    /// Hosts on which this instance has an instance directory.
+    #[serde(default)]
+    pub dirs: Vec<String>,
+    #[serde(default)]
+    pub staged: Vec<Staged>,
+    /// `recant --force=drift`: drift under `:defer` is clobbered.
+    #[serde(default)]
+    pub force_drift: bool,
     /// Knells acknowledged up front (`--ack`), by step.
     pub acks: Vec<u32>,
     /// Guard names forced by the request or a `recant --force`.
@@ -358,6 +381,77 @@ impl fmt::Debug for Engine {
     }
 }
 
+/// One host in `rue doctor`'s report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostDoctor {
+    pub name: String,
+    /// The transport of the executor that reaches it, or none.
+    pub executor: Option<String>,
+    pub bootstrap: Option<BootstrapState>,
+    pub scheduler: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoctorReport {
+    pub hosts: Vec<HostDoctor>,
+    pub sinks: Vec<String>,
+    pub signed: bool,
+    pub settling: bool,
+    pub instances: usize,
+}
+
+impl DoctorReport {
+    /// Every host reached and bootstrapped, nothing settling.
+    pub fn healthy(&self) -> bool {
+        !self.settling
+            && self
+                .hosts
+                .iter()
+                .all(|h| h.executor.is_some() && h.bootstrap.as_ref().is_some_and(|b| b.ready()))
+    }
+}
+
+/// The commands `rue bootstrap` prints for what a target lacks (7.7),
+/// per OS family; rue never runs them.
+pub fn bootstrap_commands(os: &str, root: &str, state: &BootstrapState) -> Vec<String> {
+    let mut v = Vec::new();
+    if os == "windows" {
+        if !state.group {
+            v.push("New-LocalGroup -Name rue".into());
+        }
+        if !state.rue_root || !state.instances_dir || !state.lock || !state.modes_ok {
+            v.push(format!(
+                "New-Item -ItemType Directory -Force {root}\\instances"
+            ));
+            v.push(format!("New-Item -ItemType File -Force {root}\\lock"));
+            v.push(format!(
+                "icacls {root}\\instances /grant rue:(OI)(CI)M; icacls {root}\\lock /grant rue:M"
+            ));
+        }
+        return v;
+    }
+    if !state.group {
+        v.push(match os {
+            "freebsd" | "dragonfly" => "pw groupadd rue".to_string(),
+            _ => "groupadd rue".to_string(),
+        });
+    }
+    if !state.rue_root {
+        v.push(format!("install -d -o root -m 0755 {root}"));
+    }
+    if !state.instances_dir || !state.modes_ok {
+        v.push(format!(
+            "install -d -o root -g rue -m 2770 {root}/instances"
+        ));
+    }
+    if !state.lock || !state.modes_ok {
+        v.push(format!(
+            "install -o root -g rue -m 0664 /dev/null {root}/lock"
+        ));
+    }
+    v
+}
+
 /// The controller as a host: where `:controller` steps and probes run.
 pub fn controller_host() -> Host {
     let os = match std::env::consts::OS {
@@ -577,23 +671,74 @@ impl Engine {
         None
     }
 
-    fn observe(&mut self, host: &Host, probe: &str) -> Result<Tri, String> {
-        let ex = self
-            .executor_for(host)
-            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
-        match ex.observe(host, probe) {
-            Ok(o) => Ok(o.as_tri()),
-            Err(e) => Err(format!("observing {probe} on {}: {e}", host.name())),
+    /// The probe a guard, observe or assert names, as the engine runs it:
+    /// a declaration by that name or producing that fact, its body
+    /// resolved, on its declared locus; with no declaration the name alone
+    /// goes to the host's executor (a hook knows its probes by name; the
+    /// real executors refuse an empty body).
+    fn probe_run(
+        &self,
+        rec: &InstanceRecord,
+        host: &Host,
+        name: &str,
+    ) -> Result<(Host, ProbeRun), String> {
+        let decl = rec
+            .plan()
+            .probes
+            .iter()
+            .find(|p| p.name == name || p.produces.iter().any(|f| f == name))
+            .cloned();
+        match decl {
+            Some(d) => {
+                let on = match d.locus {
+                    Locus::Controller => self.controller.clone(),
+                    _ => host.clone(),
+                };
+                let env = self.env_for(rec, &BTreeMap::new());
+                let body = resolve_body(&d.body, &on, &env).map_err(|u| u.to_string())?;
+                Ok((
+                    on,
+                    ProbeRun {
+                        name: d.name.clone(),
+                        body,
+                    },
+                ))
+            }
+            None => Ok((
+                host.clone(),
+                ProbeRun {
+                    name: name.to_string(),
+                    body: Vec::new(),
+                },
+            )),
         }
     }
 
-    fn observe_text(&mut self, host: &Host, probe: &str) -> Result<String, String> {
+    fn observe_raw(
+        &mut self,
+        rec: &InstanceRecord,
+        host: &Host,
+        probe: &str,
+    ) -> Result<Observation, String> {
+        let (on, run) = self.probe_run(rec, host, probe)?;
         let ex = self
-            .executor_for(host)
-            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
-        ex.observe(host, probe)
-            .map(|o| o.text)
-            .map_err(|e| format!("observing {probe} on {}: {e}", host.name()))
+            .executor_for(&on)
+            .ok_or_else(|| format!("no executor reaches {}", on.name()))?;
+        ex.observe(&on, &run)
+            .map_err(|e| format!("observing {probe} on {}: {e}", on.name()))
+    }
+
+    fn observe(&mut self, rec: &InstanceRecord, host: &Host, probe: &str) -> Result<Tri, String> {
+        self.observe_raw(rec, host, probe).map(|o| o.as_tri())
+    }
+
+    fn observe_text(
+        &mut self,
+        rec: &InstanceRecord,
+        host: &Host,
+        probe: &str,
+    ) -> Result<String, String> {
+        self.observe_raw(rec, host, probe).map(|o| o.text)
     }
 
     // --- request -----------------------------------------------------------
@@ -644,6 +789,10 @@ impl Engine {
             deferred: None,
             stuck: Vec::new(),
             drift_held: Vec::new(),
+            markers: BTreeMap::new(),
+            dirs: Vec::new(),
+            staged: Vec::new(),
+            force_drift: false,
             acks: opts.acks.clone(),
             forced: opts.forced.clone(),
             ledger_ids: Vec::new(),
@@ -807,7 +956,7 @@ impl Engine {
                         Some(c) => *c,
                         None => {
                             let owner = self.owner_host(rec)?;
-                            let tri = self.observe(&owner, &guard.name);
+                            let tri = self.observe(rec, &owner, &guard.name);
                             let c = match tri {
                                 Ok(Tri::Yes) => true,
                                 Ok(Tri::No) => false,
@@ -872,7 +1021,7 @@ impl Engine {
             v.clone()
         } else {
             let owner = self.owner_host(rec)?;
-            self.observe_text(&owner, list)
+            self.observe_text(rec, &owner, list)
                 .map_err(|e| EngineError::Internal(format!("repeat over {list}: {e}")))?
         };
         Ok(text
@@ -920,12 +1069,13 @@ impl Engine {
                     },
                 )?;
                 self.release(rec)?;
+                self.remove_dirs(rec)?;
                 self.persist(rec)?;
                 Ok(Flow::Stop)
             }
             Item::Observe { probe, alias } => {
                 let owner = self.owner_host(rec)?;
-                match self.observe_text(&owner, probe) {
+                match self.observe_text(rec, &owner, probe) {
                     Ok(text) => {
                         rec.outputs.insert(alias.clone(), text);
                         self.mark_applied(rec, n, iteration)?;
@@ -992,7 +1142,7 @@ impl Engine {
         bound: Option<Duration>,
     ) -> Result<Option<Flow>, EngineError> {
         let owner = self.owner_host(rec)?;
-        let tri = match self.observe(&owner, &g.name) {
+        let tri = match self.observe(rec, &owner, &g.name) {
             Ok(t) => t,
             Err(e) => return self.refuse(rec, n, &e).map(Some),
         };
@@ -1077,6 +1227,19 @@ impl Engine {
                 &format!("no transport reaches {}", host.name()),
             );
         }
+        // R0408: a :target undo needs a filesystem on the host, decided
+        // before do.
+        let caps = self.caps_of(&host);
+        if op.undo_locus == UndoLocus::Target && !caps.filesystem && !rec.rehearsal {
+            return self.refuse(
+                rec,
+                n,
+                &format!(
+                    "R0408: a :target undo on {}, whose executor reports no filesystem",
+                    host.name()
+                ),
+            );
+        }
         // A step gate: proofs arrive with the gates unit; the wait is real now.
         if s.gate.is_some() {
             let bound = s.window.or(rec.ir.site.max_wait);
@@ -1136,7 +1299,11 @@ impl Engine {
             self.log(rec, J::StepDone { step: n })?;
             return self.after_step(rec, n, iteration, &op, vars);
         }
+        if let Err(why) = self.ensure_instance_dir(rec, &host)? {
+            return self.refuse(rec, n, &why);
+        }
         self.snapshot(rec, n, &op, &host)?;
+        let before = self.watched(rec, &host, n);
         let env = self.env_for(rec, vars);
         let body = match resolve_body(&op.do_, &host, &env) {
             Ok(b) => b,
@@ -1168,6 +1335,34 @@ impl Engine {
                     )?;
                     self.undo_failed(rec, n, iteration, &op)?;
                     return self.refuse_applied(rec, n);
+                }
+                // R0201: nothing outside the step's footprint changed.
+                let after = self.watched(rec, &host, n);
+                let changed = footprint::changed_paths(&before, &after);
+                if !changed.is_empty() {
+                    self.log(
+                        rec,
+                        J::FootprintViolation {
+                            step: n,
+                            facts: changed.iter().map(|p| format!("file:{p}")).collect(),
+                        },
+                    )?;
+                    rec.refusal = Some(format!(
+                        "step {n}: R0201: footprint violation: {}",
+                        changed.join(", ")
+                    ));
+                    self.undo_failed(rec, n, iteration, &op)?;
+                    return self.refuse_applied(rec, n);
+                }
+                self.write_markers(rec, &host, n, &op)?;
+                for p in &op.do_ {
+                    if let rue_core::body::Prim::Stage(st) = p {
+                        rec.staged.push(Staged {
+                            host: host.name().to_string(),
+                            step: n,
+                            name: st.name.clone(),
+                        });
+                    }
                 }
                 let alias = s.alias.clone().unwrap_or_else(|| op.id.clone());
                 for o in &op.outputs {
@@ -1235,7 +1430,248 @@ impl Engine {
                 return Ok(flow);
             }
         }
+        self.remove_staged(rec, Some(n), "step done")?;
         Ok(Flow::Continue)
+    }
+
+    /// The capabilities of the executor that reaches a host; none when
+    /// nothing does.
+    fn caps_of(&mut self, host: &Host) -> ExecCaps {
+        self.executor_for(host)
+            .map(|e| e.capabilities())
+            .unwrap_or(ExecCaps {
+                filesystem: false,
+                stdin_preamble: false,
+            })
+    }
+
+    /// An instance directory on a run-capable host, created before the
+    /// first step there (7.7). A host that is not bootstrapped refuses
+    /// (R0407).
+    fn ensure_instance_dir(
+        &mut self,
+        rec: &mut InstanceRecord,
+        host: &Host,
+    ) -> Result<Result<(), String>, EngineError> {
+        if rec.rehearsal
+            || !self.caps_of(host).filesystem
+            || rec.dirs.contains(&host.name().to_string())
+        {
+            return Ok(Ok(()));
+        }
+        let id = rec.id.clone();
+        let ex = match self.executor_for(host) {
+            Some(ex) => ex,
+            None => return Ok(Ok(())),
+        };
+        match ex.bootstrap_state(host) {
+            Ok(st) if st.ready() => {}
+            Ok(st) => {
+                return Ok(Err(format!(
+                    "R0407: {} is not bootstrapped (rue_root {}, group {}, instances {}, lock {}, modes {}); run `rue bootstrap {}`",
+                    host.name(),
+                    st.rue_root,
+                    st.group,
+                    st.instances_dir,
+                    st.lock,
+                    st.modes_ok,
+                    host.name()
+                )))
+            }
+            Err(e) => return Ok(Err(format!("R0407: {}: {e}", host.name()))),
+        }
+        if let Err(e) = ex.instance_dir_create(host, &id) {
+            return Ok(Err(format!("instance directory on {}: {e}", host.name())));
+        }
+        rec.dirs.push(host.name().to_string());
+        self.persist(rec)?;
+        Ok(Ok(()))
+    }
+
+    /// Digests of every file fact of the plan on a host, except step `n`'s
+    /// own: what `do` must leave alone (R0201).
+    fn watched(&mut self, rec: &InstanceRecord, host: &Host, n: u32) -> Watched {
+        let mut w = Watched::new();
+        if rec.rehearsal {
+            return w;
+        }
+        let mut paths: Vec<String> = Vec::new();
+        for (m, it) in numbered(&rec.plan().body) {
+            if m == n {
+                continue;
+            }
+            if let Some(o) = op_of(it) {
+                if self.step_host(rec, o).map(|h| h.name() == host.name()) != Ok(true) {
+                    continue;
+                }
+                for (_, _, p) in footprint::file_facts(&o.footprint) {
+                    paths.push(p.to_string());
+                }
+            }
+        }
+        let own: Vec<String> = rec
+            .op_at(n)
+            .map(|o| {
+                footprint::file_facts(&o.footprint)
+                    .into_iter()
+                    .map(|(_, _, p)| p.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(ex) = self.executor_for(host) {
+            for p in paths {
+                if own.contains(&p) || w.contains_key(&p) {
+                    continue;
+                }
+                let d = footprint::digest_of(
+                    ex.read_fact(host, &format!("file:{p}"))
+                        .ok()
+                        .flatten()
+                        .as_deref(),
+                );
+                w.insert(p, d);
+            }
+        }
+        w
+    }
+
+    /// The markers of step `n`'s file facts as `do` left them, and the
+    /// manifest of regions held on the host, to the record and to the
+    /// instance directory.
+    fn write_markers(
+        &mut self,
+        rec: &mut InstanceRecord,
+        host: &Host,
+        n: u32,
+        op: &Op,
+    ) -> Result<(), EngineError> {
+        let id = rec.id.clone();
+        let has_dir = rec.dirs.contains(&host.name().to_string());
+        let mut markers = Vec::new();
+        if let Some(ex) = self.executor_for(host) {
+            for (_, e, p) in footprint::file_facts(&op.footprint) {
+                let d =
+                    footprint::digest_of(ex.read_fact(host, &e.shape).ok().flatten().as_deref());
+                markers.push(Marker {
+                    kind: e.kind,
+                    path: p.to_string(),
+                    digest: d,
+                });
+            }
+            if has_dir {
+                ex.put_file(
+                    host,
+                    &id,
+                    &format!("markers/{n}"),
+                    footprint::markers_text(&markers).as_bytes(),
+                    0o640,
+                )
+                .map_err(|e| EngineError::Internal(format!("markers on {}: {e}", host.name())))?;
+            }
+        }
+        rec.markers.insert(n.to_string(), markers);
+        if has_dir {
+            let regions = self.regions_on(rec, host);
+            if let Some(ex) = self.executor_for(host) {
+                ex.replace_file(
+                    host,
+                    &id,
+                    "manifest",
+                    footprint::manifest_text(&regions).as_bytes(),
+                )
+                .map_err(|e| EngineError::Internal(format!("manifest on {}: {e}", host.name())))?;
+            }
+        }
+        self.persist(rec)
+    }
+
+    /// Every region this instance holds on a host: the applied steps'
+    /// region facts with their anchors, plus the step being marked.
+    fn regions_on(&self, rec: &InstanceRecord, host: &Host) -> Vec<(String, String)> {
+        let mut v = Vec::new();
+        let mut steps: Vec<u32> = rec.applied.iter().map(|a| a.step).collect();
+        steps.extend(rec.markers.keys().filter_map(|k| k.parse::<u32>().ok()));
+        steps.sort();
+        steps.dedup();
+        for n in steps {
+            if let Some(o) = rec.op_at(n) {
+                if self.step_host(rec, o).map(|h| h.name() == host.name()) != Ok(true) {
+                    continue;
+                }
+                for e in &o.footprint {
+                    if e.kind == Kind::Region {
+                        if let (Some(p), Some(anchor)) = (region::file_path(&e.shape), &e.anchor) {
+                            v.push((p.to_string(), anchor.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        v.sort();
+        v.dedup();
+        v
+    }
+
+    /// Whether another active instance holds a region on a file of this
+    /// host (the foreign-region condition, from the ledger).
+    fn foreign_region(&self, rec: &InstanceRecord, host: &Host, shape: &str) -> bool {
+        self.ledger.holdings().iter().any(|h| {
+            !rec.ledger_ids.contains(&h.id)
+                && h.host == host.name()
+                && h.umbra
+                    .iter()
+                    .any(|f| f.shape == shape && f.anchor.is_some())
+        })
+    }
+
+    /// Remove staged files: of one step after it ran, or of every step at
+    /// boot for an instance that is not applying.
+    fn remove_staged(
+        &mut self,
+        rec: &mut InstanceRecord,
+        step: Option<u32>,
+        reason: &str,
+    ) -> Result<(), EngineError> {
+        let mine: Vec<Staged> = rec
+            .staged
+            .iter()
+            .filter(|s| step.is_none_or(|n| s.step == n))
+            .cloned()
+            .collect();
+        if mine.is_empty() {
+            return Ok(());
+        }
+        let id = rec.id.clone();
+        for s in &mine {
+            if let Some(host) = self.host_of(&s.host) {
+                if let Some(ex) = self.executor_for(&host) {
+                    let _ = ex.remove_file(&host, &id, &s.name);
+                }
+            }
+            self.log(
+                rec,
+                J::StagedRemoved {
+                    step: s.step,
+                    reason: reason.to_string(),
+                },
+            )?;
+        }
+        rec.staged.retain(|s| !mine.contains(s));
+        self.persist(rec)
+    }
+
+    /// Remove the instance directories at close or commit.
+    fn remove_dirs(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+        let id = rec.id.clone();
+        for name in rec.dirs.clone() {
+            if let Some(host) = self.host_of(&name) {
+                if let Some(ex) = self.executor_for(&host) {
+                    let _ = ex.instance_dir_remove(&host, &id);
+                }
+            }
+        }
+        rec.dirs.clear();
+        self.persist(rec)
     }
 
     fn snapshot(
@@ -1254,6 +1690,9 @@ impl Engine {
                 None => continue,
             };
             if let Ok(Some(bytes)) = ex.read_fact(host, &e.shape) {
+                if rec.dirs.contains(&host.name().to_string()) {
+                    let _ = ex.replace_file(host, &rec.id, &format!("snapshots/{n}/{k}"), &bytes);
+                }
                 rec.snapshots.insert(
                     format!("{n}/{k}"),
                     String::from_utf8_lossy(&bytes).into_owned(),
@@ -1343,7 +1782,29 @@ impl Engine {
                 }
             };
             match self.undo_step(rec, a.step, &op) {
-                Ok(()) => {
+                Ok(report) if !report.held.is_empty() => {
+                    rec.drift_held = vec![a.step];
+                    self.log(
+                        rec,
+                        J::DriftHeld {
+                            step: a.step,
+                            facts: report.held,
+                        },
+                    )?;
+                    self.step(rec, E::DriftOnDefer)?;
+                    return Ok(());
+                }
+                Ok(report) => {
+                    if !report.clobbered.is_empty() {
+                        self.log(
+                            rec,
+                            J::DriftClobbered {
+                                step: a.step,
+                                facts: report.clobbered,
+                            },
+                        )?;
+                    }
+                    rec.markers.remove(&a.step.to_string());
                     rec.applied.pop();
                     self.persist(rec)?;
                 }
@@ -1378,32 +1839,122 @@ impl Engine {
         rec.closed_reason = Some(reason.clone());
         self.log(rec, J::Closed { reason })?;
         self.release(rec)?;
+        self.remove_dirs(rec)?;
         self.persist(rec)
     }
 
-    fn undo_step(&mut self, rec: &InstanceRecord, n: u32, op: &Op) -> Result<(), String> {
-        if rec.rehearsal {
-            return Ok(());
+    /// Undo one step under its drift policy (5.2). Every file fact is read
+    /// against its marker; the decision per fact is the artifact's
+    /// (`footprint::decide`). Any fact deferred leaves the step untouched
+    /// and reported `held`; otherwise the undo runs, under the host lock
+    /// when the step holds a region, with a damaged region restored whole
+    /// from its snapshot where the policy and the ledger allow it.
+    fn undo_step(&mut self, rec: &InstanceRecord, n: u32, op: &Op) -> Result<UndoReport, String> {
+        let mut report = UndoReport::default();
+        if rec.rehearsal || matches!(op.undo, Undo::NoUndo) {
+            return Ok(report);
         }
         let host = self.step_host(rec, op)?;
         let env = self.env_for(rec, &BTreeMap::new());
-        let body: Vec<RPrim> = match &op.undo {
-            Undo::NoUndo => return Ok(()),
+        let policy = op.effective_drift().unwrap_or(Drift::Clobber);
+        let markers = rec.markers.get(&n.to_string()).cloned().unwrap_or_default();
+        let mut whole: Vec<usize> = Vec::new();
+        let has_region = op.footprint.iter().any(|e| e.kind == Kind::Region);
+        let id = rec.id.clone();
+        let facts: Vec<(usize, FootprintEntry, String)> = footprint::file_facts(&op.footprint)
+            .into_iter()
+            .map(|(k, e, p)| (k, e.clone(), p.to_string()))
+            .collect();
+        for (k, e, p) in &facts {
+            let bytes = {
+                let ex = self
+                    .executor_for(&host)
+                    .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
+                ex.read_fact(&host, &e.shape).ok().flatten()
+            };
+            let current = footprint::digest_of(bytes.as_deref());
+            let recorded = markers
+                .iter()
+                .find(|m| m.path == *p)
+                .map(|m| m.digest.clone());
+            let changed = recorded.as_ref().is_some_and(|r| *r != current);
+            let intact = if e.kind == Kind::Region {
+                let text = bytes
+                    .as_deref()
+                    .map(|b| String::from_utf8_lossy(b).into_owned())
+                    .unwrap_or_default();
+                Some(region::intact(&text, e.anchor.as_deref().unwrap_or("")))
+            } else {
+                None
+            };
+            let foreign = e.kind == Kind::Region && self.foreign_region(rec, &host, &e.shape);
+            let mut d = footprint::decide(e.kind, policy, changed, intact, foreign);
+            if rec.force_drift {
+                d = match d {
+                    Decision::Defer => Decision::Clobber,
+                    Decision::DeferForeign => Decision::RestoreWhole,
+                    other => other,
+                };
+            }
+            match d {
+                Decision::Undo => {}
+                Decision::Clobber => report.clobbered.push(e.shape.clone()),
+                Decision::RestoreWhole => {
+                    report.clobbered.push(e.shape.clone());
+                    whole.push(*k);
+                }
+                Decision::Defer | Decision::DeferForeign => report.held.push(e.shape.clone()),
+            }
+        }
+        if !report.held.is_empty() {
+            return Ok(report);
+        }
+        let mut body: Vec<RPrim> = match &op.undo {
+            Undo::NoUndo => Vec::new(),
             Undo::Restore => restore_body(n, &op.footprint, &rec.snapshots)?,
             Undo::Computed { body, .. } | Undo::Compensate { body, .. } => {
                 resolve_body(body, &host, &env).map_err(|u| u.to_string())?
             }
         };
-        if body.is_empty() {
-            return Ok(());
+        // A damaged region restored whole: its strip becomes the snapshot
+        // written back.
+        for k in whole {
+            let e = &op.footprint[k];
+            let snapshot = rec
+                .snapshots
+                .get(&format!("{n}/{k}"))
+                .cloned()
+                .ok_or_else(|| format!("no snapshot for {} to restore whole", e.shape))?;
+            for prim in body.iter_mut() {
+                if matches!(prim, RPrim::RegionClear { shape, .. } if *shape == e.shape) {
+                    *prim = RPrim::Write {
+                        shape: e.shape.clone(),
+                        content: Resolved::plain(&snapshot),
+                    };
+                }
+            }
         }
-        let id = rec.id.clone();
+        let has_dir = rec.dirs.contains(&host.name().to_string());
         let ex = self
             .executor_for(&host)
             .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
-        ex.run(&host, &id, &body)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        // The host lock across a region undo: the decision above and the
+        // write below see one world.
+        let _lock = if has_region {
+            Some(
+                ex.host_lock(&host)
+                    .map_err(|e| format!("host lock on {}: {e}", host.name()))?,
+            )
+        } else {
+            None
+        };
+        if !body.is_empty() {
+            ex.run(&host, &id, &body).map_err(|e| e.to_string())?;
+        }
+        if has_dir {
+            let _ = ex.remove_file(&host, &id, &format!("markers/{n}"));
+        }
+        Ok(report)
     }
 
     fn release(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
@@ -1414,6 +1965,58 @@ impl Engine {
     }
 
     // --- verbs ---------------------------------------------------------------
+
+    /// `rue bootstrap <host>` (7.7): what the target has and, for what it
+    /// lacks, the exact commands for its OS family. Nothing is run.
+    pub fn bootstrap(&mut self, host: &str) -> Result<(BootstrapState, Vec<String>), EngineError> {
+        let h = self
+            .host_of(host)
+            .ok_or_else(|| EngineError::NoSuchInstance(format!("no host record for {host}")))?;
+        let ex = self
+            .executor_for(&h)
+            .ok_or_else(|| EngineError::Internal(format!("no executor reaches {host}")))?;
+        let state = ex
+            .bootstrap_state(&h)
+            .map_err(|e| EngineError::Internal(format!("{host}: {e}")))?;
+        let root = h.rue_root.clone().unwrap_or_else(|| {
+            rue_render::Instance::default_root(rue_core::artifact::shell_of(&h.record.os))
+                .to_string()
+        });
+        Ok((
+            state.clone(),
+            bootstrap_commands(&h.record.os, &root, &state),
+        ))
+    }
+
+    /// `rue doctor`: every host's reach and bootstrap, the sinks, signing,
+    /// settle, and the instances.
+    pub fn doctor(&mut self) -> Result<DoctorReport, EngineError> {
+        let mut hosts = Vec::new();
+        let names: Vec<String> = self.hosts.keys().cloned().collect();
+        for name in names {
+            let h = self.hosts[&name].clone();
+            let executor = self
+                .executor_for(&h)
+                .map(|e| e.locus().transport().to_string());
+            let bootstrap = match self.executor_for(&h) {
+                Some(ex) => ex.bootstrap_state(&h).ok(),
+                None => None,
+            };
+            hosts.push(HostDoctor {
+                name: name.clone(),
+                executor,
+                bootstrap,
+                scheduler: h.scheduler.clone(),
+            });
+        }
+        Ok(DoctorReport {
+            hosts,
+            sinks: self.journal.sink_names(),
+            signed: self.journal.signed(),
+            settling: self.settling,
+            instances: self.store.instance_ids()?.len(),
+        })
+    }
 
     /// Continue an `Applying` instance's walk (after boot or a satisfied
     /// wait); any other state is left as it is.
@@ -1427,6 +2030,8 @@ impl Engine {
         let mut rec = self.load(id)?;
         if rec.state == State::DriftHeld && force.iter().any(|f| matches!(f, ForceName::Drift)) {
             self.step(&mut rec, E::ForceDrift)?;
+            rec.force_drift = true;
+            rec.drift_held.clear();
         } else {
             self.step(&mut rec, E::Recant)?;
         }
@@ -1486,6 +2091,7 @@ impl Engine {
             },
         )?;
         self.release(&mut rec)?;
+        self.remove_dirs(&mut rec)?;
         self.persist(&rec)?;
         Ok(self.outcome(&rec))
     }
@@ -1692,7 +2298,7 @@ impl Engine {
                             .push(format!("{}: wait at step {} lapsed", rec.id, w.step));
                     } else if let Some(g) = &w.guard {
                         let owner = self.owner_host(&rec)?;
-                        match self.observe(&owner, g) {
+                        match self.observe(&rec, &owner, g) {
                             Ok(Tri::Yes) => {
                                 self.step(&mut rec, E::WaitSatisfied)?;
                                 rec.waiting = None;
@@ -1723,7 +2329,7 @@ impl Engine {
                         if let Some(op) = rec.op_at(d.step).cloned() {
                             if let Some(probe) = &op.handoff_done {
                                 let owner = self.owner_host(&rec)?;
-                                if let Ok(Tri::Yes) = self.observe(&owner, probe) {
+                                if let Ok(Tri::Yes) = self.observe(&rec, &owner, probe) {
                                     let id = rec.id.clone();
                                     self.handoff_done(&id, d.step, "probe")?;
                                     report
@@ -1800,6 +2406,7 @@ impl Engine {
             if states::terminal(rec.state) {
                 continue;
             }
+            self.remove_staged(&mut rec, None, "boot recovery")?;
             // Held resources of applied steps.
             for a in rec.applied.clone() {
                 let op = match rec.op_at(a.step) {
@@ -1845,7 +2452,13 @@ impl Engine {
                     .filter(|e| matches!(e.kind, Kind::Owned | Kind::Region))
                 {
                     if let Some(ex) = self.executor_for(&host) {
-                        let _ = ex.observe(&host, &e.shape);
+                        let _ = ex.observe(
+                            &host,
+                            &ProbeRun {
+                                name: e.shape.clone(),
+                                body: Vec::new(),
+                            },
+                        );
                     }
                     report.reobserved.push((rec.id.clone(), e.shape.clone()));
                 }
@@ -1872,6 +2485,14 @@ impl Engine {
 enum Outcome_ {
     Moved,
     Stayed,
+}
+
+/// What an undo found: facts clobbered under `:clobber`, facts held under
+/// `:defer` (the step then stays applied and the instance is DriftHeld).
+#[derive(Debug, Default)]
+struct UndoReport {
+    clobbered: Vec<String>,
+    held: Vec<String>,
 }
 
 fn leaf_count(items: &[Item]) -> u32 {

@@ -34,7 +34,7 @@ use serde_json::{json, Value};
 
 use crate::executor::{
     BootstrapState, ExecCaps, ExecError, Executor, HostLockGuard, InstanceDirState, LocusKind,
-    Observation, Output, RPrim,
+    Observation, Output, ProbeRun, RPrim,
 };
 use crate::host::Host;
 use crate::journal::Sink;
@@ -476,8 +476,8 @@ impl Executor for HookExecutor {
         Ok(Output { stdout, outputs })
     }
 
-    fn observe(&mut self, host: &Host, probe: &str) -> Result<Observation, ExecError> {
-        let reply = self.call(probe_observe(host.name(), probe))?;
+    fn observe(&mut self, host: &Host, probe: &ProbeRun) -> Result<Observation, ExecError> {
+        let reply = self.call(probe_observe(host.name(), &probe.name))?;
         let fact = field(&reply, "fact").map_err(|e| ExecError::Failed(e.to_string()))?;
         let text = fact
             .get("text")
@@ -567,6 +567,12 @@ impl Executor for HookExecutor {
         let reply = self.call(r)?;
         let c = field(&reply, "content").map_err(|e| ExecError::Failed(e.to_string()))?;
         Ok(c.as_str().unwrap_or("").as_bytes().to_vec())
+    }
+
+    fn remove_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<(), ExecError> {
+        let mut r = execute_op("remove_file", host.name(), Some(instance));
+        r["rel"] = json!(rel);
+        self.call(r).map(|_| ())
     }
 
     fn host_lock(&mut self, host: &Host) -> Result<Box<dyn HostLockGuard>, ExecError> {

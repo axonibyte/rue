@@ -1,5 +1,5 @@
 {
-  "ir_version": 3,
+  "ir_version": 4,
   "plan": {
     "backstop": null,
     "body": [
@@ -473,6 +473,24 @@
     "id": "promote_auto",
     "mode": "auto",
     "owner": "node-b",
+    "probes": [
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "written_bytes_since_split",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "fence_verified_off",
+        "produces": [],
+        "static": false
+      }
+    ],
     "renew_within_s": null,
     "require_journal": null,
     "strictness": "strict",

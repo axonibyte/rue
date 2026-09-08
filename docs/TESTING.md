@@ -54,7 +54,7 @@ prototype's under one tasty suite, and both inside the gate:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`, `engine/tests/{clock,store,journal,lifecycle,control}.rs`, `bindings/tests/journal.rs`, `daemon/tests/migrate.rs`, `cli/tests/daemon.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's rules each on a small file (`surface/tests/resolve.rs`); the performance bound (`surface/tests/bench.rs`); the CLI's verbs, selectors and exit codes; the engine over fakes: the store's lock, atomicity and schema, migration; the journal's chain through every sink, a refusing sink as R0304, signatures with the key and with nothing else; the lifecycle's scenarios (below); the file sink and the key binding; `rued migrate` and `rue journal verify` end to end; the control channel over a socket pair (identity, version, scope, admin, registration, a hook serving execute and probe, a silent hook, subscriptions); rued and rue over a real socket (a plan through a registered hook, every verb's line and exit code, a spawned child hook over stdio, daemon dry-run mode, a missing group) |
+| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`, `engine/tests/{clock,store,journal,lifecycle,control,drift}.rs`, `bindings/tests/{journal,local,ssh}.rs`, `daemon/tests/migrate.rs`, `cli/tests/daemon.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's rules each on a small file (`surface/tests/resolve.rs`); the performance bound (`surface/tests/bench.rs`); the CLI's verbs, selectors and exit codes; the engine over fakes: the store's lock, atomicity and schema, migration; the journal's chain through every sink, a refusing sink as R0304, signatures with the key and with nothing else; the lifecycle's scenarios (below); the file sink and the key binding; `rued migrate` and `rue journal verify` end to end; the control channel over a socket pair (identity, version, scope, admin, registration, a hook serving execute and probe, a silent hook, subscriptions); rued and rue over a real socket (a plan through a registered hook, every verb's line and exit code, a spawned child hook over stdio, daemon dry-run mode, a missing group) |
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
@@ -124,6 +124,29 @@ the socket owner and serves a plan, and one registering outside
 `may_register` stops the daemon with R0505; daemon dry-run mode starts on
 a site with no operators block that refuses outside it (E0604) and makes
 every apply a rehearsal; a group that does not exist refuses to start.
+
+## Footprints and the executors
+
+`engine/tests/drift.rs` runs plans over the fake executor's file facts:
+the instance directory is created before the first step and removed at
+close, with markers, snapshots and the manifest in the layout the artifact
+reads; an unchanged fact undoes; a changed fact is clobbered under
+`:clobber` and journaled; under `:defer` it holds the instance (DriftHeld,
+exit 8, umbras kept, wane leaving it, a plain recant R0103, `--force=drift`
+reverting); a region with damaged markers is restored whole unless a
+sibling instance holds a region on the file; a `do` that touches another
+op's fact is R0201 and reverts; an unbootstrapped host is R0407 and a
+`:target` undo on a host without a filesystem R0408; a staged file is
+removed after its step and at boot; the region undo holds the host lock
+from decision to write (the fake logs every lock, run and write in order);
+the manifest is never written in place; `bootstrap` reports a family's
+commands and runs nothing. The tier-4 table now drives `DriftOnDefer` too.
+
+`bindings/tests/local.rs` runs `local()` against real files in a temporary
+root; `bindings/tests/ssh.rs` runs `ssh()` over a fake transport and reads
+the scripts it would send (a secret never bare, the artifact's helpers
+carried, the family's lock tool), and asks the real client with no key and
+no known host, which must fail before any command runs.
 
 ## Goldens
 
@@ -282,7 +305,10 @@ and a reference names its origin (`fact`, `param`, `host`, `output`,
 read. Nothing in the IR says "closed" or "secret" as a flag: both are
 computed from the structure. A host record carries `stdin_preamble` and, from
 version 3, `artifact` (`null` for the host's native shell, else `sh`,
-`powershell` or `python`); the site carries `secrets_deliver_to`. `undo_idempotent` remains a stand-in until E0208's
+`powershell` or `python`); the site carries `secrets_deliver_to`; from
+version 4 the plan carries `probes`, each a declaration with its locus,
+body, produced facts, `static` flag and equivalence, so the engine can run
+what a guard names. `undo_idempotent` remains a stand-in until E0208's
 analysis exists. `core/tests/ir.rs` holds a document exercising every
 primitive and asserts it reads and writes back byte for byte.
 

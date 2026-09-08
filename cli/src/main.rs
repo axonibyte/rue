@@ -155,6 +155,19 @@ enum Verb {
         #[command(flatten)]
         channel: Channel,
     },
+    /// Admin: verify a target's rue_root; print the commands for what it
+    /// lacks, never running them (section 7.7).
+    Bootstrap {
+        host: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Admin: bindings, executors, schedulers, bootstrap, sinks and modes,
+    /// as the daemon sees them.
+    Doctor {
+        #[command(flatten)]
+        channel: Channel,
+    },
     /// Format a .rue file (section 6.9): the canonical layout, comments
     /// kept; the identity on a formatted file.
     Fmt {
@@ -519,6 +532,13 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             serde_json::json!({ "instance": instance }),
             out,
         ),
+        Verb::Bootstrap { host, channel } => over_channel(
+            &channel,
+            "bootstrap",
+            serde_json::json!({ "host": host }),
+            out,
+        ),
+        Verb::Doctor { channel } => over_channel(&channel, "doctor", serde_json::json!({}), out),
         Verb::States => {
             out.write_all(render_table().as_bytes())?;
             Ok(ExitCode::SUCCESS)
@@ -620,6 +640,119 @@ fn over_channel(
                     writeln!(out, "no instances")?;
                 }
                 return Ok(ExitCode::SUCCESS);
+            }
+            if let Some(cmds) = result.get("commands").and_then(|c| c.as_array()) {
+                let host = result.get("host").and_then(|h| h.as_str()).unwrap_or("");
+                let ready = result
+                    .get("ready")
+                    .and_then(|r| r.as_bool())
+                    .unwrap_or(false);
+                if ready {
+                    writeln!(out, "{host}: bootstrapped")?;
+                    return Ok(ExitCode::SUCCESS);
+                }
+                writeln!(out, "{host}: not bootstrapped; as root on {host}:")?;
+                for c in cmds {
+                    writeln!(out, "  {}", c.as_str().unwrap_or(""))?;
+                }
+                return Ok(ExitCode::from(1));
+            }
+            if let Some(report) = result.get("report") {
+                let healthy = result
+                    .get("healthy")
+                    .and_then(|h| h.as_bool())
+                    .unwrap_or(false);
+                for h in report
+                    .get("hosts")
+                    .and_then(|h| h.as_array())
+                    .into_iter()
+                    .flatten()
+                {
+                    let name = h.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let ex = h
+                        .get("executor")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unreachable");
+                    let boot = match h.get("bootstrap").and_then(|b| b.as_object()) {
+                        Some(b) => {
+                            let ok = ["rue_root", "group", "instances_dir", "lock", "modes_ok"]
+                                .iter()
+                                .all(|k| b.get(*k).and_then(|v| v.as_bool()) == Some(true));
+                            if ok {
+                                "bootstrapped"
+                            } else {
+                                "not bootstrapped"
+                            }
+                        }
+                        None => "bootstrap unknown",
+                    };
+                    let sched = h
+                        .get("scheduler")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("no scheduler");
+                    writeln!(out, "host {name}: {ex}, {boot}, {sched}")?;
+                }
+                let sinks: Vec<String> = report
+                    .get("sinks")
+                    .and_then(|s| s.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                writeln!(
+                    out,
+                    "journal: {} sink(s) ({}), {}",
+                    sinks.len(),
+                    sinks.join(", "),
+                    if report.get("signed").and_then(|v| v.as_bool()) == Some(true) {
+                        "signed"
+                    } else {
+                        "unsigned"
+                    }
+                )?;
+                let hooks: Vec<String> = result
+                    .get("hooks")
+                    .and_then(|s| s.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                writeln!(
+                    out,
+                    "hooks registered: {}",
+                    if hooks.is_empty() {
+                        "none".to_string()
+                    } else {
+                        hooks.join(", ")
+                    }
+                )?;
+                writeln!(
+                    out,
+                    "instances: {}{}",
+                    report
+                        .get("instances")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                    if report.get("settling").and_then(|v| v.as_bool()) == Some(true) {
+                        " (settling)"
+                    } else {
+                        ""
+                    }
+                )?;
+                writeln!(
+                    out,
+                    "{}",
+                    if healthy {
+                        "doctor: healthy"
+                    } else {
+                        "doctor: attention needed"
+                    }
+                )?;
+                return Ok(ExitCode::from(if healthy { 0 } else { 1 }));
             }
             if result.get("line").is_some() {
                 let line = result.get("line").and_then(|l| l.as_str()).unwrap_or("");
