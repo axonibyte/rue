@@ -28,7 +28,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rue_core::journal::Entry;
-use rue_core::model::{HostRecord, Instant, Tri};
+use rue_core::journal::Scope;
+use rue_core::model::{Authenticator, HostRecord, Instant, Tri};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -36,9 +37,12 @@ use crate::executor::{
     BootstrapState, ExecCaps, ExecError, Executor, HostLockGuard, InstanceDirState, LocusKind,
     Observation, Output, ProbeRun, RPrim,
 };
+use crate::gates::{hex, Approval, ProofRequest, Verified};
 use crate::host::Host;
 use crate::journal::Sink;
+use crate::notify::{Level, Notify};
 use crate::scheduler::{Job, Presence, Scheduler};
+use crate::secrets::Acceptor;
 
 pub const HOOK_PROTOCOL: u32 = 1;
 
@@ -152,12 +156,88 @@ impl LineLink {
     }
 }
 
+/// The two messages that may carry a secret toward a hook: the body of
+/// `execute.run` and the value of `secrets.deliver` (7.5). The other two
+/// of the four travel toward the engine, in replies.
+fn permitted(request: &Value) -> bool {
+    let kind = request.get("kind").and_then(Value::as_str).unwrap_or("");
+    let op = request.get("op").and_then(Value::as_str).unwrap_or("");
+    matches!((kind, op), ("execute", "run") | ("secrets", "deliver"))
+}
+
+/// What a secret looks like once resolved: an object with a `text` and
+/// `secret: true`. In a message that may not carry one, the text goes and
+/// the label stays, so the journal and the hook both see that something
+/// was dropped and neither sees the value.
+pub const DROPPED: &str = "<secret dropped: R0305>";
+
+fn scrub(v: &mut Value, path: &str, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => {
+            let is_secret = m.get("secret").and_then(Value::as_bool) == Some(true)
+                && m.get("text").is_some_and(Value::is_string);
+            if is_secret {
+                m.insert("text".into(), json!(DROPPED));
+                out.push(if path.is_empty() {
+                    "a value".to_string()
+                } else {
+                    path.to_string()
+                });
+                return;
+            }
+            let keys: Vec<String> = m.keys().cloned().collect();
+            for k in keys {
+                let child = if path.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{path}.{k}")
+                };
+                if let Some(x) = m.get_mut(&k) {
+                    scrub(x, &child, out);
+                }
+            }
+        }
+        Value::Array(a) => {
+            for (i, x) in a.iter_mut().enumerate() {
+                scrub(x, &format!("{path}[{i}]"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Drop every secret from a request that may not carry one; the labels
+/// dropped, empty when the message is permitted or carries none.
+pub fn guard_secrets(request: &mut Value) -> Vec<String> {
+    if permitted(request) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    scrub(request, "", &mut out);
+    out
+}
+
 impl HookLink for LineLink {
     fn name(&self) -> String {
         self.name.clone()
     }
 
     fn call(&self, mut request: Value, deadline: Duration) -> Result<Value, HookError> {
+        // R0305: a secret travels toward a hook in exactly two messages
+        // (5.13, 7.5). In any other, the value is dropped here, at the
+        // seam, before a line is written.
+        let dropped = guard_secrets(&mut request);
+        if !dropped.is_empty() {
+            eprintln!(
+                "rue: R0305: {} dropped from a {} message to hook {}",
+                dropped.join(", "),
+                request
+                    .get("kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("(unknown)"),
+                self.name
+            );
+        }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         request["id"] = json!(id);
         let (tx, rx): (Sender<Value>, Receiver<Value>) = mpsc::channel();
@@ -760,5 +840,169 @@ impl Scheduler for HookScheduler {
                 ))
             }
         })
+    }
+}
+
+/// `approval via: hook(:name)`: the hook as the approval binding (7.5).
+/// It publishes the authenticators, renders the challenge and returns the
+/// verdict; the digest and its scope are rue's, so a proof it accepts is
+/// bound to one request and one scope.
+pub struct HookApproval {
+    pub name: String,
+    pub registry: Arc<HookRegistry>,
+    pub deadline: Duration,
+}
+
+impl HookApproval {
+    fn call(&self, request: Value) -> Result<Value, ExecError> {
+        let (link, _) = self
+            .registry
+            .link(&self.name)
+            .map_err(|e| ExecError::Unreachable(e.to_string()))?;
+        link.call(request, self.deadline).map_err(|e| match e {
+            HookError::Silent => ExecError::Silent,
+            HookError::Refused(r) => ExecError::Failed(r),
+            HookError::Contract(m) => ExecError::Failed(format!("R0303: {m}")),
+            HookError::Unregistered(n) => {
+                ExecError::Unreachable(format!("hook {n} not registered"))
+            }
+            HookError::Io(m) => ExecError::Io(m),
+        })
+    }
+}
+
+fn scope_json(s: Scope) -> Value {
+    match s {
+        Scope::Plan => json!("plan"),
+        Scope::Step(n) => json!({ "step": n }),
+        Scope::Ack(n) => json!({ "ack": n }),
+    }
+}
+
+impl Approval for HookApproval {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn authenticators(&mut self) -> Result<Vec<Authenticator>, ExecError> {
+        let reply = self.call(approval_authenticators())?;
+        let v = field(&reply, "authenticators").map_err(|e| ExecError::Failed(e.to_string()))?;
+        serde_json::from_value(v.clone()).map_err(|e| ExecError::Failed(format!("R0303: {e}")))
+    }
+
+    fn challenge(&mut self, r: &ProofRequest) -> Result<String, ExecError> {
+        let reply = self.call(approval_challenge(
+            &r.instance,
+            &hex(&r.digest.0),
+            scope_json(r.scope),
+            json!(r.context),
+        ))?;
+        reply
+            .get("challenge")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| {
+                ExecError::Failed("R0303: approval.challenge without a challenge".into())
+            })
+    }
+
+    fn verify(&mut self, r: &ProofRequest) -> Result<Verified, ExecError> {
+        let reply = self.call(approval_verify(
+            &r.instance,
+            &hex(&r.digest.0),
+            scope_json(r.scope),
+            &r.authenticator,
+            &r.proof,
+        ))?;
+        match reply.get("verified").and_then(Value::as_bool) {
+            Some(verified) => Ok(Verified {
+                verified,
+                reason: reply
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            }),
+            None => Err(ExecError::Failed(
+                "R0303: approval.verify without a verified field".into(),
+            )),
+        }
+    }
+}
+
+/// `secrets deliver_to: hook(:name)`: the hook as a secret acceptor. This
+/// is one of the four messages a secret may travel in (7.5); the reply is
+/// an acceptance and a receipt, never the value again.
+pub struct HookAcceptor {
+    pub name: String,
+    pub registry: Arc<HookRegistry>,
+    pub deadline: Duration,
+}
+
+impl Acceptor for HookAcceptor {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn deliver(
+        &mut self,
+        instance: &str,
+        label: &str,
+        value: &str,
+        _now: Instant,
+        _until: Option<Instant>,
+    ) -> Result<bool, ExecError> {
+        let (link, _) = self
+            .registry
+            .link(&self.name)
+            .map_err(|e| ExecError::Unreachable(e.to_string()))?;
+        let reply = link
+            .call(secrets_deliver(instance, label, value), self.deadline)
+            .map_err(|e| match e {
+                HookError::Silent => ExecError::Silent,
+                HookError::Refused(r) => ExecError::Failed(r),
+                HookError::Contract(m) => ExecError::Failed(format!("R0303: {m}")),
+                HookError::Unregistered(n) => {
+                    ExecError::Unreachable(format!("hook {n} not registered"))
+                }
+                HookError::Io(m) => ExecError::Io(m),
+            })?;
+        match reply.get("accepted").and_then(Value::as_bool) {
+            Some(a) => Ok(a),
+            None => Err(ExecError::Failed(
+                "R0303: secrets.deliver without an accepted field".into(),
+            )),
+        }
+    }
+}
+
+/// `notify via: hook(:name)`: the hook as the notify binding (7.5).
+pub struct HookNotify {
+    pub name: String,
+    pub registry: Arc<HookRegistry>,
+    pub deadline: Duration,
+}
+
+impl Notify for HookNotify {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn deliver(&mut self, level: Level, subject: &str, body: &str) -> Result<(), ExecError> {
+        let (link, _) = self
+            .registry
+            .link(&self.name)
+            .map_err(|e| ExecError::Unreachable(e.to_string()))?;
+        link.call(notify_deliver(level.word(), subject, body), self.deadline)
+            .map(|_| ())
+            .map_err(|e| match e {
+                HookError::Silent => ExecError::Silent,
+                HookError::Refused(r) => ExecError::Failed(r),
+                HookError::Contract(m) => ExecError::Failed(format!("R0303: {m}")),
+                HookError::Unregistered(n) => {
+                    ExecError::Unreachable(format!("hook {n} not registered"))
+                }
+                HookError::Io(m) => ExecError::Io(m),
+            })
     }
 }

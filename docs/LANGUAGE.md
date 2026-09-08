@@ -201,6 +201,21 @@ is no, anything else is unknown) and its stdout is the fact's value; a
 `run` in an op binds a declared output with a line `rue-output NAME=VALUE`
 on its stdout, which the executor removes from the run's text.
 
+`approval via:` names the binding that publishes the authenticators a
+gate may name, renders a challenge over a request digest, and verifies the
+proofs that come back. `always()` opens every gate without a proof and
+`rued` builds it only with `--dry-run`; everything else is `hook(:name)`.
+`secrets deliver_to:` is a list, tried in order at the moment a producing
+step completes: `requester()` takes the value only while a client is
+attached and hands it to that client's reply, `hold(until: :wane |
+DURATION)` keeps it in the daemon's memory until its bound and gives it up
+once to `rue reveal`, and `hook(:name)` is anything else. A list every
+acceptor declines is `applied; secret undelivered` and exit 7; a
+`hold(until: :wane)` on a permanent plan resolves to the site's `max_wait`
+and is R0104 where the site declares none. `notify via: stdout()` writes
+one line per unbounded state on every reap pass, because what ends `Held`,
+`Deferred`, `Stuck` and `DriftHeld` is a person.
+
 `backstop scheduler:` names the binding that holds the target-side entry
 for a rendered artifact, and every host the inventory marks as scheduled
 uses it. `cron()` keeps one fenced region of the host's crontab, anchored

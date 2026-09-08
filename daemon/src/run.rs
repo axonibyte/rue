@@ -23,20 +23,24 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use rue_bindings::secrets::{Hold, Requester};
 use rue_engine::clock::SystemClock;
 use rue_engine::control::{
     self, Daemon, Operator, Operators, RegistrarDecl, SubscriberSink, Subscribers, UserSpec,
 };
 use rue_engine::executor::Executor;
+use rue_engine::gates::Approval;
 use rue_engine::hook::{
-    HookExecutor, HookRegistry, HookScheduler, HookSink, LineLink, Registered, Registration,
-    HOOK_PROTOCOL,
+    HookAcceptor, HookApproval, HookExecutor, HookNotify, HookRegistry, HookScheduler, HookSink,
+    LineLink, Registered, Registration, HOOK_PROTOCOL,
 };
 use rue_engine::host::Host;
 use rue_engine::journal::{Journal, Sink};
 use rue_engine::lifecycle::Engine;
+use rue_engine::notify::Notify;
 use rue_engine::peer::my_uid;
 use rue_engine::scheduler::Scheduler;
+use rue_engine::secrets::{Acceptor, Mailbox};
 use rue_engine::sign::Signer;
 use rue_engine::store::{schema_of, SchemaError, Store};
 use rue_surface::resolve::site::SiteDecl;
@@ -143,6 +147,98 @@ fn hosts_of(sb: &SiteBindings) -> Vec<Host> {
             }
         })
         .collect()
+}
+
+/// The `approval via:` binding of the site block. `always()` opens every
+/// gate without a proof, so a live daemon refuses to build it: it exists
+/// for daemon dry-run mode, where nothing is reserved and no executor is
+/// called (7.9).
+fn approval_of(
+    decl: &SiteDecl,
+    hooks: &Arc<HookRegistry>,
+    deadline: Duration,
+    dry_run: bool,
+) -> Result<Option<Box<dyn Approval>>, Refusal> {
+    let Some(b) = &decl.approval else {
+        return Ok(None);
+    };
+    match b.kind.as_str() {
+        "always" if !dry_run => Err(refused(
+            "approval via: always() opens every gate without a proof; rued admits it only with --dry-run",
+        )),
+        "always" => Ok(Some(Box::new(rue_bindings::approval::Always))),
+        "hook" => Ok(Some(Box::new(HookApproval {
+            name: b.arg.clone().unwrap_or_default(),
+            registry: hooks.clone(),
+            deadline,
+        }))),
+        other => Err(refused(format!(
+            "approval via: {other}() is not an approval binding"
+        ))),
+    }
+}
+
+/// The `secrets deliver_to:` acceptors, in the order the site declares
+/// them: the first that accepts ends the delivery (5.13). The
+/// `requester()` handle is returned too, because the control handler
+/// drains what it took into the reply of the verb that produced it.
+fn acceptors_of(
+    decl: &SiteDecl,
+    hooks: &Arc<HookRegistry>,
+    deadline: Duration,
+    mailbox: &Mailbox,
+) -> Result<Vec<Box<dyn Acceptor>>, Refusal> {
+    let requester = Requester::new(mailbox.clone());
+    let mut v: Vec<Box<dyn Acceptor>> = Vec::new();
+    for b in &decl.deliver_to {
+        match b.kind.as_str() {
+            "requester" => v.push(Box::new(requester.clone())),
+            "hold" => {
+                // `until:` is a duration or `:wane`; the engine resolves
+                // `:wane` per instance (R0104 where it cannot).
+                let d = b
+                    .kws
+                    .iter()
+                    .find(|(k, _)| k == "until")
+                    .and_then(|(_, val)| val.trim_end_matches('s').parse::<u64>().ok())
+                    .map(rue_core::model::Duration::new);
+                v.push(Box::new(Hold::new(d)));
+            }
+            "hook" => v.push(Box::new(HookAcceptor {
+                name: b.arg.clone().unwrap_or_default(),
+                registry: hooks.clone(),
+                deadline,
+            })),
+            other => {
+                return Err(refused(format!(
+                    "secrets deliver_to: {other}() is not an acceptor"
+                )))
+            }
+        }
+    }
+    Ok(v)
+}
+
+/// The `notify via:` binding of the site block.
+fn notify_of(
+    decl: &SiteDecl,
+    hooks: &Arc<HookRegistry>,
+    deadline: Duration,
+) -> Result<Option<Box<dyn Notify>>, Refusal> {
+    let Some(b) = &decl.notify else {
+        return Ok(None);
+    };
+    match b.kind.as_str() {
+        "stdout" => Ok(Some(Box::new(rue_bindings::notify::Stdout))),
+        "hook" => Ok(Some(Box::new(HookNotify {
+            name: b.arg.clone().unwrap_or_default(),
+            registry: hooks.clone(),
+            deadline,
+        }))),
+        other => Err(refused(format!(
+            "notify via: {other}() is not a notify binding"
+        ))),
+    }
 }
 
 /// The `backstop scheduler:` binding of the site block. A site with none
@@ -406,6 +502,16 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
     for s in schedulers_of(&sb.decl, &hooks, deadline, cfg.dry_run)? {
         engine.add_scheduler(s);
     }
+    if let Some(a) = approval_of(&sb.decl, &hooks, deadline, cfg.dry_run)? {
+        engine.set_approval(a);
+    }
+    if let Some(n) = notify_of(&sb.decl, &hooks, deadline)? {
+        engine.set_notify(n);
+    }
+    let mailbox = Mailbox::new();
+    for a in acceptors_of(&sb.decl, &hooks, deadline, &mailbox)? {
+        engine.add_acceptor(a);
+    }
     if let Some(d) = sb.decl.skew_tolerance {
         engine.set_skew_tolerance(d);
     }
@@ -433,6 +539,7 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
         subscribers,
         hook_deadline: deadline,
         dry_run: cfg.dry_run,
+        mailbox,
     });
     for spec in &cfg.spawn {
         spawn_child(spec, &daemon)?;

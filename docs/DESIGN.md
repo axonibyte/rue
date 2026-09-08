@@ -229,6 +229,31 @@ unit. What is in place:
   `task_scheduler()` creates one task per instance; `launchd()` writes a
   property list beside the artifact. `hook(:name)` carries the five ops of
   the protocol's `scheduler` kind.
+- **Gates and proofs** (`engine/src/gates.rs`, 5.11): the request digest
+  over a 32-byte nonce from the platform's CSPRNG, the plan's content, its
+  parameters, its wane, the instant of the request and the host contract;
+  the scoped digests a proof binds to, so a proof for one step verifies for
+  no other and none for the plan. The approval binding publishes its
+  authenticators, renders a challenge over a digest and returns a verdict
+  on a proof; a proof accepted is journaled `ProofAccepted{scope,
+  authenticator, submitter}` and one refused is `Denied`. A gate is
+  satisfied when some satisfying path has a proof from every authenticator
+  on it and its wait has elapsed, which makes a wait factor weight that
+  accrues: the reap pass opens a plan gate whose hour has passed with no
+  further proof. The host contract is the `HostRecord` fields of every host
+  the plan touches and every `static: true` probe on them, frozen at the
+  request and re-derived at approval and at apply; a change is R0301 and
+  every proof falls with it.
+- **Secrets** (`engine/src/secrets.rs`, 5.13): a secret output is
+  delivered when the producing step's completion is journaled, to the first
+  acceptor of `secrets deliver_to:` that takes it, and the engine then
+  holds nothing. `requester()` takes it only while a client is attached and
+  hands it to that client's reply; `hold()` keeps it in memory, gives it up
+  once to `rue reveal`, and drops it at its bound, when the instance ends,
+  and at a restart. A list every acceptor declines is `applied; secret
+  undelivered` and exit 7. Nothing about a secret reaches the store or a
+  journal entry but its label, and a secret in a hook message other than
+  the two that may carry one is dropped at the seam (R0305).
 - **Reconciliation and reclaim** (`engine/src/backstop.rs`, 7.7): at boot
   every instance directory on every reachable host is compared with the
   store; one the store does not know that holds an armed, unfired artifact
@@ -246,6 +271,23 @@ unit. What is in place:
   heartbeat thread and the accept loop; `--dry-run` for daemon dry-run
   mode; `--spawn NAME=COMMAND` for a hook child over stdio; rc.d and
   systemd files under `daemon/dist/`.
+
+Positions the gates and secrets unit takes where the roadmap is silent,
+for the owner. **The operator's own identity is the authenticator** a proof
+is verified against unless `rue approve --authenticator` names another; the
+submitter is always the channel's peer identity, and the journal keeps both.
+**`rue approve` with nothing on stdin prints the challenge** rather than
+submitting an empty proof, so the token a binding wants can be fetched with
+the same verb that spends it. **The host contract is the host records plus
+the static probes**, hashed as canonical JSON: the roadmap names its
+contents (5.1) and leaves the shape to the engine. **An approval binding
+that opens every gate is a property of the binding**, not a special case in
+the gate evaluator: `always()` answers `approves_everything`, and `rued`
+refuses to build it outside `--dry-run`. **A binding that fails while being
+offered a secret has not accepted it**: the failure is journaled and the
+next acceptor is offered the value, because a refusal to answer is not a
+refusal to take. **A reveal is journaled** as well as the delivery, since
+that is the moment the value reaches a person.
 
 Positions the backstop unit takes where the roadmap is silent, for the
 owner. **One artifact undoes one host's steps**, so a backstop whose

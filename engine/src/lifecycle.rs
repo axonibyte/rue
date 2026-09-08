@@ -33,7 +33,7 @@ use rue_core::explain::undo_line;
 use rue_core::intent::{effective_wane, infer_intent, Intent};
 use rue_core::interference::{maywrite, step_facts, writes};
 use rue_core::ir::PlanIr;
-use rue_core::journal::Event as J;
+use rue_core::journal::{Event as J, Scope};
 use rue_core::ledger::{Instance as Held, Ledger, LedgerCode};
 use rue_core::model::{
     Ack, Drift, Duration, FootprintEntry, ForceName, Guard, HostRef, Instant, Item, Kind, Locus,
@@ -48,11 +48,14 @@ use crate::backstop::{BackstopState, Disarm, DEFAULT_SKEW_TOLERANCE};
 use crate::clock::Clock;
 use crate::executor::{BootstrapState, ExecCaps, Executor, Observation, ProbeRun, RPrim, Resolved};
 use crate::footprint::{self, Decision, Marker, Watched};
+use crate::gates::{hex, nonce, Approval, Proof};
 use crate::host::Host;
 use crate::journal::{About, Journal, JournalError};
+use crate::notify::{Level, Notify};
 use crate::region;
 use crate::resolve::{resolve_body, Env};
 use crate::scheduler::Scheduler;
+use crate::secrets::Acceptor;
 use crate::store::{Store, StoreError};
 
 // ---------------------------------------------------------------------------
@@ -162,6 +165,18 @@ pub struct InstanceRecord {
     /// The `:target` backstop, once the engine has put it on its host.
     #[serde(default)]
     pub backstop: Option<BackstopState>,
+    /// The request nonce, hex (5.11): core draws no randomness.
+    #[serde(default)]
+    pub nonce: String,
+    /// The host contract frozen at the request, hex; a change is R0301.
+    #[serde(default)]
+    pub host_contract: String,
+    /// Proofs accepted, by scope.
+    #[serde(default)]
+    pub proofs: Vec<Proof>,
+    /// A secret this instance produced that no acceptor took: exit 7.
+    #[serde(default)]
+    pub secret_undelivered: bool,
     /// Knells acknowledged up front (`--ack`), by step.
     pub acks: Vec<u32>,
     /// Guard names forced by the request or a `recant --force`.
@@ -347,6 +362,8 @@ pub struct BootReport {
     pub orphaned: Vec<(String, String)>,
     /// Directories with no artifact or a fired marker, removed.
     pub reclaimed: Vec<(String, String)>,
+    /// Held secrets a restart dropped: none survives it (5.13).
+    pub secrets_dropped: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +394,12 @@ pub struct Engine {
     pub(crate) executors: Vec<Box<dyn Executor>>,
     /// The `backstop scheduler` bindings, by the name a host declares.
     pub(crate) schedulers: Vec<Box<dyn Scheduler>>,
+    /// The `approval via:` binding, if the site bound one.
+    pub(crate) approval: Option<Box<dyn Approval>>,
+    /// `secrets deliver_to:`, in the order the site declares them.
+    pub(crate) acceptors: Vec<Box<dyn Acceptor>>,
+    /// `notify via:`, where an unbounded state says so each reap pass.
+    pub(crate) notify: Option<Box<dyn Notify>>,
     pub(crate) hosts: BTreeMap<String, Host>,
     pub(crate) controller: Host,
     pub(crate) ledger: Ledger,
@@ -527,6 +550,9 @@ impl Engine {
             controller: controller_host(),
             ledger,
             schedulers: Vec::new(),
+            approval: None,
+            acceptors: Vec::new(),
+            notify: None,
             skew_tolerance: DEFAULT_SKEW_TOLERANCE,
             settling,
             trace: Vec::new(),
@@ -558,6 +584,22 @@ impl Engine {
             .into_iter()
             .map(|h| (h.name().to_string(), h))
             .collect();
+    }
+
+    /// The `approval via:` binding: what renders a challenge over a
+    /// request digest and verifies the proofs that come back.
+    pub fn set_approval(&mut self, a: Box<dyn Approval>) {
+        self.approval = Some(a);
+    }
+
+    /// The `notify via:` binding.
+    pub fn set_notify(&mut self, n: Box<dyn Notify>) {
+        self.notify = Some(n);
+    }
+
+    /// A `secrets deliver_to:` acceptor, appended in the site's order.
+    pub fn add_acceptor(&mut self, a: Box<dyn Acceptor>) {
+        self.acceptors.push(a);
     }
 
     /// A `backstop scheduler` binding; a host names one in its record.
@@ -628,8 +670,8 @@ impl Engine {
         Ok(self.store.write_meta("settle", &m)?)
     }
 
-    fn outcome(&self, rec: &InstanceRecord) -> Outcome {
-        let exit = exit_of(rec.state, false);
+    pub(crate) fn outcome(&self, rec: &InstanceRecord) -> Outcome {
+        let exit = exit_of(rec.state, rec.secret_undelivered);
         let line = match rec.state {
             State::Closed => format!(
                 "{}: closed ({})",
@@ -656,6 +698,9 @@ impl Engine {
             State::DriftHeld => format!("{}: drift-held at steps {:?}", rec.id, rec.drift_held),
             State::Applied if rec.rehearsal => {
                 format!("{}: applied (rehearsal: no reservation)", rec.id)
+            }
+            State::Applied | State::Committed if rec.secret_undelivered => {
+                format!("{}: applied; secret undelivered", rec.id)
             }
             s => format!("{}: {}", rec.id, s.to_string().to_lowercase()),
         };
@@ -838,6 +883,10 @@ impl Engine {
             staged: Vec::new(),
             force_drift: false,
             backstop: None,
+            nonce: hex(&nonce()),
+            host_contract: String::new(),
+            proofs: Vec::new(),
+            secret_undelivered: false,
             acks: opts.acks.clone(),
             forced: opts.forced.clone(),
             ledger_ids: Vec::new(),
@@ -875,18 +924,26 @@ impl Engine {
         self.ledger = ledger;
         self.store.write_ledger(&self.ledger)?;
         rec.requested_at = Some(now);
+        // The host contract is frozen here: the records of every host the
+        // plan touches and every `static: true` probe on them. The request
+        // digest covers it, so a change invalidates the proofs (R0301).
+        if !rec.rehearsal {
+            rec.host_contract = hex(&self.host_contract(&rec).hash().0);
+        }
         self.step(&mut rec, E::Request)?;
         self.log(&rec, J::Requested)?;
-        if rec.plan().gate.is_some() && !rec.rehearsal {
-            let window = rec
-                .plan()
-                .gate
-                .as_ref()
-                .and_then(|g| g.window)
-                .or(rec.ir.site.max_wait);
-            rec.approval_deadline = window.map(|w| now.plus(w));
-            self.persist(&rec)?;
-            return Ok(self.outcome(&rec));
+        if let Some(g) = rec.plan().gate.as_ref().map(|g| g.expr.clone()) {
+            if !rec.rehearsal && !self.gate_satisfied(&rec, Scope::Plan, &g) {
+                let window = rec
+                    .plan()
+                    .gate
+                    .as_ref()
+                    .and_then(|g| g.window)
+                    .or(rec.ir.site.max_wait);
+                rec.approval_deadline = window.map(|w| now.plus(w));
+                self.persist(&rec)?;
+                return Ok(self.outcome(&rec));
+            }
         }
         self.approve(&mut rec)?;
         self.persist(&rec)?;
@@ -894,7 +951,10 @@ impl Engine {
         Ok(self.outcome(&rec))
     }
 
-    fn approve(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+    pub(crate) fn approve(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+        if self.refuse_on_contract_change(rec)? {
+            return Ok(());
+        }
         let now = self.clock.now();
         rec.approved_at = Some(now);
         if !rec.permanent {
@@ -911,7 +971,11 @@ impl Engine {
     }
 
     /// Feed one event to the machine; refuse per its verdict; persist.
-    fn step(&mut self, rec: &mut InstanceRecord, ev: E) -> Result<Outcome_, EngineError> {
+    pub(crate) fn step(
+        &mut self,
+        rec: &mut InstanceRecord,
+        ev: E,
+    ) -> Result<Outcome_, EngineError> {
         let outcome = states::transition(rec.ctx(), rec.state, ev);
         if outcome != Verdict_::NotApplicable {
             self.trace.push(Transition {
@@ -943,8 +1007,12 @@ impl Engine {
 
     /// Walk the plan from its start, skipping what is applied, until it
     /// ends or the instance leaves `Applying`.
-    fn walk(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+    pub(crate) fn walk(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
         if rec.state != State::Applying {
+            return Ok(());
+        }
+        // Re-derived at apply, the third of the three times 5.11 names.
+        if self.refuse_on_contract_change(rec)? {
             return Ok(());
         }
         let items = rec.plan().body.clone();
@@ -1341,10 +1409,20 @@ impl Engine {
                 ),
             );
         }
-        // A step gate: proofs arrive with the gates unit; the wait is real now.
-        if s.gate.is_some() {
-            let bound = s.window.or(rec.ir.site.max_wait);
-            return self.wait(rec, n, "gate", None, bound);
+        // A step gate: satisfied by the proofs for this step's scope and
+        // the wait accrued since the request, or the instance waits.
+        if let Some(g) = s.gate.clone() {
+            if !rec.rehearsal && !self.gate_satisfied(rec, Scope::Step(n), &g) {
+                self.log(
+                    rec,
+                    J::StepGateRequested {
+                        step: n,
+                        step_digest: self.scope_digest(rec, Scope::Step(n)),
+                    },
+                )?;
+                let bound = s.window.or(rec.ir.site.max_wait);
+                return self.wait(rec, n, "gate", None, bound);
+            }
         }
         for g in &op.pre {
             if let Some(flow) = self.guard_blocks(rec, n, g, &s.force)? {
@@ -1466,14 +1544,24 @@ impl Engine {
                     }
                 }
                 let alias = s.alias.clone().unwrap_or_else(|| op.id.clone());
+                let mut secrets: Vec<(String, String)> = Vec::new();
                 for o in &op.outputs {
-                    if !o.secret {
-                        if let Some(v) = out.outputs.get(&o.name) {
-                            rec.outputs.insert(format!("{alias}.{}", o.name), v.clone());
-                        }
+                    let Some(v) = out.outputs.get(&o.name) else {
+                        continue;
+                    };
+                    if o.secret {
+                        secrets.push((format!("{alias}.{}", o.name), v.clone()));
+                    } else {
+                        rec.outputs.insert(format!("{alias}.{}", o.name), v.clone());
                     }
                 }
                 self.log(rec, J::StepDone { step: n })?;
+                // Delivery is at the completion the journal just recorded:
+                // the credential is live from that instant, and the step's
+                // undo is what revokes it (5.13).
+                for (label, value) in &secrets {
+                    self.deliver_secret(rec, label, value)?;
+                }
                 self.after_step(rec, n, iteration, &op, vars)
             }
             Err(e) => {
@@ -1941,7 +2029,13 @@ impl Engine {
             .map(|r| format!("reverted after refusal: {r}"))
             .unwrap_or_else(|| "reverted".into());
         rec.closed_reason = Some(reason.clone());
-        self.log(rec, J::Closed { reason })?;
+        self.log(
+            rec,
+            J::Closed {
+                reason: reason.clone(),
+            },
+        )?;
+        self.drop_secrets(rec, &reason)?;
         self.release(rec)?;
         self.remove_dirs(rec)?;
         self.persist(rec)
@@ -2070,7 +2164,7 @@ impl Engine {
         Ok(report)
     }
 
-    fn release(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+    pub(crate) fn release(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
         for lid in rec.ledger_ids.drain(..) {
             self.ledger = self.ledger.release(&lid);
         }
@@ -2293,6 +2387,7 @@ impl Engine {
             },
         )?;
         rec.closed_reason = Some(format!("abandoned by {by}: {reason}"));
+        self.drop_secrets(&rec, "abandoned")?;
         self.log(
             &rec,
             J::Closed {
@@ -2308,6 +2403,7 @@ impl Engine {
         let mut rec = self.load(id)?;
         self.step(&mut rec, E::Cancel)?;
         self.log(&rec, J::Cancelled)?;
+        self.drop_secrets(&rec, "cancelled")?;
         rec.closed_reason = Some("cancelled".into());
         self.log(
             &rec,
@@ -2328,6 +2424,9 @@ impl Engine {
             ..ReapReport::default()
         };
         let now = self.clock.now();
+        for line in self.expire_secrets()? {
+            report.actions.push(line);
+        }
         for rec in self.instances()? {
             let mut rec = rec;
             if states::terminal(rec.state) {
@@ -2339,6 +2438,21 @@ impl Engine {
                         .push(format!("{}: the backstop fired after abandon", rec.id));
                 }
                 continue;
+            }
+            // Pending: a wait factor may have accrued enough weight to
+            // open the gate without another proof (5.11).
+            if rec.state == State::Pending {
+                if let Some(g) = rec.plan().gate.as_ref().map(|g| g.expr.clone()) {
+                    if self.gate_satisfied(&rec, Scope::Plan, &g) {
+                        self.approve(&mut rec)?;
+                        self.persist(&rec)?;
+                        self.walk(&mut rec)?;
+                        report
+                            .actions
+                            .push(format!("{}: the plan gate opened", rec.id));
+                        continue;
+                    }
+                }
             }
             // Pending: the approval window.
             if rec.state == State::Pending {
@@ -2389,6 +2503,19 @@ impl Engine {
                 || (rec.permanent && matches!(rec.state, State::Held | State::Deferred))
             {
                 report.notify.push((rec.id.clone(), rec.state));
+                // Unbounded states are re-notified every pass: what ends
+                // them is a person, and one message can be missed (5.9).
+                if let Some(n) = self.notify.as_mut() {
+                    let _ = n.deliver(
+                        Level::Blocked,
+                        &rec.id,
+                        &format!(
+                            "{} since {}: only an operator ends this",
+                            rec.state,
+                            rec.requested_at.map(|i| i.unix_s).unwrap_or(0)
+                        ),
+                    );
+                }
             }
             if self.settling {
                 continue;
@@ -2620,6 +2747,7 @@ impl Engine {
                 }
             }
         }
+        report.secrets_dropped = self.drop_secrets_at_boot()?;
         let (orphaned, reclaimed) = self.reconcile()?;
         report.orphaned = orphaned;
         report.reclaimed = reclaimed;
@@ -2641,7 +2769,7 @@ impl Engine {
     }
 }
 
-enum Outcome_ {
+pub(crate) enum Outcome_ {
     Moved,
     Stayed,
 }

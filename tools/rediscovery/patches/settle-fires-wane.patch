@@ -2,9 +2,9 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1600,7 +1600,7 @@
-             {
-                 report.notify.push((rec.id.clone(), rec.state));
+@@ -2517,7 +2517,7 @@
+                     );
+                 }
              }
 -            if self.settling {
 +            if self.settling && std::env::var_os("RUE_NEVER_SET").is_some() {

@@ -195,3 +195,68 @@ fn the_surface_spelling() {
         "group(humans())"
     );
 }
+
+#[test]
+fn a_gate_is_satisfied_by_a_path_whose_authenticators_are_all_proved() {
+    // Two of oncall, alice and driver.
+    let g = GateExpr::Thresh {
+        n: 2,
+        factors: vec![auth("oncall"), auth("alice"), auth("driver")],
+    };
+    let zero = Duration::new(0);
+    assert!(!satisfied(&auths(), &g, &[], zero));
+    assert!(!satisfied(&auths(), &g, &["oncall".into()], zero));
+    assert!(satisfied(
+        &auths(),
+        &g,
+        &["oncall".into(), "driver".into()],
+        zero
+    ));
+    // A proof from an authenticator the gate does not name counts for
+    // nothing.
+    assert!(!satisfied(
+        &auths(),
+        &g,
+        &["oncall".into(), "requester".into()],
+        zero
+    ));
+    // A non-human authenticator still needs its proof: weight is not
+    // consent.
+    assert!(!satisfied(&auths(), &g, &["driver".into()], zero));
+}
+
+#[test]
+fn a_wait_factor_is_weight_that_accrues_and_says_when_it_will() {
+    // One human, or a two-hour wait.
+    let g = GateExpr::Thresh {
+        n: 2,
+        factors: vec![
+            auth("oncall"),
+            Factor::Wait {
+                duration: Duration::new(7_200),
+                weight: 2,
+            },
+        ],
+    };
+    assert!(!satisfied(&auths(), &g, &[], Duration::new(7_199)));
+    assert!(satisfied(&auths(), &g, &[], Duration::new(7_200)));
+    // With no proofs the gate opens by wait alone; the wait is what is
+    // left to do.
+    assert_eq!(
+        satisfiable_at(&auths(), &g, &[]),
+        Some(Duration::new(7_200))
+    );
+    // A gate no proof can reach says so.
+    let unreachable = GateExpr::Single(auth("nobody"));
+    assert_eq!(satisfiable_at(&auths(), &unreachable, &[]), None);
+    assert!(!satisfied(
+        &auths(),
+        &unreachable,
+        &["nobody".into()],
+        zero()
+    ));
+}
+
+fn zero() -> Duration {
+    Duration::new(0)
+}

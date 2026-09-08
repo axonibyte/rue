@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rue_core::ir::PlanIr;
-use rue_core::journal::{Entry, Event as J};
+use rue_core::journal::{Entry, Event as J, Scope};
 use rue_core::ledger::LedgerCode;
 use rue_core::model::{Duration as RDuration, ForceName, Mode};
 use rue_core::states::RCode;
@@ -41,6 +41,7 @@ use crate::hook::{HookRegistry, LineLink, Registered, Registration, HOOK_PROTOCO
 use crate::journal::Sink;
 use crate::lifecycle::{ApplyOptions, Engine, EngineError, InstanceRecord, Outcome};
 use crate::peer::{peer_cred, user_name, PeerCred};
+use crate::secrets::Mailbox;
 
 pub const CONTROL_PROTOCOL: u32 = 1;
 
@@ -320,6 +321,9 @@ pub struct Daemon {
     pub subscribers: Arc<Subscribers>,
     pub hook_deadline: Duration,
     pub dry_run: bool,
+    /// What `requester()` delivered while this connection's verb ran: the
+    /// attached client is this one, and the reply carries what it took.
+    pub mailbox: Mailbox,
 }
 
 impl fmt::Debug for Daemon {
@@ -640,6 +644,15 @@ fn status_json(r: &InstanceRecord) -> Value {
     })
 }
 
+/// The scope a proof binds to: the plan by default, a step when one is
+/// named, the ack scope when the verb is `ack`.
+fn scope_of(args: &Value) -> Result<Scope, ControlError> {
+    match args.get("step").and_then(Value::as_u64) {
+        Some(n) => Ok(Scope::Step(n as u32)),
+        None => Ok(Scope::Plan),
+    }
+}
+
 fn arg_str<'a>(args: &'a Value, name: &str) -> Result<&'a str, ControlError> {
     args.get(name)
         .and_then(Value::as_str)
@@ -679,6 +692,36 @@ fn admin(op: &Operator, verb: &str) -> Result<(), ControlError> {
 }
 
 pub fn dispatch(
+    daemon: &Daemon,
+    op: &Operator,
+    verb: &str,
+    args: &Value,
+) -> Result<Value, ControlError> {
+    // A client is attached for exactly the length of its verb, which is
+    // what `requester()` means by "the attached client, if any" (5.13).
+    daemon.mailbox.attach(true);
+    let out = dispatch_inner(daemon, op, verb, args);
+    daemon.mailbox.attach(false);
+    let mut out = out?;
+    // What `requester()` took while the verb ran goes back in its reply,
+    // and nowhere else.
+    if let Some(id) = out
+        .get("instance")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    {
+        let taken = daemon.mailbox.drain(&id);
+        if !taken.is_empty() {
+            out["secrets"] = json!(taken
+                .into_iter()
+                .map(|(label, value)| json!({ "label": label, "value": value }))
+                .collect::<Vec<_>>());
+        }
+    }
+    Ok(out)
+}
+
+fn dispatch_inner(
     daemon: &Daemon,
     op: &Operator,
     verb: &str,
@@ -842,6 +885,68 @@ pub fn dispatch(
             Ok(
                 json!({ "host": host, "state": state, "ready": state.ready(), "commands": commands }),
             )
+        }
+        // `rue approve <instance> [--step N] < token` and `rue ack`
+        // (5.11): a proof is bound to the request digest and its scope,
+        // and the operator's own identity is the authenticator unless one
+        // is named. With no proof the challenge is printed instead.
+        "challenge" => {
+            let id = arg_str(args, "instance")?;
+            scoped(daemon, op, id)?;
+            let scope = scope_of(args)?;
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            let text = e
+                .challenge(
+                    id,
+                    scope,
+                    args.get("context").and_then(Value::as_str).unwrap_or(""),
+                )
+                .map_err(engine_error)?;
+            Ok(json!({ "challenge": text }))
+        }
+        "approve" => {
+            let id = arg_str(args, "instance")?;
+            scoped(daemon, op, id)?;
+            let scope = scope_of(args)?;
+            let auth = args
+                .get("authenticator")
+                .and_then(Value::as_str)
+                .unwrap_or(&op.name);
+            let proof = args.get("proof").and_then(Value::as_str).unwrap_or("");
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            let out = e
+                .approve_proof(id, scope, auth, proof, &op.name)
+                .map_err(engine_error)?;
+            Ok(outcome_json(&out))
+        }
+        "ack" => {
+            let id = arg_str(args, "instance")?;
+            scoped(daemon, op, id)?;
+            let step = args
+                .get("step")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| ControlError::new("protocol", "ack needs a step"))?
+                as u32;
+            let reason = arg_str(args, "reason")?;
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            let proof = args.get("proof").and_then(Value::as_str).unwrap_or("");
+            let out = e
+                .ack(id, step, reason, proof, &op.name)
+                .map_err(engine_error)?;
+            Ok(outcome_json(&out))
+        }
+        // `rue reveal <instance>`: what `hold()` kept, once (5.13).
+        "reveal" => {
+            let id = arg_str(args, "instance")?;
+            scoped(daemon, op, id)?;
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            match e.reveal(id).map_err(engine_error)? {
+                Some((label, value)) => Ok(json!({ "label": label, "value": value })),
+                None => Err(ControlError::new(
+                    "no_secret",
+                    format!("no secret is held for {id}"),
+                )),
+            }
         }
         // `rue reclaim <host> <instance>`: an orphaned instance directory
         // (7.7). Refused while the artifact is armed with its scheduler

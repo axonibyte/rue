@@ -1,0 +1,13 @@
+# Reverts: `:hold` under `mode: :auto` is not refused (D-086, 5.9) -- holding then deciding is a legitimate outcome; here an auto plan reverts straight past the hold.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/states.rs
++++ b/core/src/states.rs
+@@ -245,7 +245,7 @@
+         }
+         (S::Applying, E::CommitItem) => permanent_only(To(S::Committed)),
+         (S::Applying, E::Refuse) => {
+-            if ctx.earlier_hold {
++            if ctx.earlier_hold && ctx.mode != Mode::Auto {
+                 To(S::Held)
+             } else {
+                 To(S::Reverting)

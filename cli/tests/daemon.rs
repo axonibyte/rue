@@ -475,3 +475,43 @@ fn a_group_that_does_not_exist_refuses_to_start() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("does not exist"));
     let _ = std::io::stderr().flush();
 }
+
+#[test]
+fn always_opens_every_gate_so_a_live_daemon_refuses_to_bind_it() {
+    let d = TempDir::new("always");
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let me = user_name(my_uid()).unwrap();
+    let site_file = d.0.join("plan.rue");
+    // The same site with `approval via: always()`.
+    let text = site(&me, true).replace(
+        "  execute via: hook(:act, transport: :api)\n",
+        "  execute via: hook(:act, transport: :api)\n  approval via: always()\n",
+    );
+    fs::write(&site_file, format!("{text}{PLAN}")).unwrap();
+    let run = |extra: &[&str]| {
+        let mut c = Command::new(rued_bin());
+        c.arg("run")
+            .arg("--site")
+            .arg(&site_file)
+            .arg("--store")
+            .arg(d.0.join("store"))
+            .arg("--socket")
+            .arg(d.0.join("s.sock"))
+            .arg("--group")
+            .arg(my_gid().to_string())
+            .args(extra);
+        c
+    };
+    // Live: refused, and the reason names the flag that would admit it.
+    let out = run(&[]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        err.contains("always()") && err.contains("--dry-run"),
+        "{err}"
+    );
+    // Dry-run: admitted, and the daemon serves.
+    let daemon = Daemon::start(&d.0, &site_file, &["--dry-run"]);
+    daemon.stop();
+    let _ = std::io::stderr().flush();
+}

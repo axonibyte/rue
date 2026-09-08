@@ -20,11 +20,12 @@ pub struct GateReport {
     pub wait_alone_at: Option<Duration>,
 }
 
-/// One way of satisfying a gate: which human authenticators it uses and the
-/// longest wait it needs. Non-human authenticators contribute weight and no
-/// human.
+/// One way of satisfying a gate: which authenticators it uses, which of
+/// them are human, and the longest wait it needs. Non-human authenticators
+/// contribute weight and no human, and both kinds need a proof.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Path {
+    auths: Vec<String>,
     humans: Vec<String>,
     wait: Option<Duration>,
 }
@@ -42,6 +43,7 @@ fn factor_paths(auths: &[Authenticator], f: &Factor) -> Vec<Path> {
     match f {
         Factor::Auth { id, .. } => match auths.iter().find(|a| a.id == *id) {
             Some(a) => vec![Path {
+                auths: vec![id.clone()],
                 humans: if a.human {
                     vec![id.clone()]
                 } else {
@@ -56,12 +58,14 @@ fn factor_paths(auths: &[Authenticator], f: &Factor) -> Vec<Path> {
             .iter()
             .filter(|a| a.human)
             .map(|a| Path {
+                auths: vec![a.id.clone()],
                 humans: vec![a.id.clone()],
                 wait: None,
             })
             .collect(),
         Factor::Group { expr, .. } => satisfying_paths(auths, expr),
         Factor::Wait { duration, .. } => vec![Path {
+            auths: Vec::new(),
             humans: Vec::new(),
             wait: Some(*duration),
         }],
@@ -71,7 +75,10 @@ fn factor_paths(auths: &[Authenticator], f: &Factor) -> Vec<Path> {
 fn merge(p: &Path, q: &Path) -> Path {
     let mut humans = p.humans.clone();
     humans.extend(q.humans.iter().cloned());
+    let mut auths = p.auths.clone();
+    auths.extend(q.auths.iter().cloned());
     Path {
+        auths: nub(&auths),
         humans: nub(&humans),
         wait: match (p.wait, q.wait) {
             (None, x) | (x, None) => x,
@@ -108,6 +115,7 @@ fn satisfying_paths(auths: &[Authenticator], g: &GateExpr) -> Vec<Path> {
                 }
                 // A path per choice of one satisfying path for each chosen factor.
                 let mut acc = vec![Path {
+                    auths: Vec::new(),
                     humans: Vec::new(),
                     wait: None,
                 }];
@@ -140,6 +148,38 @@ pub fn report(auths: &[Authenticator], g: &GateExpr) -> GateReport {
             .filter_map(|p| p.wait)
             .min(),
     }
+}
+
+/// Whether a gate is satisfied now: some satisfying path every one of
+/// whose authenticators has a proof and whose wait has elapsed (5.11).
+/// `elapsed` is measured from the request, which is what makes a wait
+/// factor a weight that accrues rather than a state.
+pub fn satisfied(
+    auths: &[Authenticator],
+    g: &GateExpr,
+    proofs: &[String],
+    elapsed: Duration,
+) -> bool {
+    satisfying_paths(auths, g).iter().any(|p| {
+        p.auths.iter().all(|id| proofs.iter().any(|x| x == id))
+            && p.wait.is_none_or(|w| elapsed.seconds >= w.seconds)
+    })
+}
+
+/// The earliest a gate could be satisfied given the proofs it already has:
+/// the shortest wait over the paths whose authenticators are all proved,
+/// or zero when one is satisfied now. `None` when no path can be reached
+/// with these proofs.
+pub fn satisfiable_at(
+    auths: &[Authenticator],
+    g: &GateExpr,
+    proofs: &[String],
+) -> Option<Duration> {
+    satisfying_paths(auths, g)
+        .iter()
+        .filter(|p| p.auths.iter().all(|id| proofs.iter().any(|x| x == id)))
+        .map(|p| p.wait.unwrap_or(Duration::new(0)))
+        .min()
 }
 
 fn named(g: &GateExpr) -> Vec<String> {

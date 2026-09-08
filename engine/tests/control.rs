@@ -74,6 +74,7 @@ fn daemon(
         subscribers,
         hook_deadline: Duration::from_millis(500),
         dry_run,
+        mailbox: Default::default(),
     });
     (d, sink, hooks, w)
 }
@@ -626,4 +627,49 @@ fn a_registered_hook_connection_may_also_act_as_an_operator() {
     let r = c.call("apply", json!({ "ir": plan_ir("p"), "params": {} }));
     assert_eq!(r.pointer("/result/state"), Some(&json!("Applied")), "{r}");
     let _ = BTreeMap::<String, String>::new();
+}
+
+#[test]
+fn a_secret_is_dropped_from_every_hook_message_but_the_two_that_may_carry_one() {
+    use rue_engine::hook::{guard_secrets, DROPPED};
+    use serde_json::json;
+
+    // `execute.run` carries the resolved body, secrets and all: one of the
+    // four messages of 5.13.
+    let mut run = json!({
+        "kind": "execute",
+        "op": "run",
+        "body": [{ "run": { "cmd": { "text": "login", "secret": false },
+                            "env": [["PW", { "text": "s3cr3t", "secret": true }]] } }],
+    });
+    assert!(guard_secrets(&mut run).is_empty());
+    assert!(
+        serde_json::to_string(&run).unwrap().contains("s3cr3t"),
+        "the permitted message keeps it"
+    );
+
+    // `secrets.deliver` likewise.
+    let mut deliver = json!({ "kind": "secrets", "op": "deliver", "value": { "text": "s3cr3t", "secret": true } });
+    assert!(guard_secrets(&mut deliver).is_empty());
+
+    // Anything else loses the value and keeps the shape (R0305).
+    let mut probe = json!({
+        "kind": "probe",
+        "op": "observe",
+        "probe": { "body": [{ "run": { "cmd": { "text": "s3cr3t", "secret": true } } }] },
+    });
+    let dropped = guard_secrets(&mut probe);
+    assert_eq!(dropped.len(), 1, "{dropped:?}");
+    let text = serde_json::to_string(&probe).unwrap();
+    assert!(!text.contains("s3cr3t"), "{text}");
+    assert!(text.contains(DROPPED), "{text}");
+
+    // A notify message with a secret in its body loses it too.
+    let mut notify = json!({
+        "kind": "notify",
+        "op": "deliver",
+        "body": { "text": "s3cr3t", "secret": true },
+    });
+    assert_eq!(guard_secrets(&mut notify), vec!["body".to_string()]);
+    assert!(!serde_json::to_string(&notify).unwrap().contains("s3cr3t"));
 }

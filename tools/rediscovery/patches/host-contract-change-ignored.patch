@@ -1,0 +1,15 @@
+# Reverts: the host contract is re-derived at request, approval and apply, and a change is R0301 with every proof falling (5.11, D-043); here a change goes unnoticed.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/gates.rs
++++ b/engine/src/gates.rs
+@@ -183,6 +183,10 @@
+         let Some((expected, observed)) = self.contract_changed(rec) else {
+             return Ok(false);
+         };
++        let _ = (expected, observed);
++        if true {
++            return Ok(false);
++        }
+         self.log(rec, J::HostContractChanged { expected, observed })?;
+         rec.proofs.clear();
+         rec.refusal = Some(

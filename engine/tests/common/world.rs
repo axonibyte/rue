@@ -54,13 +54,23 @@ pub fn site() -> Site {
     Site {
         hosts: vec![record(OWNER, &["ssh"]), record(FAR, &["carrier-pigeon"])],
         transports: vec!["ssh".into()],
-        authenticators: vec![rue_core::model::Authenticator {
-            id: "oncall".into(),
-            human: true,
-        }],
+        authenticators: vec![
+            rue_core::model::Authenticator {
+                id: "oncall".into(),
+                human: true,
+            },
+            rue_core::model::Authenticator {
+                id: "alice".into(),
+                human: true,
+            },
+            rue_core::model::Authenticator {
+                id: "driver".into(),
+                human: false,
+            },
+        ],
         max_wait: Some(Duration::new(600)),
         scheduler_present: vec![OWNER.into()],
-        secrets_deliver_to: vec![],
+        secrets_deliver_to: vec!["requester".into(), "hold".into()],
     }
 }
 

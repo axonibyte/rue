@@ -148,6 +148,37 @@ the scripts it would send (a secret never bare, the artifact's helpers
 carried, the family's lock tool), and asks the real client with no key and
 no known host, which must fail before any command runs.
 
+## Gates, proofs and secrets
+
+`engine/tests/gates.rs` runs plans over a fake approval binding: a plan
+gate holds an instance at Pending (exit 6) until proofs from two humans
+arrive, and the journal names the authenticator and the submitter
+separately; the plan, step and ack digests of one request all differ, and
+another request's differ again, so no proof crosses a scope or a request;
+a wait factor accrues and the reap pass opens the gate with no further
+proof; a refused proof is `Denied` and accumulates nothing; a host
+contract that changes between the request and the approval is R0301 and
+takes every proof with it; a step gate waits for a proof of its own step
+and is not opened by the plan's; a knell waits for an acknowledgement that
+carries both a reason and a token the binding accepts, and a refused token
+leaves the knell shut with nothing run; and a `:hold` under `mode: :auto`
+is not refused but reverts at wane.
+
+`engine/tests/secrets.rs` runs a plan whose op declares a secret output
+over fake acceptors: the first acceptor that takes it ends the delivery
+and the second is never offered it; the value reaches neither the journal
+nor the record the store holds; a list every acceptor declines is exit 7
+with `SecretUndelivered`; a held secret is revealed once and dropped when
+the instance reverts; a hold drops at its bound on the reap pass and a
+restart drops what is left, journaled `daemon_restart`; and a
+`hold(until: :wane)` on a permanent plan with no `max_wait` is R0104.
+`bindings/tests/secrets.rs` tests the real `requester()` and `hold()` on
+their own. `engine/tests/control.rs` checks the R0305 guard at the hook
+seam: `execute.run` and `secrets.deliver` keep a secret, every other
+message loses the value and keeps its shape. `cli/tests/daemon.rs` starts
+`rued` against a site declaring `approval via: always()` and finds it
+refused, then admitted with `--dry-run`.
+
 ## Backstops, arming and reconciliation
 
 `engine/tests/backstop.rs` runs plans with a `:target` backstop over the

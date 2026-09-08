@@ -113,3 +113,9 @@ abandon-leaves-artifact-unjournaled.patch	1	-	cargo	abandon_disarms_where_it_can
 temporary-heartbeat-refused.patch	1	-	cargo	the_heartbeat_is_written_at_its_interval_and_a_temporary_plan_may_have_one	-
 same-anchor-two-plans-allowed.patch	1	-	cargo	distinct_regions_on_one_fact_coexist_and_the_same_anchor_never_does	-
 manifest-read-unlocked.patch	1	-	cargo	a_region_undo_holds_the_host_lock_from_decision_to_write_and_the_manifest_is_never_written_in_place	-
+hold-under-auto-refused.patch	1	-	cargo	a_hold_under_auto_mode_is_not_refused_and_reverts_at_wane	-
+secret-held-past-revert.patch	1	-	cargo	a_held_secret_is_revealed_once_and_dropped_when_the_instance_ends	-
+ack-without-token.patch	1	-	cargo	an_acknowledgement_the_binding_refuses_is_denied_and_the_knell_stays_shut	-
+host-contract-change-ignored.patch	1	-	cargo	a_host_contract_that_changes_after_the_request_refuses_and_takes_the_proofs	-
+secret-in-forbidden-hook-message.patch	1	-	cargo	a_secret_is_dropped_from_every_hook_message_but_the_two_that_may_carry_one	-
+secret-journaled.patch	1	-	cargo	a_secret_goes_to_the_first_acceptor_that_takes_it_and_never_to_the_store	-

@@ -11,7 +11,7 @@
 //! it is the last line printed.
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -101,6 +101,38 @@ enum Verb {
         instance: String,
         #[arg(long = "force", value_delimiter = ',')]
         force: Vec<String>,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Fetch a secret a `hold()` acceptor kept, exactly once.
+    Reveal {
+        instance: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Submit a proof for a plan-entry or step gate; the token is read
+    /// from stdin. With nothing on stdin the challenge is printed and
+    /// nothing is submitted.
+    Approve {
+        instance: String,
+        /// The step whose gate this proof is for; the plan gate otherwise.
+        #[arg(long)]
+        step: Option<u32>,
+        /// The authenticator the proof is from; your own identity by
+        /// default.
+        #[arg(long)]
+        authenticator: Option<String>,
+        #[command(flatten)]
+        channel: Channel,
+    },
+    /// Acknowledge a knell: a proof in the ack scope and a reason for the
+    /// journal. The token is read from stdin.
+    Ack {
+        instance: String,
+        #[arg(long)]
+        step: u32,
+        #[arg(long)]
+        reason: String,
         #[command(flatten)]
         channel: Channel,
     },
@@ -484,6 +516,48 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             &channel,
             "recant",
             serde_json::json!({ "instance": instance, "force": force }),
+            out,
+        ),
+        Verb::Reveal { instance, channel } => over_channel(
+            &channel,
+            "reveal",
+            serde_json::json!({ "instance": instance }),
+            out,
+        ),
+        Verb::Approve {
+            instance,
+            step,
+            authenticator,
+            channel,
+        } => {
+            let proof = read_stdin()?;
+            let mut args = serde_json::json!({ "instance": instance });
+            if let Some(n) = step {
+                args["step"] = serde_json::json!(n);
+            }
+            if proof.trim().is_empty() {
+                return over_channel(&channel, "challenge", args, out);
+            }
+            args["proof"] = serde_json::json!(proof.trim());
+            if let Some(a) = authenticator {
+                args["authenticator"] = serde_json::json!(a);
+            }
+            over_channel(&channel, "approve", args, out)
+        }
+        Verb::Ack {
+            instance,
+            step,
+            reason,
+            channel,
+        } => over_channel(
+            &channel,
+            "ack",
+            serde_json::json!({
+                "instance": instance,
+                "step": step,
+                "reason": reason,
+                "proof": read_stdin()?.trim(),
+            }),
             out,
         ),
         Verb::Renew {
@@ -892,6 +966,18 @@ fn parse_duration(s: &str) -> Result<u64> {
         "d" => n * 86400,
         other => anyhow::bail!("duration unit {other} in {s}"),
     })
+}
+
+/// A proof or token on stdin. Nothing there is not an error: `rue
+/// approve` with no token prints the challenge instead of submitting.
+fn read_stdin() -> anyhow::Result<String> {
+    use std::io::IsTerminal;
+    if io::stdin().is_terminal() {
+        return Ok(String::new());
+    }
+    let mut s = String::new();
+    io::stdin().read_to_string(&mut s)?;
+    Ok(s)
 }
 
 fn main() -> ExitCode {
