@@ -162,6 +162,21 @@ enum Verb {
         #[command(flatten)]
         channel: Channel,
     },
+    /// Admin: remove an orphaned instance directory from a host (7.7).
+    /// Refused while its artifact is armed and the scheduler entry is
+    /// present (R0405); `--force` then needs a `--reason`.
+    Reclaim {
+        host: String,
+        instance: String,
+        /// Reclaim an armed artifact anyway, having read it.
+        #[arg(long)]
+        force: bool,
+        /// Why, for the journal. Required with --force.
+        #[arg(long, default_value = "")]
+        reason: String,
+        #[command(flatten)]
+        channel: Channel,
+    },
     /// Admin: bindings, executors, schedulers, bootstrap, sinks and modes,
     /// as the daemon sees them.
     Doctor {
@@ -536,6 +551,23 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             &channel,
             "bootstrap",
             serde_json::json!({ "host": host }),
+            out,
+        ),
+        Verb::Reclaim {
+            host,
+            instance,
+            force,
+            reason,
+            channel,
+        } => over_channel(
+            &channel,
+            "reclaim",
+            serde_json::json!({
+                "host": host,
+                "instance": instance,
+                "force": force,
+                "reason": reason,
+            }),
             out,
         ),
         Verb::Doctor { channel } => over_channel(&channel, "doctor", serde_json::json!({}), out),

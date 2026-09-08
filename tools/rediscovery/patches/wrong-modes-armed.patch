@@ -1,0 +1,13 @@
+# Reverts: an instance directory whose modes are not the ones 7.7 requires refuses arming (R0406); here the artifact is armed into it anyway.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/backstop.rs
++++ b/engine/src/backstop.rs
+@@ -307,7 +307,7 @@
+         match ex.instance_dir_list(&host) {
+             Ok(dirs) => {
+                 if let Some(d) = dirs.iter().find(|d| d.instance == id) {
+-                    if !d.modes_ok {
++                    if false && !d.modes_ok {
+                         return Ok(Err(format!(
+                             "R0406: the instance directory of {id} on {} has the wrong modes; arming refused",
+                             host.name()

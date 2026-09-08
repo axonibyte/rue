@@ -27,8 +27,9 @@ boolean `ok` is R0303.
 | `execute` | `run` | `host`, `instance`, `body` (resolved primitives), `env`, `secrets` | `output: {stdout, outputs: {name: value}}`, `facts` |
 | `execute` | `read_fact` | `host`, `shape` | `content` (the file's text, or absent) |
 | `execute` | `bootstrap_state` | `host` | `state: {rue_root, group, instances_dir, lock, modes_ok}` |
+| `execute` | `clock` | `host` | `epoch_s` (the host's own clock, for the arm-time skew probe, R0403) |
 | `execute` | `instance_dir_create`, `instance_dir_remove` | `host`, `instance` | |
-| `execute` | `instance_dir_list` | `host` | `dirs: [{instance, armed, fired}]` |
+| `execute` | `instance_dir_list` | `host` | `dirs: [{instance, armed, fired, modes_ok}]` |
 | `execute` | `put_file` | `host`, `instance`, `rel`, `content`, `mode` | |
 | `execute` | `replace_file` | `host`, `instance`, `rel`, `content` | |
 | `execute` | `get_file` | `host`, `instance`, `rel` | `content` |
@@ -46,7 +47,20 @@ boolean `ok` is R0303.
 The `execute` ops beyond `run` are the instance-directory contract (7.7)
 a hook that registers with `filesystem: true` must serve; a hook without a
 filesystem is never asked them, and a `:target` undo on its host is refused
-before `do` (R0408).
+before `do` (R0408). `armed` is the artifact's presence in the directory
+and `modes_ok` whether it carries the modes 7.7 requires: the engine reads
+the first at reconciliation and the second when it arms (R0406).
+
+`execute.clock` is the one optional op: a hook that does not serve it
+answers `ok: false`, and the engine records that no skew probe is possible
+on that host rather than assuming the clocks agree.
+
+The `scheduler` ops are the target-side entry that runs a rendered
+artifact. `install` creates it, `disarm` removes it and `present` reports
+it; `arm` and `rearm` carry a `deadline` for a scheduler that enforces the
+time itself, and a scheduler whose entry is periodic (the artifact
+comparing the `deadline` file the engine writes) has nothing to do in
+them. A `present` of `"unknown"` is never read as absence.
 
 A `body` in `execute.run` is the engine's resolved primitives: each a
 JSON object with one key naming the primitive (`run`, `write`, `remove`,

@@ -6,6 +6,7 @@
 //! later module reads time through, so no module ever calls the system time
 //! directly and the simulation and the tests can drive time by hand.
 
+pub mod backstop;
 pub mod clock;
 pub mod control;
 pub mod executor;
@@ -17,5 +18,6 @@ pub mod lifecycle;
 pub mod peer;
 pub mod region;
 pub mod resolve;
+pub mod scheduler;
 pub mod sign;
 pub mod store;

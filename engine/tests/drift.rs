@@ -430,8 +430,16 @@ fn a_region_undo_holds_the_host_lock_from_decision_to_write_and_the_manifest_is_
     assert!(ev.iter().any(|e| e == "replace manifest"), "{ev:?}");
     assert!(!ev.iter().any(|e| e == "put manifest"), "{ev:?}");
     assert!(ev.iter().position(|e| e == "run") < ev.iter().position(|e| e == "put markers/1"));
+    let before_undo = w.ssh.events().len();
     w.engine.recant(&out.id, &[]).unwrap();
     let ev = w.ssh.events();
+    // Every read the decision makes is under the lock too: the lock comes
+    // first of everything the undo does on the host.
+    assert_eq!(
+        ev.get(before_undo).map(String::as_str),
+        Some("lock"),
+        "the lock is the undo's first act on the host, before any read: {ev:?}"
+    );
     // The undo's run sits between the lock and its release.
     let lock = ev
         .iter()

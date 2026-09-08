@@ -1,0 +1,35 @@
+# Reverts: a region undo holds the host lock from its first read through the write (5.2, 7.7); here the decision reads the facts unlocked and takes the lock only to write.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1983,15 +1983,7 @@
+             .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
+         // The host lock across a region undo: every read the decision
+         // makes and every write that follows see one world (5.2, 7.7).
+-        let _lock = if has_region {
+-            Some(
+-                self.executors[idx]
+-                    .host_lock(&host)
+-                    .map_err(|e| format!("host lock on {}: {e}", host.name()))?,
+-            )
+-        } else {
+-            None
+-        };
++        let mut _lock = None;
+         for (k, e, p) in &facts {
+             let bytes = self.executors[idx]
+                 .read_fact(&host, &e.shape)
+@@ -2060,6 +2052,13 @@
+             }
+         }
+         let has_dir = rec.dirs.contains(&host.name().to_string());
++        if has_region {
++            _lock = Some(
++                self.executors[idx]
++                    .host_lock(&host)
++                    .map_err(|e| format!("host lock on {}: {e}", host.name()))?,
++            );
++        }
+         if !body.is_empty() {
+             self.executors[idx]
+                 .run(&host, &id, &body)

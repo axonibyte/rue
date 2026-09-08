@@ -18,6 +18,7 @@ use rue_engine::executor::{Executor, FakeExecutor, FakeHandle, LocusKind};
 use rue_engine::host::Host;
 use rue_engine::journal::{Journal, MemorySink, Sink};
 use rue_engine::lifecycle::Engine;
+use rue_engine::scheduler::FakeSchedulerHandle;
 use rue_engine::store::Store;
 
 use super::TempDir;
@@ -86,6 +87,25 @@ pub fn op(id: &str) -> Op {
     o
 }
 
+/// An op the artifact can undo: one owned file, restored by footprint,
+/// undone on the target.
+pub fn covered(id: &str) -> Op {
+    let mut o = Op::new(
+        id,
+        vec![FootprintEntry::entry(Kind::Owned, &format!("file:/{id}"))],
+    );
+    o.do_ = vec![Prim::Write(rue_core::body::Write {
+        fact: rue_core::body::FactRef {
+            shape: format!("file:/{id}"),
+            anchor: None,
+        },
+        content: rue_core::body::lit("x"),
+    })];
+    o.undo = Undo::Restore;
+    o.undo_locus = rue_core::model::UndoLocus::Target;
+    o
+}
+
 pub fn step(o: Op) -> Item {
     Item::Step(StepI::new(o))
 }
@@ -132,6 +152,7 @@ pub struct World {
     pub local: FakeHandle,
     pub sink: MemorySink,
     pub clock: Arc<FakeClock>,
+    pub sched: FakeSchedulerHandle,
 }
 
 impl World {
@@ -145,7 +166,7 @@ impl World {
         let ssh = FakeExecutor::new(LocusKind::Ssh).shared();
         let local = FakeExecutor::new(LocusKind::Local).shared();
         let execs: Vec<Box<dyn Executor>> = vec![Box::new(ssh.clone()), Box::new(local.clone())];
-        let engine = Engine::open(
+        let mut engine = Engine::open(
             store,
             journal,
             clock.clone(),
@@ -153,6 +174,8 @@ impl World {
             vec![host(OWNER, &["ssh"]), host(FAR, &["carrier-pigeon"])],
         )
         .unwrap();
+        let sched = FakeSchedulerHandle::new();
+        engine.add_scheduler(Box::new(sched.clone()));
         World {
             dir,
             engine,
@@ -160,11 +183,12 @@ impl World {
             local,
             sink,
             clock,
+            sched,
         }
     }
 
-    /// Reopen the engine over the same store (a restart), executors and
-    /// sink carried over.
+    /// Reopen the engine over the same store (a restart), executors, sink
+    /// and scheduler carried over.
     pub fn restart(self) -> World {
         let World {
             dir,
@@ -173,13 +197,14 @@ impl World {
             local,
             sink,
             clock,
+            sched,
         } = self;
         drop(engine);
         let store = Store::open(&dir.join("store")).unwrap();
         let sinks: Vec<Box<dyn Sink>> = vec![Box::new(sink.clone())];
         let journal = Journal::open(&store, sinks, None).unwrap();
         let execs: Vec<Box<dyn Executor>> = vec![Box::new(ssh.clone()), Box::new(local.clone())];
-        let engine = Engine::open(
+        let mut engine = Engine::open(
             store,
             journal,
             clock.clone(),
@@ -187,6 +212,7 @@ impl World {
             vec![host(OWNER, &["ssh"]), host(FAR, &["carrier-pigeon"])],
         )
         .unwrap();
+        engine.add_scheduler(Box::new(sched.clone()));
         World {
             dir,
             engine,
@@ -194,6 +220,7 @@ impl World {
             local,
             sink,
             clock,
+            sched,
         }
     }
 

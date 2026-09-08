@@ -289,10 +289,26 @@ fn instance_directories_carry_their_modes_and_the_host_lock_holds() {
     assert!(!dir.join("deadline.rue-tmp").exists());
     let list = x.instance_dir_list(&h).unwrap();
     assert_eq!(list.len(), 1);
+    assert!(
+        !list[0].armed && list[0].modes_ok,
+        "no artifact yet, so nothing is armed: {:?}",
+        list[0]
+    );
+    // Armed is the artifact's presence: a heartbeat-only backstop writes
+    // no deadline, and reconciliation must not read that as reclaimable.
+    x.put_file(&h, "i-1", "artifact.sh", b"#!/bin/sh\n", 0o750)
+        .unwrap();
+    let list = x.instance_dir_list(&h).unwrap();
     assert!(list[0].armed && !list[0].fired);
     fs::write(dir.join("fired"), "").unwrap();
     let list = x.instance_dir_list(&h).unwrap();
     assert!(!list[0].armed && list[0].fired);
+    fs::remove_file(dir.join("fired")).unwrap();
+    // Wrong modes are what refuses arming (R0406), and the listing is
+    // where the engine reads them.
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!x.instance_dir_list(&h).unwrap()[0].modes_ok);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o2770)).unwrap();
     // The lock: held while the guard lives; a second taker waits.
     let guard = x.host_lock(&h).unwrap();
     let lock_path = d.0.join("lock");

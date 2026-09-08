@@ -1,0 +1,21 @@
+# Reverts: boot reconciliation never reclaims a directory holding an armed, unfired artifact (7.7, D-059); here every directory the store does not know is removed.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/backstop.rs
++++ b/engine/src/backstop.rs
+@@ -674,14 +674,8 @@
+                 if known.contains(&d.instance) {
+                     continue;
+                 }
+-                if d.armed && !d.fired {
+-                    self.journal_site_event(J::InstanceDirOrphaned {
+-                        host: host.name().to_string(),
+-                        instance: d.instance.clone(),
+-                        armed: true,
+-                    })?;
+-                    orphaned.push((host.name().to_string(), d.instance));
+-                    continue;
++                if false {
++                    orphaned.push((host.name().to_string(), d.instance.clone()));
+                 }
+                 let Some(i) = self.executor_index(&host) else {
+                     continue;

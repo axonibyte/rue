@@ -44,6 +44,7 @@ use rue_core::states::{self, Ctx, Event as E, Outcome as Verdict_, RCode, State}
 use rue_core::verdict::{Status, Verdict};
 use serde::{Deserialize, Serialize};
 
+use crate::backstop::{BackstopState, Disarm, DEFAULT_SKEW_TOLERANCE};
 use crate::clock::Clock;
 use crate::executor::{BootstrapState, ExecCaps, Executor, Observation, ProbeRun, RPrim, Resolved};
 use crate::footprint::{self, Decision, Marker, Watched};
@@ -51,6 +52,7 @@ use crate::host::Host;
 use crate::journal::{About, Journal, JournalError};
 use crate::region;
 use crate::resolve::{resolve_body, Env};
+use crate::scheduler::Scheduler;
 use crate::store::{Store, StoreError};
 
 // ---------------------------------------------------------------------------
@@ -157,6 +159,9 @@ pub struct InstanceRecord {
     /// `recant --force=drift`: drift under `:defer` is clobbered.
     #[serde(default)]
     pub force_drift: bool,
+    /// The `:target` backstop, once the engine has put it on its host.
+    #[serde(default)]
+    pub backstop: Option<BackstopState>,
     /// Knells acknowledged up front (`--ack`), by step.
     pub acks: Vec<u32>,
     /// Guard names forced by the request or a `recant --force`.
@@ -256,6 +261,9 @@ pub enum EngineError {
     },
     Journal(JournalError),
     Store(StoreError),
+    /// A refusal the world made, naming its own R-code (R0401, R0403,
+    /// R0404, R0405, R0406): the verb was admitted, the target refused.
+    Runtime(String),
     /// A malformed plan the checker should have refused.
     Internal(String),
 }
@@ -272,6 +280,7 @@ impl fmt::Display for EngineError {
             }
             EngineError::Journal(e) => write!(f, "{e}"),
             EngineError::Store(e) => write!(f, "{e}"),
+            EngineError::Runtime(s) => write!(f, "{s}"),
             EngineError::Internal(s) => write!(f, "internal: {s}"),
         }
     }
@@ -333,6 +342,11 @@ pub struct BootReport {
     pub lost: Vec<(String, u32)>,
     pub reobserved: Vec<(String, String)>,
     pub migrated: Option<(u32, u32)>,
+    /// Instance directories the store does not know that hold an armed,
+    /// unfired artifact: left where they are (7.7).
+    pub orphaned: Vec<(String, String)>,
+    /// Directories with no artifact or a fired marker, removed.
+    pub reclaimed: Vec<(String, String)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -357,15 +371,19 @@ pub struct Transition {
 }
 
 pub struct Engine {
-    store: Store,
-    journal: Journal,
-    clock: Arc<dyn Clock>,
-    executors: Vec<Box<dyn Executor>>,
-    hosts: BTreeMap<String, Host>,
-    controller: Host,
-    ledger: Ledger,
-    settling: bool,
-    trace: Vec<Transition>,
+    pub(crate) store: Store,
+    pub(crate) journal: Journal,
+    pub(crate) clock: Arc<dyn Clock>,
+    pub(crate) executors: Vec<Box<dyn Executor>>,
+    /// The `backstop scheduler` bindings, by the name a host declares.
+    pub(crate) schedulers: Vec<Box<dyn Scheduler>>,
+    pub(crate) hosts: BTreeMap<String, Host>,
+    pub(crate) controller: Host,
+    pub(crate) ledger: Ledger,
+    /// The site's `skew_tolerance` (7.7); 120s where the site declares none.
+    pub(crate) skew_tolerance: Duration,
+    pub(crate) settling: bool,
+    pub(crate) trace: Vec<Transition>,
 }
 
 impl fmt::Debug for Engine {
@@ -389,11 +407,19 @@ pub struct HostDoctor {
     pub executor: Option<String>,
     pub bootstrap: Option<BootstrapState>,
     pub scheduler: Option<String>,
+    /// The site bound a `backstop scheduler` by the name this host
+    /// declares. A host that names one the site never bound is R0401 when
+    /// a plan puts a backstop on it.
+    pub scheduler_bound: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DoctorReport {
     pub hosts: Vec<HostDoctor>,
+    /// Instance directories the store does not know that hold an armed
+    /// artifact: left in place by reconciliation, reclaimed by hand.
+    #[serde(default)]
+    pub orphans: Vec<(String, String)>,
     pub sinks: Vec<String>,
     pub signed: bool,
     pub settling: bool,
@@ -500,6 +526,8 @@ impl Engine {
                 .collect(),
             controller: controller_host(),
             ledger,
+            schedulers: Vec::new(),
+            skew_tolerance: DEFAULT_SKEW_TOLERANCE,
             settling,
             trace: Vec::new(),
         })
@@ -530,6 +558,16 @@ impl Engine {
             .into_iter()
             .map(|h| (h.name().to_string(), h))
             .collect();
+    }
+
+    /// A `backstop scheduler` binding; a host names one in its record.
+    pub fn add_scheduler(&mut self, s: Box<dyn Scheduler>) {
+        self.schedulers.push(s);
+    }
+
+    /// The site's declared skew tolerance for the arm-time clock probe.
+    pub fn set_skew_tolerance(&mut self, d: Duration) {
+        self.skew_tolerance = d;
     }
 
     pub fn add_executor(&mut self, e: Box<dyn Executor>) {
@@ -566,17 +604,17 @@ impl Engine {
         Ok(v)
     }
 
-    fn load(&self, id: &str) -> Result<InstanceRecord, EngineError> {
+    pub(crate) fn load(&self, id: &str) -> Result<InstanceRecord, EngineError> {
         self.store
             .read_instance(id)?
             .ok_or_else(|| EngineError::NoSuchInstance(id.to_string()))
     }
 
-    fn persist(&self, rec: &InstanceRecord) -> Result<(), EngineError> {
+    pub(crate) fn persist(&self, rec: &InstanceRecord) -> Result<(), EngineError> {
         Ok(self.store.write_instance(&rec.id, rec)?)
     }
 
-    fn log(&mut self, rec: &InstanceRecord, ev: J) -> Result<(), EngineError> {
+    pub(crate) fn log(&mut self, rec: &InstanceRecord, ev: J) -> Result<(), EngineError> {
         let at = self.clock.now();
         self.journal
             .record(&self.store, at, &rec.about(), ev, Vec::new())?;
@@ -631,7 +669,7 @@ impl Engine {
 
     // --- executors and hosts ------------------------------------------------
 
-    fn host_of(&self, name: &str) -> Option<Host> {
+    pub(crate) fn host_of(&self, name: &str) -> Option<Host> {
         if name == "controller" {
             return Some(self.controller.clone());
         }
@@ -640,7 +678,7 @@ impl Engine {
 
     /// The host a step acts on; `Err` names the output a bound host comes
     /// from (the step is deferred).
-    fn step_host(&self, rec: &InstanceRecord, op: &Op) -> Result<Host, String> {
+    pub(crate) fn step_host(&self, rec: &InstanceRecord, op: &Op) -> Result<Host, String> {
         let name = match &op.locus {
             Locus::Controller => return Ok(self.controller.clone()),
             Locus::Target => rec.plan().owner.clone(),
@@ -654,10 +692,16 @@ impl Engine {
     /// The executor for a host: `local()` for the controller; otherwise the
     /// first of the host's `reach` transports an executor serves.
     fn executor_for(&mut self, host: &Host) -> Option<&mut Box<dyn Executor>> {
-        let wanted: Vec<String> = if host.name() == "controller" {
-            vec!["local".to_string()]
+        self.executor_index(host).map(|i| &mut self.executors[i])
+    }
+
+    /// The same choice as an index, for a caller that must also borrow the
+    /// schedulers: two fields of the engine, borrowed disjointly.
+    pub(crate) fn executor_index(&self, host: &Host) -> Option<usize> {
+        let wanted: Vec<&str> = if host.name() == "controller" {
+            vec!["local"]
         } else {
-            host.record.reach.clone()
+            host.record.reach.iter().map(String::as_str).collect()
         };
         for t in wanted {
             if let Some(i) = self
@@ -665,7 +709,7 @@ impl Engine {
                 .iter()
                 .position(|e| e.locus().transport() == t)
             {
-                return Some(&mut self.executors[i]);
+                return Some(i);
             }
         }
         None
@@ -793,6 +837,7 @@ impl Engine {
             dirs: Vec::new(),
             staged: Vec::new(),
             force_drift: false,
+            backstop: None,
             acks: opts.acks.clone(),
             forced: opts.forced.clone(),
             ledger_ids: Vec::new(),
@@ -904,7 +949,10 @@ impl Engine {
         }
         let items = rec.plan().body.clone();
         let mut leaf = 1u32;
-        let flow = self.walk_items(rec, &items, 0, &mut leaf, &BTreeMap::new())?;
+        let mut flow = self.walk_items(rec, &items, 0, &mut leaf, &BTreeMap::new())?;
+        if matches!(flow, Flow::Continue) && rec.state == State::Applying {
+            flow = self.backstop_after_walk(rec)?;
+        }
         if matches!(flow, Flow::Continue) && rec.state == State::Applying {
             // Every leaf done and no commit() item: a temporary plan rests.
             self.step(rec, E::AllStepsDone)?;
@@ -1042,6 +1090,53 @@ impl Engine {
         }
     }
 
+    /// Install the backstop before the first covered step and arm it
+    /// before the step `arm_before` names (5.6). A refusal here refuses
+    /// the step: no step is committed before the backstop covering it is
+    /// armed.
+    fn backstop_before_leaf(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+    ) -> Result<Option<Flow>, EngineError> {
+        let Some(cov) = rue_core::backstop::coverage(rec.plan()) else {
+            return Ok(None);
+        };
+        if cov.covered.is_empty() {
+            return Ok(None);
+        }
+        if cov.installed_before.is_some_and(|first| n >= first) {
+            if let Err(why) = self.backstop_install(rec)? {
+                return self.refuse(rec, n, &why).map(Some);
+            }
+        }
+        if n >= cov.armed_before_step {
+            if let Err(why) = self.backstop_arm(rec)? {
+                return self.refuse(rec, n, &why).map(Some);
+            }
+        }
+        Ok(None)
+    }
+
+    /// Late arming: `arm_before` past the last step, so the backstop is
+    /// armed once the covered steps are done and the verdict states the
+    /// engine-only window.
+    fn backstop_after_walk(&mut self, rec: &mut InstanceRecord) -> Result<Flow, EngineError> {
+        let Some(cov) = rue_core::backstop::coverage(rec.plan()) else {
+            return Ok(Flow::Continue);
+        };
+        if cov.covered.is_empty() || rec.backstop.as_ref().is_some_and(|b| b.armed) {
+            return Ok(Flow::Continue);
+        }
+        if let Err(why) = self.backstop_install(rec)? {
+            return self.refuse(rec, cov.armed_before_step, &why);
+        }
+        if let Err(why) = self.backstop_arm(rec)? {
+            return self.refuse(rec, cov.armed_before_step, &why);
+        }
+        Ok(Flow::Continue)
+    }
+
     fn run_leaf(
         &mut self,
         rec: &mut InstanceRecord,
@@ -1050,11 +1145,17 @@ impl Engine {
         it: &Item,
         vars: &BTreeMap<String, String>,
     ) -> Result<Flow, EngineError> {
+        if let Some(flow) = self.backstop_before_leaf(rec, n)? {
+            return Ok(flow);
+        }
         match it {
             Item::Step(s) => self.run_step(rec, n, iteration, s, false, vars),
             Item::Knell(s) => self.run_step(rec, n, iteration, s, true, vars),
             Item::Confirm => {
                 self.step(rec, E::Confirm)?;
+                if let Err(why) = self.backstop_disarm(rec, Disarm::Confirmed)? {
+                    return self.refuse(rec, n, &why);
+                }
                 self.log(rec, J::Confirmed)?;
                 self.mark_applied(rec, n, iteration)?;
                 Ok(Flow::Continue)
@@ -1448,7 +1549,7 @@ impl Engine {
     /// An instance directory on a run-capable host, created before the
     /// first step there (7.7). A host that is not bootstrapped refuses
     /// (R0407).
-    fn ensure_instance_dir(
+    pub(crate) fn ensure_instance_dir(
         &mut self,
         rec: &mut InstanceRecord,
         host: &Host,
@@ -1662,6 +1763,9 @@ impl Engine {
 
     /// Remove the instance directories at close or commit.
     fn remove_dirs(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+        if let Err(why) = self.backstop_disarm(rec, Disarm::All)? {
+            self.log(rec, J::Refused { reason: why })?;
+        }
         let id = rec.id.clone();
         for name in rec.dirs.clone() {
             if let Some(host) = self.host_of(&name) {
@@ -1865,13 +1969,33 @@ impl Engine {
             .into_iter()
             .map(|(k, e, p)| (k, e.clone(), p.to_string()))
             .collect();
+        // Whether a sibling instance holds a region on each fact: the
+        // engine's own ledger, read before the host lock because nothing
+        // on the host can change it.
+        let foreign_by_shape: BTreeMap<String, bool> = facts
+            .iter()
+            .filter(|(_, e, _)| e.kind == Kind::Region)
+            .map(|(_, e, _)| (e.shape.clone(), self.foreign_region(rec, &host, &e.shape)))
+            .collect();
+        let idx = self
+            .executor_index(&host)
+            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
+        // The host lock across a region undo: every read the decision
+        // makes and every write that follows see one world (5.2, 7.7).
+        let _lock = if has_region {
+            Some(
+                self.executors[idx]
+                    .host_lock(&host)
+                    .map_err(|e| format!("host lock on {}: {e}", host.name()))?,
+            )
+        } else {
+            None
+        };
         for (k, e, p) in &facts {
-            let bytes = {
-                let ex = self
-                    .executor_for(&host)
-                    .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
-                ex.read_fact(&host, &e.shape).ok().flatten()
-            };
+            let bytes = self.executors[idx]
+                .read_fact(&host, &e.shape)
+                .ok()
+                .flatten();
             let current = footprint::digest_of(bytes.as_deref());
             let recorded = markers
                 .iter()
@@ -1887,7 +2011,7 @@ impl Engine {
             } else {
                 None
             };
-            let foreign = e.kind == Kind::Region && self.foreign_region(rec, &host, &e.shape);
+            let foreign = foreign_by_shape.get(&e.shape).copied().unwrap_or(false);
             let mut d = footprint::decide(e.kind, policy, changed, intact, foreign);
             if rec.force_drift {
                 d = match d {
@@ -1935,24 +2059,13 @@ impl Engine {
             }
         }
         let has_dir = rec.dirs.contains(&host.name().to_string());
-        let ex = self
-            .executor_for(&host)
-            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
-        // The host lock across a region undo: the decision above and the
-        // write below see one world.
-        let _lock = if has_region {
-            Some(
-                ex.host_lock(&host)
-                    .map_err(|e| format!("host lock on {}: {e}", host.name()))?,
-            )
-        } else {
-            None
-        };
         if !body.is_empty() {
-            ex.run(&host, &id, &body).map_err(|e| e.to_string())?;
+            self.executors[idx]
+                .run(&host, &id, &body)
+                .map_err(|e| e.to_string())?;
         }
         if has_dir {
-            let _ = ex.remove_file(&host, &id, &format!("markers/{n}"));
+            let _ = self.executors[idx].remove_file(&host, &id, &format!("markers/{n}"));
         }
         Ok(report)
     }
@@ -2002,15 +2115,22 @@ impl Engine {
                 Some(ex) => ex.bootstrap_state(&h).ok(),
                 None => None,
             };
+            let scheduler_bound = match &h.scheduler {
+                Some(n) => self.scheduler_named(&n.clone()).is_some(),
+                None => false,
+            };
             hosts.push(HostDoctor {
                 name: name.clone(),
                 executor,
                 bootstrap,
                 scheduler: h.scheduler.clone(),
+                scheduler_bound,
             });
         }
+        let orphans = self.orphans()?;
         Ok(DoctorReport {
             hosts,
+            orphans,
             sinks: self.journal.sink_names(),
             signed: self.journal.signed(),
             settling: self.settling,
@@ -2057,6 +2177,17 @@ impl Engine {
         let now = self.clock.now();
         match states::renew(now, deadline, within, wane) {
             Ok(d) => {
+                // The backstop is rearmed before the new expiry is the
+                // instance's: a rearm that fails refuses the renewal.
+                if let Err(why) = self.backstop_rearm(&mut rec, d)? {
+                    self.log(
+                        &rec,
+                        J::Refused {
+                            reason: why.clone(),
+                        },
+                    )?;
+                    return Err(EngineError::Runtime(why));
+                }
                 rec.deadline = Some(d);
                 self.log(&rec, J::Renewed)?;
                 self.persist(&rec)?;
@@ -2076,7 +2207,11 @@ impl Engine {
     pub fn confirm(&mut self, id: &str) -> Result<Outcome, EngineError> {
         let mut rec = self.load(id)?;
         self.step(&mut rec, E::Confirm)?;
+        if let Err(why) = self.backstop_disarm(&mut rec, Disarm::Confirmed)? {
+            return Err(EngineError::Runtime(why));
+        }
         self.log(&rec, J::Confirmed)?;
+        self.persist(&rec)?;
         Ok(self.outcome(&rec))
     }
 
@@ -2140,11 +2275,19 @@ impl Engine {
         let mut rec = self.load(id)?;
         self.step(&mut rec, E::Abandon)?;
         let not_reverted: Vec<u32> = rec.applied.iter().map(|a| a.step).collect();
+        // Disarm where the host is reachable; where it is not, the
+        // artifact stays armed and the journal says so (7.7).
+        let mut left_armed = Vec::new();
+        if rec.backstop.as_ref().is_some_and(|b| b.installed) {
+            if let Err(why) = self.backstop_disarm(&mut rec, Disarm::All)? {
+                left_armed.push(why);
+            }
+        }
         self.log(
             &rec,
             J::Abandoned {
                 steps_not_reverted: not_reverted,
-                artifacts_left_armed: Vec::new(),
+                artifacts_left_armed: left_armed,
                 by: by.into(),
                 reason: reason.into(),
             },
@@ -2188,6 +2331,13 @@ impl Engine {
         for rec in self.instances()? {
             let mut rec = rec;
             if states::terminal(rec.state) {
+                // An abandoned instance whose artifact was left armed: a
+                // later firing is accepted and visible (7.7).
+                if self.backstop_fired_after_abandon(&mut rec)? {
+                    report
+                        .actions
+                        .push(format!("{}: the backstop fired after abandon", rec.id));
+                }
                 continue;
             }
             // Pending: the approval window.
@@ -2228,6 +2378,12 @@ impl Engine {
                     .actions
                     .push(format!("{}: reaped after the approval window", rec.id));
                 continue;
+            }
+            // What a fired artifact left, read on this contact (R0402).
+            if self.backstop_read_fired(&mut rec)? {
+                report
+                    .actions
+                    .push(format!("{}: the backstop fired on its target", rec.id));
             }
             if matches!(rec.state, State::DriftHeld | State::Stuck)
                 || (rec.permanent && matches!(rec.state, State::Held | State::Deferred))
@@ -2464,6 +2620,9 @@ impl Engine {
                 }
             }
         }
+        let (orphaned, reclaimed) = self.reconcile()?;
+        report.orphaned = orphaned;
+        report.reclaimed = reclaimed;
         self.set_settling(false)?;
         Ok(report)
     }

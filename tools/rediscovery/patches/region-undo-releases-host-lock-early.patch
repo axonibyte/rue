@@ -1,12 +1,12 @@
-# Reverts: the host lock is held across the whole of a region undo, from the decision through the write (7.7); here it is released before the write.
+# Reverts: the host lock is held across the whole of a region undo, from the first read through the write (7.7); here it is released before the write.
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1948,6 +1948,7 @@
-         } else {
-             None
-         };
+@@ -2060,6 +2060,7 @@
+             }
+         }
+         let has_dir = rec.dirs.contains(&host.name().to_string());
 +        drop(_lock);
          if !body.is_empty() {
-             ex.run(&host, &id, &body).map_err(|e| e.to_string())?;
-         }
+             self.executors[idx]
+                 .run(&host, &id, &body)

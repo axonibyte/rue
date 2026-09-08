@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
-use rue_core::model::Tri;
+use rue_core::model::{Instant, Tri};
 use rue_engine::executor::{
     BootstrapState, ExecCaps, ExecError, Executor, HostLockGuard, InstanceDirState, LocusKind,
     Observation, Output, ProbeRun, RPrim, Resolved,
@@ -485,6 +485,20 @@ impl Executor for SshExecutor {
         }
     }
 
+    /// The target's clock, in one word on stdout: what an arm compares
+    /// with the controller's before it writes a deadline (R0403).
+    fn clock_now(&mut self, host: &Host) -> Result<Option<Instant>, ExecError> {
+        let out = self.exec_ok(host, "date +%s\n")?;
+        match out.trim().parse::<u64>() {
+            Ok(s) => Ok(Some(Instant::new(s))),
+            Err(_) => Err(ExecError::Failed(format!(
+                "{}: the clock probe answered {:?}, not an epoch second",
+                host.name(),
+                out.trim()
+            ))),
+        }
+    }
+
     fn bootstrap_state(&mut self, host: &Host) -> Result<BootstrapState, ExecError> {
         let script = format!(
             "{}\
@@ -528,7 +542,7 @@ impl Executor for SshExecutor {
 
     fn instance_dir_list(&mut self, host: &Host) -> Result<Vec<InstanceDirState>, ExecError> {
         let script = format!(
-            "{}for d in \"$ROOT\"/instances/*/; do [ -d \"$d\" ] || continue; n=$(basename \"$d\"); a=0; f=0; [ -f \"$d/fired\" ] && f=1; [ -f \"$d/deadline\" ] && [ \"$f\" -eq 0 ] && a=1; echo \"$n $a $f\"; done\n",
+            "{}for d in \"$ROOT\"/instances/*/; do [ -d \"$d\" ] || continue; n=$(basename \"$d\"); a=0; f=0; [ -f \"$d/fired\" ] && f=1; for x in artifact.sh artifact.ps1 artifact.py; do [ -f \"$d/$x\" ] && [ \"$f\" -eq 0 ] && a=1; done; m=$(stat -f %Lp \"$d\" 2>/dev/null || stat -c %a \"$d\" 2>/dev/null || echo 0); echo \"$n $a $f $m\"; done\n",
             prelude(host, None)
         );
         let out = self.exec_ok(host, &script)?;
@@ -539,10 +553,12 @@ impl Executor for SshExecutor {
                 let n = it.next()?;
                 let a = it.next()? == "1";
                 let f = it.next()? == "1";
+                let m = it.next().unwrap_or("0");
                 Some(InstanceDirState {
                     instance: n.to_string(),
                     armed: a,
                     fired: f,
+                    modes_ok: m == "2770",
                 })
             })
             .collect())

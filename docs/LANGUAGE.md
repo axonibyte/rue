@@ -201,6 +201,21 @@ is no, anything else is unknown) and its stdout is the fact's value; a
 `run` in an op binds a declared output with a line `rue-output NAME=VALUE`
 on its stdout, which the executor removes from the run's text.
 
+`backstop scheduler:` names the binding that holds the target-side entry
+for a rendered artifact, and every host the inventory marks as scheduled
+uses it. `cron()` keeps one fenced region of the host's crontab, anchored
+by the instance id and edited under the host lock, running the artifact
+every minute; `task_scheduler()` keeps one scheduled task per instance;
+`launchd()` keeps a job whose property list sits beside the artifact.
+All three are periodic, and the deadline they honor is the `deadline`
+file in the instance directory, which the engine writes when it arms and
+rewrites when a renewal moves it: that is what the verdict means by
+"self-enforced on `<host>`" and by cron's granularity of about a minute.
+`hook(:name)` hands the same five ops to a site's own scheduler, which may
+hold the time itself. `skew_tolerance` bounds how far a target's clock may
+be from the controller's when the engine arms (R0403); with no line it is
+120 seconds.
+
 The `operators` block is the daemon's identity model (docs/control-protocol.md):
 `identity :name, user: "account" | :socket_owner, operator_for: :all |
 [:plan, ...], admin: true, subscribe: [:plan, ...]`. `user:` is required

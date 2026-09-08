@@ -843,6 +843,27 @@ pub fn dispatch(
                 json!({ "host": host, "state": state, "ready": state.ready(), "commands": commands }),
             )
         }
+        // `rue reclaim <host> <instance>`: an orphaned instance directory
+        // (7.7). Refused while the artifact is armed with its scheduler
+        // entry present (R0405) unless forced with a reason.
+        "reclaim" => {
+            admin(op, verb)?;
+            let host = arg_str(args, "host")?;
+            let instance = arg_str(args, "instance")?;
+            let force = args
+                .get("force")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let reason = args
+                .get("reason")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            let line = e
+                .reclaim(host, instance, force, reason)
+                .map_err(engine_error)?;
+            Ok(json!({ "reclaimed": line }))
+        }
         "doctor" => {
             admin(op, verb)?;
             let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());

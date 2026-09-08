@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rue_core::journal::Entry;
-use rue_core::model::{HostRecord, Tri};
+use rue_core::model::{HostRecord, Instant, Tri};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -38,6 +38,7 @@ use crate::executor::{
 };
 use crate::host::Host;
 use crate::journal::Sink;
+use crate::scheduler::{Job, Presence, Scheduler};
 
 pub const HOOK_PROTOCOL: u32 = 1;
 
@@ -509,6 +510,22 @@ impl Executor for HookExecutor {
         serde_json::from_value(s.clone()).map_err(|e| ExecError::Failed(format!("R0303: {e}")))
     }
 
+    /// `execute.clock`: a hook that does not serve it refuses, and the
+    /// engine reads that as no skew probe rather than a broken hook.
+    fn clock_now(&mut self, host: &Host) -> Result<Option<Instant>, ExecError> {
+        let reply = match self.call(execute_op("clock", host.name(), None)) {
+            Ok(r) => r,
+            Err(ExecError::Failed(_)) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        match reply.get("epoch_s").and_then(Value::as_u64) {
+            Some(s) => Ok(Some(Instant::new(s))),
+            None => Err(ExecError::Failed(
+                "R0303: execute.clock without epoch_s".into(),
+            )),
+        }
+    }
+
     fn instance_dir_create(&mut self, host: &Host, instance: &str) -> Result<(), ExecError> {
         self.call(execute_op(
             "instance_dir_create",
@@ -658,5 +675,90 @@ impl InventoryHost {
             rue_root: None,
             facts,
         }
+    }
+}
+
+/// `backstop scheduler: hook(:name)`: the hook as a scheduler binding
+/// (7.5). The engine still owns the instance directory; this carries the
+/// five ops of the `scheduler` kind.
+pub struct HookScheduler {
+    pub name: String,
+    pub registry: Arc<HookRegistry>,
+    pub deadline: Duration,
+}
+
+impl HookScheduler {
+    fn call(&self, request: Value) -> Result<Value, ExecError> {
+        let (link, _) = self
+            .registry
+            .link(&self.name)
+            .map_err(|e| ExecError::Unreachable(e.to_string()))?;
+        link.call(request, self.deadline).map_err(|e| match e {
+            HookError::Silent => ExecError::Silent,
+            HookError::Refused(r) => ExecError::Failed(r),
+            HookError::Contract(m) => ExecError::Failed(format!("R0303: {m}")),
+            HookError::Unregistered(n) => {
+                ExecError::Unreachable(format!("hook {n} not registered"))
+            }
+            HookError::Io(m) => ExecError::Io(m),
+        })
+    }
+
+    fn op(&self, op: &str, host: &Host, job: &Job, deadline: Option<u64>) -> Result<(), ExecError> {
+        self.call(scheduler_op(op, host.name(), &job.artifact, deadline))
+            .map(|_| ())
+    }
+}
+
+impl Scheduler for HookScheduler {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn install(&mut self, _ex: &mut dyn Executor, host: &Host, job: &Job) -> Result<(), ExecError> {
+        self.op("install", host, job, None)
+    }
+
+    fn arm(
+        &mut self,
+        _ex: &mut dyn Executor,
+        host: &Host,
+        job: &Job,
+        deadline: Instant,
+    ) -> Result<(), ExecError> {
+        self.op("arm", host, job, Some(deadline.unix_s))
+    }
+
+    fn rearm(
+        &mut self,
+        _ex: &mut dyn Executor,
+        host: &Host,
+        job: &Job,
+        deadline: Instant,
+    ) -> Result<(), ExecError> {
+        self.op("rearm", host, job, Some(deadline.unix_s))
+    }
+
+    fn disarm(&mut self, _ex: &mut dyn Executor, host: &Host, job: &Job) -> Result<(), ExecError> {
+        self.op("disarm", host, job, None)
+    }
+
+    fn present(
+        &mut self,
+        _ex: &mut dyn Executor,
+        host: &Host,
+        job: &Job,
+    ) -> Result<Presence, ExecError> {
+        let reply = self.call(scheduler_op("present", host.name(), &job.artifact, None))?;
+        Ok(match reply.get("present") {
+            Some(Value::Bool(true)) => Presence::Present,
+            Some(Value::Bool(false)) => Presence::Absent,
+            Some(Value::String(s)) if s == "unknown" => Presence::Unknown,
+            _ => {
+                return Err(ExecError::Failed(
+                    "R0303: scheduler.present without a present field".into(),
+                ))
+            }
+        })
     }
 }

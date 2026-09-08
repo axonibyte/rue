@@ -148,6 +148,41 @@ the scripts it would send (a secret never bare, the artifact's helpers
 carried, the family's lock tool), and asks the real client with no key and
 no known host, which must fail before any command runs.
 
+## Backstops, arming and reconciliation
+
+`engine/tests/backstop.rs` runs plans with a `:target` backstop over the
+fake scheduler and the fake executor: the artifact is installed into the
+instance directory before the first covered step and armed before the step
+`arm_before` names, which on the target is the `deadline` landing before
+that step's `do`; a plan that arms late arms after its last covered step; a
+host whose scheduler the site never bound is R0401 and the plan reverts; a
+target clock ten minutes from the controller's is R0403 and nothing is
+armed; an instance directory with the wrong modes is R0406; a renewal
+rearms before the new expiry is the instance's, and a rearm the scheduler
+refuses is R0404 with the old expiry standing; `confirm()` takes the
+deadline away while a heartbeat trigger keeps the entry, and `commit()`
+takes the entry before the directory goes; a temporary plan may carry a
+heartbeat beside its `after:`, and the beat is written at arm and then at
+its interval; a `fired` marker is read on the next reap and journaled
+`BackstopFired` per step the target undid, which are no longer applied;
+boot leaves an armed orphan where it is (`InstanceDirOrphaned`) and
+reclaims a fired one; `rue reclaim` is refused while the artifact is armed
+with its entry present (R0405), refused when forced without a reason, and
+journaled `Reclaimed{forced: true}` when both are given; `abandon` names
+what it could not disarm.
+
+An artifact the abandon could not disarm is journaled
+`BackstopFiredAfterAbandon` when it fires, once and not twice, and `rue
+doctor` lists the armed orphans reconciliation left behind.
+
+`bindings/tests/schedulers.rs` reads what each scheduler binding would run
+on a target: `cron()`'s fenced crontab region, edited between a host lock
+and its release, its arm and rearm writing nothing, its presence read from
+a probe's exit status three-valued; `task_scheduler()`'s one task per
+instance and its refusal of an argument it cannot quote; `launchd()`'s
+property list beside the artifact. `cron()` is executed for real on the
+guests by the e2e harness; the other two are executed nowhere.
+
 ## Goldens
 
 The list of goldens is `rue_tenants::artifacts()`, computed from the case
@@ -435,3 +470,10 @@ and the roadmap's not-proven table says so.
   on a real machine.
 - On macOS, only an artifact golden: the darwin binaries are cross-built,
   clippy-clean and packaged, executed and signed nowhere until a Mac exists.
+  `launchd()` is written and unit-tested against the fake transport and has
+  never installed a job.
+- `task_scheduler()` likewise: the commands are checked, no Windows machine
+  has run one this phase.
+- The heartbeat under a real network partition: the beat is written and
+  read on one machine's clocks, never across a severed link (a vnet stage
+  is Phase 5's).

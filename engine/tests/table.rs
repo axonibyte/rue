@@ -119,6 +119,7 @@ fn seed(ctx: Ctx, state: State, ev: E) -> InstanceRecord {
         dirs: Vec::new(),
         staged: Vec::new(),
         force_drift: false,
+        backstop: None,
         acks: Vec::new(),
         forced: Vec::new(),
         ledger_ids: Vec::new(),

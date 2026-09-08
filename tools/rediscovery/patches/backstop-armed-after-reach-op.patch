@@ -1,0 +1,13 @@
+# Reverts: the backstop is armed before the step arm_before names (5.6, E0401); here the arm follows the step it covers.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1106,7 +1106,7 @@
+                 return self.refuse(rec, n, &why).map(Some);
+             }
+         }
+-        if n >= cov.armed_before_step {
++        if n > cov.armed_before_step {
+             if let Err(why) = self.backstop_arm(rec)? {
+                 return self.refuse(rec, n, &why).map(Some);
+             }

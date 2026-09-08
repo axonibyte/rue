@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use rue_core::model::Tri;
+use rue_core::model::{Instant, Tri};
 use serde::{Deserialize, Serialize};
 
 use crate::host::Host;
@@ -214,6 +214,9 @@ pub struct InstanceDirState {
     pub instance: String,
     pub armed: bool,
     pub fired: bool,
+    /// The directory carries the modes 7.7 requires (`2770`, group `rue`).
+    /// Arming a backstop into a directory with wrong modes is R0406.
+    pub modes_ok: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,6 +262,10 @@ pub trait Executor: Send {
     /// the file is absent. What a snapshot before `do` reads.
     fn read_fact(&mut self, host: &Host, shape: &str) -> Result<Option<Vec<u8>>, ExecError>;
     fn bootstrap_state(&mut self, host: &Host) -> Result<BootstrapState, ExecError>;
+    /// The target's own clock, for the skew probe an arm makes (R0403).
+    /// `None` is a transport that cannot ask, and the engine then says the
+    /// skew is unknown rather than pretending it is zero.
+    fn clock_now(&mut self, host: &Host) -> Result<Option<Instant>, ExecError>;
     // Instance directories, only where capabilities.filesystem.
     fn instance_dir_create(&mut self, host: &Host, instance: &str) -> Result<(), ExecError>;
     fn instance_dir_remove(&mut self, host: &Host, instance: &str) -> Result<(), ExecError>;
@@ -330,6 +337,11 @@ pub struct FakeExecutor {
     pub dirs: BTreeSet<(String, String)>,
     pub files: BTreeMap<(String, String, String), Vec<u8>>,
     pub bootstrap: BootstrapState,
+    /// What the target answers a clock probe with; `None` is a transport
+    /// with no clock probe at all.
+    pub clock: Option<Instant>,
+    /// The modes every instance directory this fake reports carries.
+    pub dir_modes_ok: bool,
 }
 
 impl FakeExecutor {
@@ -355,6 +367,8 @@ impl FakeExecutor {
                 lock: true,
                 modes_ok: true,
             },
+            clock: None,
+            dir_modes_ok: true,
         }
     }
 
@@ -484,10 +498,16 @@ impl Executor for FakeHandle {
         })
     }
     fn read_fact(&mut self, _host: &Host, shape: &str) -> Result<Option<Vec<u8>>, ExecError> {
-        self.with(|f| Ok(f.facts.get(shape).cloned()))
+        self.with(|f| {
+            note(&f.events, format!("read {shape}"));
+            Ok(f.facts.get(shape).cloned())
+        })
     }
     fn bootstrap_state(&mut self, _host: &Host) -> Result<BootstrapState, ExecError> {
         self.with(|f| Ok(f.bootstrap.clone()))
+    }
+    fn clock_now(&mut self, _host: &Host) -> Result<Option<Instant>, ExecError> {
+        self.with(|f| Ok(f.clock))
     }
     fn instance_dir_create(&mut self, host: &Host, instance: &str) -> Result<(), ExecError> {
         self.with(|f| {
@@ -510,14 +530,22 @@ impl Executor for FakeHandle {
             Ok(f.dirs
                 .iter()
                 .filter(|(h, _)| h == host.name())
-                .map(|(h, i)| InstanceDirState {
-                    instance: i.clone(),
-                    armed: f
+                .map(|(h, i)| {
+                    let fired = f
                         .files
-                        .contains_key(&(h.clone(), i.clone(), "deadline".to_string())),
-                    fired: f
-                        .files
-                        .contains_key(&(h.clone(), i.clone(), "fired".to_string())),
+                        .contains_key(&(h.clone(), i.clone(), "fired".to_string()));
+                    // Armed is the artifact's presence, as `local()` and
+                    // `ssh()` report it: a heartbeat-only backstop has no
+                    // deadline file.
+                    let artifact = ["artifact.sh", "artifact.ps1", "artifact.py"]
+                        .iter()
+                        .any(|r| f.files.contains_key(&(h.clone(), i.clone(), r.to_string())));
+                    InstanceDirState {
+                        instance: i.clone(),
+                        armed: artifact && !fired,
+                        fired,
+                        modes_ok: f.dir_modes_ok,
+                    }
                 })
                 .collect())
         })

@@ -240,16 +240,34 @@ fn instance_directory_ops_read_fact_and_bootstrap_state_go_through_scripts() {
     t.reply(0, "9\n");
     assert_eq!(x.get_file(&h, "i-3", "deadline").unwrap(), b"9\n");
     x.remove_file(&h, "i-3", "markers/1").unwrap();
-    t.reply(0, "i-3 1 0\ni-4 0 1\n");
+    t.reply(0, "i-3 1 0 2770\ni-4 0 1 755\n");
     let list = x.instance_dir_list(&h).unwrap();
     assert_eq!(
-        (list[0].instance.as_str(), list[0].armed, list[0].fired),
-        ("i-3", true, false)
+        (
+            list[0].instance.as_str(),
+            list[0].armed,
+            list[0].fired,
+            list[0].modes_ok
+        ),
+        ("i-3", true, false, true)
     );
     assert_eq!(
-        (list[1].instance.as_str(), list[1].armed, list[1].fired),
-        ("i-4", false, true)
+        (
+            list[1].instance.as_str(),
+            list[1].armed,
+            list[1].fired,
+            list[1].modes_ok
+        ),
+        ("i-4", false, true, false)
     );
+    // The clock probe an arm makes before it writes a deadline (R0403).
+    t.reply(0, "1700000000\n");
+    assert_eq!(
+        x.clock_now(&h).unwrap().map(|i| i.unix_s),
+        Some(1_700_000_000)
+    );
+    t.reply(0, "not a time\n");
+    assert!(x.clock_now(&h).is_err());
     t.reply(3, "");
     assert_eq!(x.read_fact(&h, "file:/nope").unwrap(), None);
     t.reply(0, "content");

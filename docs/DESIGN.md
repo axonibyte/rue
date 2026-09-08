@@ -208,12 +208,68 @@ unit. What is in place:
   that present a hook as the engine's executor, journal sink or inventory,
   looking the link up at call time so an unregistered hook refuses
   honestly. Secrets have a place in exactly four messages.
+- **Backstops at runtime** (`engine/src/backstop.rs`,
+  `engine/src/scheduler.rs`, 5.6, 7.7): the artifact rendered into the
+  instance directory before the first covered step and registered with the
+  host's scheduler; armed before the step `arm_before` names, which on the
+  target is the `deadline` landing before that step's `do`; rearmed before
+  a renewal's new expiry becomes the instance's (a rearm that fails
+  refuses the renewal, R0404); the `unless_confirmed` deadline taken away
+  by `confirm()` and the entry itself by `commit()`, `abandon` and a clean
+  revert, always before the directory it reads is removed; the heartbeat
+  written at arm and at its interval by a daemon thread; the `fired`
+  marker read on the next contact and journaled `BackstopFired` per step
+  the target undid (R0402), those steps then no longer applied. Arming
+  refuses on a clock beyond `skew_tolerance` (R0403), on an instance
+  directory whose modes are wrong (R0406), on a host whose scheduler the
+  site never bound (R0401) and on a target not bootstrapped (R0407).
+- **The scheduler bindings** (`bindings/src/cron.rs`,
+  `task_scheduler.rs`, `launchd.rs`, 7.3): `cron()` edits one fenced
+  region of the crontab, anchored by the instance id, under the host lock;
+  `task_scheduler()` creates one task per instance; `launchd()` writes a
+  property list beside the artifact. `hook(:name)` carries the five ops of
+  the protocol's `scheduler` kind.
+- **Reconciliation and reclaim** (`engine/src/backstop.rs`, 7.7): at boot
+  every instance directory on every reachable host is compared with the
+  store; one the store does not know that holds an armed, unfired artifact
+  is left where it is and journaled `InstanceDirOrphaned{armed: true}`;
+  one with no artifact or a `fired` marker is removed and journaled
+  `Reclaimed`. `rue doctor` lists what was left in place. `rue reclaim`
+  refuses while the artifact is armed and its entry present (R0405) until
+  `--force --reason`. An artifact `abandon` could not disarm and that
+  later fires is read on the next reap and journaled
+  `BackstopFiredAfterAbandon`: accepted and visible, never a surprise.
 - **rued** (`daemon/src/run.rs`): the site block to a daemon: sinks,
-  signing key, hook executors, inventory, operators and registrars from
-  `rue_surface::resolve::site_bindings`; the store created when empty;
-  boot, then a reap thread and the accept loop; `--dry-run` for daemon
-  dry-run mode; `--spawn NAME=COMMAND` for a hook child over stdio;
-  rc.d and systemd files under `daemon/dist/`.
+  signing key, hook executors, schedulers, inventory, operators and
+  registrars from `rue_surface::resolve::site_bindings`; the store created
+  when empty; boot with its reconciliation, then a reap thread, a
+  heartbeat thread and the accept loop; `--dry-run` for daemon dry-run
+  mode; `--spawn NAME=COMMAND` for a hook child over stdio; rc.d and
+  systemd files under `daemon/dist/`.
+
+Positions the backstop unit takes where the roadmap is silent, for the
+owner. **One artifact undoes one host's steps**, so a backstop whose
+covered steps span two hosts is refused at apply and named; the roadmap's
+rendering call takes a single host and 7.7's instance directory is that
+host's. **The engine owns the instance directory and the binding owns the
+entry**: the engine writes the artifact, the `deadline` and the
+`heartbeat` through the executor and makes the skew probe, while
+`install`, `disarm` and `present` are the binding's; `arm` and `rearm`
+exist for a scheduler that holds the time itself, and for a periodic one
+(`cron()`, `task_scheduler()`, `launchd()`, whose entries run the artifact
+every minute while the artifact compares its own deadline) they do
+nothing, which is what "self-enforced on `<host>`" in the verdict already
+says. **Armed is the artifact's presence**, not the deadline's: a backstop
+with only `unless_heartbeat:` writes no deadline file, and reconciliation
+must not read that as reclaimable. **A transport that cannot ask a host
+its time reports no skew rather than zero** (`Executor::clock_now`
+answering `None`), so R0403 is enforced where it can be and its absence is
+visible in `rue doctor` instead of assumed away; a hook that does not
+serve `execute.clock` refuses it and is read the same way. **The
+instance-directory modes come back with the listing** (`modes_ok`), which
+is where the engine reads them for R0406. **A scheduler that cannot say
+whether its entry is there is never read as absence**, so `rue reclaim`
+refuses on `unknown` exactly as it does on `present`.
 
 Positions the engine takes where section 7 is silent, for the owner: a
 step gate, a knell's acknowledgement and an unknown guard all enter
@@ -260,7 +316,7 @@ writes the last line. Paths are relative to
 
 | Path | Written by | Content |
 |---|---|---|
-| `deadline` | engine, at arm and rearm | the epoch second the `after:` or `unless_confirmed:` trigger fires, as text |
+| `deadline` | engine, at arm and rearm; removed by `confirm()` | the epoch second the `after:` or `unless_confirmed:` trigger fires, as text |
 | `heartbeat` | engine, every `interval` | the epoch second of the last heartbeat, as text; a "touch" is a rewrite |
 | `markers/<n>` | engine, when step `n` completes | one line `<kind> <path> <sha256>` per file fact of the step, as `do` left it |
 | `snapshots/<n>/<k>` | engine, before step `n` | the whole file for footprint entry `k` (`Modified` and `Region` entries) |

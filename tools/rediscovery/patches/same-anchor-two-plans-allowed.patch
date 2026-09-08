@@ -1,0 +1,13 @@
+# Reverts: two regions on one fact are disjoint umbras only when their anchors differ (5.2); here any two regions on one fact coexist, so two plans may hold the same anchor.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/ledger.rs
++++ b/core/src/ledger.rs
+@@ -36,7 +36,7 @@
+         return false;
+     }
+     match (&f.anchor, &g.anchor) {
+-        (Some(x), Some(y)) => x == y,
++        (Some(_), Some(_)) => false,
+         _ => true,
+     }
+ }

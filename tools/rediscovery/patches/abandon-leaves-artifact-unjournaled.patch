@@ -1,0 +1,18 @@
+# Reverts: abandon disarms where hosts are reachable and journals what it left armed (7.7); here the artifact stays armed and the journal is silent about it.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2262,12 +2262,7 @@
+         let not_reverted: Vec<u32> = rec.applied.iter().map(|a| a.step).collect();
+         // Disarm where the host is reachable; where it is not, the
+         // artifact stays armed and the journal says so (7.7).
+-        let mut left_armed = Vec::new();
+-        if rec.backstop.as_ref().is_some_and(|b| b.installed) {
+-            if let Err(why) = self.backstop_disarm(&mut rec, Disarm::All)? {
+-                left_armed.push(why);
+-            }
+-        }
++        let left_armed: Vec<String> = Vec::new();
+         self.log(
+             &rec,
+             J::Abandoned {

@@ -1,0 +1,25 @@
+# Reverts: a renewal rearms the backstop before the new expiry is the instance's, and a rearm that fails refuses the renewal (5.6, R0404); here the deadline moves first and the rearm is advisory.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2162,18 +2162,8 @@
+         let now = self.clock.now();
+         match states::renew(now, deadline, within, wane) {
+             Ok(d) => {
+-                // The backstop is rearmed before the new expiry is the
+-                // instance's: a rearm that fails refuses the renewal.
+-                if let Err(why) = self.backstop_rearm(&mut rec, d)? {
+-                    self.log(
+-                        &rec,
+-                        J::Refused {
+-                            reason: why.clone(),
+-                        },
+-                    )?;
+-                    return Err(EngineError::Runtime(why));
+-                }
+-                rec.deadline = Some(d);
++                rec.deadline = Some(d);
++                let _ = self.backstop_rearm(&mut rec, d)?;
+                 self.log(&rec, J::Renewed)?;
+                 self.persist(&rec)?;
+                 Ok(self.outcome(&rec))

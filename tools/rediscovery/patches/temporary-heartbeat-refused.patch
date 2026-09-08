@@ -1,0 +1,14 @@
+# Reverts: a temporary plan's backstop MAY add unless_heartbeat beside its after: (5.6); here the heartbeat is dropped whenever a deadline is already set, so the engine's silence never fires the artifact.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/backstop.rs
++++ b/engine/src/backstop.rs
+@@ -71,6 +71,9 @@
+             Trigger::After(d) => s.deadline = Some(wane.unwrap_or_else(|| now.plus(*d))),
+             Trigger::UnlessConfirmed(d) => s.deadline = Some(now.plus(*d)),
+             Trigger::UnlessHeartbeat { deadline, interval } => {
++                if s.deadline.is_some() {
++                    continue;
++                }
+                 s.heartbeat_s = Some(deadline.seconds);
+                 // A third of the deadline is the ceiling E0405 already
+                 // enforces; with no interval declared it is the interval.

@@ -104,3 +104,12 @@ target-undo-no-filesystem-sticks.patch	1	-	cargo	an_unbootstrapped_host_is_r0407
 driftheld-reverted-at-wane.patch	1	-	cargo	a_changed_fact_under_defer_holds_the_instance_until_forced	-
 bootstrap-runs-commands.patch	1	-	cargo	bootstrap_reports_what_a_host_lacks_with_its_family_s_commands_and_runs_nothing	-
 deferred-no-way-out.patch	1	-	cargo	a_step_on_a_host_no_transport_reaches_is_deferred_and_handoff_done_continues	-
+backstop-armed-after-reach-op.patch	1	-	cargo	the_artifact_is_installed_before_the_first_covered_step_and_armed_before_the_step_that_needs_it	-
+renew-commits-before-rearm.patch	1	-	cargo	renewal_rearms_before_the_new_expiry_is_the_instance_s_and_a_failing_rearm_refuses_it	-
+boot-reclaims-armed-artifact.patch	1	-	cargo	boot_leaves_an_armed_orphan_where_it_is_and_reclaims_a_fired_one	-
+wrong-modes-armed.patch	1	-	cargo	a_target_clock_beyond_tolerance_refuses_to_arm_and_a_wrong_mode_directory_refuses_too	-
+commit-leaves-backstop-armed.patch	1	-	cargo	commit_disarms_everything_before_the_instance_directory_goes	-
+abandon-leaves-artifact-unjournaled.patch	1	-	cargo	abandon_disarms_where_it_can_and_says_what_it_left_armed	-
+temporary-heartbeat-refused.patch	1	-	cargo	the_heartbeat_is_written_at_its_interval_and_a_temporary_plan_may_have_one	-
+same-anchor-two-plans-allowed.patch	1	-	cargo	distinct_regions_on_one_fact_coexist_and_the_same_anchor_never_does	-
+manifest-read-unlocked.patch	1	-	cargo	a_region_undo_holds_the_host_lock_from_decision_to_write_and_the_manifest_is_never_written_in_place	-

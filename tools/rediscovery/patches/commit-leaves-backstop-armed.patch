@@ -1,0 +1,14 @@
+# Reverts: committing disarms every backstop before it removes the instance directories (5.5, 7.7); here the entry outlives the directory it reads.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1759,9 +1759,6 @@
+ 
+     /// Remove the instance directories at close or commit.
+     fn remove_dirs(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+-        if let Err(why) = self.backstop_disarm(rec, Disarm::All)? {
+-            self.log(rec, J::Refused { reason: why })?;
+-        }
+         let id = rec.id.clone();
+         for name in rec.dirs.clone() {
+             if let Some(host) = self.host_of(&name) {

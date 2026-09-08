@@ -29,12 +29,14 @@ use rue_engine::control::{
 };
 use rue_engine::executor::Executor;
 use rue_engine::hook::{
-    HookExecutor, HookRegistry, HookSink, LineLink, Registered, Registration, HOOK_PROTOCOL,
+    HookExecutor, HookRegistry, HookScheduler, HookSink, LineLink, Registered, Registration,
+    HOOK_PROTOCOL,
 };
 use rue_engine::host::Host;
 use rue_engine::journal::{Journal, Sink};
 use rue_engine::lifecycle::Engine;
 use rue_engine::peer::my_uid;
+use rue_engine::scheduler::Scheduler;
 use rue_engine::sign::Signer;
 use rue_engine::store::{schema_of, SchemaError, Store};
 use rue_surface::resolve::site::SiteDecl;
@@ -116,6 +118,7 @@ fn signer_of(decl: &SiteDecl, dir: &Path) -> Result<Option<Signer>, Refusal> {
 }
 
 fn hosts_of(sb: &SiteBindings) -> Vec<Host> {
+    let sched = scheduler_name(&sb.decl);
     sb.inventory
         .hosts
         .iter()
@@ -131,7 +134,7 @@ fn hosts_of(sb: &SiteBindings) -> Vec<Host> {
                 record: r.clone(),
                 address: c.map(|c| c.address.clone()).unwrap_or_default(),
                 scheduler: if sb.inventory.scheduled.contains(&r.name) {
-                    Some("cron".into())
+                    Some(sched.clone())
                 } else {
                     None
                 },
@@ -140,6 +143,52 @@ fn hosts_of(sb: &SiteBindings) -> Vec<Host> {
             }
         })
         .collect()
+}
+
+/// The `backstop scheduler:` binding of the site block. A site with none
+/// declares no scheduler, and a plan with a `:target` backstop on a host
+/// that names one is R0401 at apply.
+fn schedulers_of(
+    decl: &SiteDecl,
+    hooks: &Arc<HookRegistry>,
+    deadline: Duration,
+    dry_run: bool,
+) -> Result<Vec<Box<dyn Scheduler>>, Refusal> {
+    let mut v: Vec<Box<dyn Scheduler>> = Vec::new();
+    if dry_run {
+        return Ok(v);
+    }
+    let Some(b) = &decl.scheduler else {
+        return Ok(v);
+    };
+    match b.kind.as_str() {
+        "cron" => v.push(Box::new(rue_bindings::cron::Cron)),
+        "task_scheduler" => v.push(Box::new(rue_bindings::task_scheduler::TaskScheduler)),
+        "launchd" => v.push(Box::new(rue_bindings::launchd::Launchd)),
+        "hook" => v.push(Box::new(HookScheduler {
+            name: b.arg.clone().unwrap_or_default(),
+            registry: hooks.clone(),
+            deadline,
+        })),
+        other => {
+            return Err(refused(format!(
+                "backstop scheduler: {other}() is not a scheduler"
+            )))
+        }
+    }
+    Ok(v)
+}
+
+/// The scheduler name a host record carries: the site's, for every host
+/// the inventory says has one.
+fn scheduler_name(decl: &SiteDecl) -> String {
+    decl.scheduler
+        .as_ref()
+        .map(|b| match b.kind.as_str() {
+            "hook" => b.arg.clone().unwrap_or_default(),
+            k => k.to_string(),
+        })
+        .unwrap_or_else(|| "cron".into())
 }
 
 fn executors_of(
@@ -354,6 +403,12 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
     let hosts = hosts_of(&sb);
     let mut engine = Engine::open(store, journal, Arc::new(SystemClock), executors, hosts)
         .map_err(|e| refused(e.to_string()))?;
+    for s in schedulers_of(&sb.decl, &hooks, deadline, cfg.dry_run)? {
+        engine.add_scheduler(s);
+    }
+    if let Some(d) = sb.decl.skew_tolerance {
+        engine.set_skew_tolerance(d);
+    }
     let boot = engine.boot().map_err(|e| refused(e.to_string()))?;
     eprintln!(
         "rued: booted: {} demoted, {} reestablished, {} lost{}",
@@ -364,6 +419,13 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
             .map(|(f, t)| format!(", migrated {f} -> {t}"))
             .unwrap_or_default()
     );
+    if !boot.orphaned.is_empty() || !boot.reclaimed.is_empty() {
+        eprintln!(
+            "rued: reconciled: {} armed instance directories left in place, {} reclaimed",
+            boot.orphaned.len(),
+            boot.reclaimed.len()
+        );
+    }
     let daemon = Arc::new(Daemon {
         engine: Mutex::new(engine),
         operators: operators_of(&sb.decl, cfg.dry_run),
@@ -395,6 +457,22 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
                     }
                 }
                 Err(e) => eprintln!("rued: reap: {e}"),
+            }
+        });
+    }
+    // The heartbeat thread: an armed `unless_heartbeat` backstop is told
+    // the engine is alive at its interval, and an engine that stops is
+    // what the trigger notices (5.6).
+    {
+        let d = daemon.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let r = {
+                let mut e = d.engine.lock().unwrap_or_else(|e| e.into_inner());
+                e.heartbeat()
+            };
+            if let Err(e) = r {
+                eprintln!("rued: heartbeat: {e}");
             }
         });
     }

@@ -20,7 +20,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use rue_core::model::Tri;
+use rue_core::model::{Instant, Tri};
 use rue_engine::executor::{
     BootstrapState, ExecCaps, ExecError, Executor, HostLockGuard, InstanceDirState, LocusKind,
     Observation, Output, ProbeRun, RPrim, Resolved,
@@ -242,6 +242,16 @@ fn mode_of(_path: &Path) -> Option<u32> {
     None
 }
 
+/// An instance directory's modes as 7.7 requires them. Off unix there are
+/// no POSIX modes to read: the Windows contract is an ACL, which is unit
+/// F's, so the modes are not the thing that refuses arming there.
+fn dir_modes_ok(path: &Path) -> bool {
+    match mode_of(path) {
+        Some(m) => m == 0o2770,
+        None => cfg!(not(unix)),
+    }
+}
+
 impl Executor for LocalExecutor {
     fn locus(&self) -> LocusKind {
         LocusKind::Local
@@ -382,6 +392,16 @@ impl Executor for LocalExecutor {
         }
     }
 
+    /// The controller's own clock: `local()` runs here, so the skew a
+    /// backstop arm probes for is zero by construction.
+    fn clock_now(&mut self, _host: &Host) -> Result<Option<Instant>, ExecError> {
+        let s = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| ExecError::Io(e.to_string()))?
+            .as_secs();
+        Ok(Some(Instant::new(s)))
+    }
+
     fn bootstrap_state(&mut self, host: &Host) -> Result<BootstrapState, ExecError> {
         let root = self.root(host);
         let group = group_exists("rue");
@@ -428,10 +448,19 @@ impl Executor for LocalExecutor {
                 continue;
             }
             let p = e.path();
+            let modes_ok = dir_modes_ok(&p);
+            let fired = p.join("fired").exists();
+            // Armed is the artifact's presence, not the deadline's: a
+            // backstop with only `unless_heartbeat` has no deadline file,
+            // and reconciliation must not read it as reclaimable (7.7).
+            let artifact = ["artifact.sh", "artifact.ps1", "artifact.py"]
+                .iter()
+                .any(|f| p.join(f).exists());
             v.push(InstanceDirState {
                 instance: e.file_name().to_string_lossy().into_owned(),
-                armed: p.join("deadline").exists() && !p.join("fired").exists(),
-                fired: p.join("fired").exists(),
+                armed: artifact && !fired,
+                fired,
+                modes_ok,
             });
         }
         v.sort_by(|a, b| a.instance.cmp(&b.instance));
