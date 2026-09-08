@@ -1,0 +1,1 @@
+tenants/_negative/E0604-no-operators/plan.rue:5:1: E0604: no operators block, or none declares an identity; nothing may request a plan

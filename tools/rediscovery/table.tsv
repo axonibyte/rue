@@ -75,3 +75,8 @@ closure-accepted.patch	1	-	cargo	an_unbounded_repeat	-
 output-before-step-accepted.patch	1	-	cargo	an_output_read_before	-
 secret-call-not-secret.patch	2	-	cargo	every_text_resolves	-
 import-cycle-accepted.patch	1	-	cargo	an_import_cycle	-
+slot-order-nondeterministic.patch	1	-	cargo	roles_fill_slots	-
+protocol-inverse-unpaired.patch	1	-	cargo	a_protocol_expands	-
+defprim-class-ignored.patch	1	-	cargo	a_defprim_call	-
+journal-optional.patch	1	-	cargo	the_site_is_validated	-
+hook-without-registrar-accepted.patch	1	-	cargo	the_site_is_validated	-

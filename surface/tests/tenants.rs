@@ -1,10 +1,13 @@
 //! The tenant corpus (docs/ROADMAP.md Phase 2 acceptance): every `.rue`
 //! text under `tenants/` parses with no diagnostics, `rue fmt` is the
-//! identity on it, and `fmt` is idempotent.
+//! identity on it, and `fmt` is idempotent. The two negatives that are
+//! parse-level refusals by design (E0101, E0105) must produce exactly that
+//! diagnostic, and `fmt` must refuse them.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use rue_core::diagnostics::Code;
 use rue_surface::{format, parse};
 
 fn corpus() -> Vec<PathBuf> {
@@ -20,12 +23,17 @@ fn corpus() -> Vec<PathBuf> {
         }
     }
     files.sort();
-    assert_eq!(
-        files.len(),
-        40,
-        "the corpus is the four tenants and thirty-six negatives"
+    assert!(
+        files.len() >= 40,
+        "the corpus is the four tenants and the negatives"
     );
     files
+}
+
+/// A negative whose refusal is the parser's own.
+fn parse_level(f: &Path) -> bool {
+    let dir = f.parent().unwrap().file_name().unwrap().to_str().unwrap();
+    dir.starts_with(&format!("{}-", Code::E0101)) || dir.starts_with(&format!("{}-", Code::E0105))
 }
 
 #[test]
@@ -34,6 +42,16 @@ fn every_text_parses_clean() {
         let src = fs::read_to_string(&f).unwrap();
         let p = parse(&src, f.to_str().unwrap());
         let rendered: Vec<String> = p.diagnostics.iter().map(|d| d.render()).collect();
+        if parse_level(&f) {
+            let code = f.parent().unwrap().file_name().unwrap().to_str().unwrap()[..5].to_string();
+            assert!(
+                !rendered.is_empty() && rendered.iter().all(|r| r.contains(&code)),
+                "{}: expected only {code}:\n{}",
+                f.display(),
+                rendered.join("\n")
+            );
+            continue;
+        }
         assert!(
             rendered.is_empty(),
             "{}:\n{}",
@@ -47,6 +65,14 @@ fn every_text_parses_clean() {
 fn fmt_is_the_identity_on_every_text_and_idempotent() {
     for f in corpus() {
         let src = fs::read_to_string(&f).unwrap();
+        if parse_level(&f) {
+            assert!(
+                format(&src, f.to_str().unwrap()).is_err(),
+                "{}: fmt must refuse a file with errors",
+                f.display()
+            );
+            continue;
+        }
         let once = format(&src, f.to_str().unwrap()).unwrap_or_else(|d| {
             panic!(
                 "{}: {}",

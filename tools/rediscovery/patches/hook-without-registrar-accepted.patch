@@ -1,0 +1,13 @@
+# Reverts: a hook() binding needs a registrar that may register it (section 7.3, E0605) -- an unregistrable hook is a binding nothing can ever provide.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/site.rs
++++ b/surface/src/resolve/site.rs
+@@ -268,7 +268,7 @@
+                     .registrars
+                     .iter()
+                     .any(|r| r.may_register.contains(name));
+-                if !registered {
++                if !registered && false {
+                     with(
+                         b.range,
+                         Code::E0605,

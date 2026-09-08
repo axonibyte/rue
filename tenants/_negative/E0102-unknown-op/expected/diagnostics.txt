@@ -1,0 +1,1 @@
+tenants/_negative/E0102-unknown-op/plan.rue:22:3: E0102: unknown op postrue; did you mean posture?

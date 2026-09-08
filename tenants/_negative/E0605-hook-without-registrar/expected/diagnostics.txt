@@ -1,0 +1,1 @@
+tenants/_negative/E0605-hook-without-registrar/plan.rue:8:17: E0605: hook(:authority) has no registrar that may register it (hooks do ... may_register: [...])

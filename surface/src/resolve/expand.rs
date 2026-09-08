@@ -167,10 +167,15 @@ impl<'a> Context<'a> {
         at: (usize, TextRange),
         diags: &mut Vec<Diagnostic>,
     ) -> Option<(usize, &'d Def, Contract)> {
+        let before = diags.len();
         for (m, d) in defs {
             if self.matches(*m, d.pattern.as_ref(), c, diags) {
                 return Some((*m, d, c.clone()));
             }
+        }
+        // A pattern the matcher refused (E0111) already explains the miss.
+        if diags.len() > before {
+            return None;
         }
         // An op whose clause declares a static host is dispatched on it.
         for (m, d) in defs {
@@ -253,6 +258,14 @@ impl<'a> Context<'a> {
                 }
                 "wane" => {
                     plan.wane = first_duration(&l.args);
+                    if plan.wane.is_none() {
+                        diags.push(self.err(
+                            module,
+                            l.range,
+                            Code::E0107,
+                            "wane expects a duration (4h, 30m)".into(),
+                        ));
+                    }
                     plan.renew_within = kw_duration(&l.args, "renew_within");
                 }
                 "backstop" => {
@@ -345,7 +358,98 @@ impl<'a> Context<'a> {
             }
         }
         plan.body = self.expand_items(module, &def.body, owner, &mut scope, diags);
+        self.fill_slots(module, &mut plan.body, owner, &mut scope, diags);
         Some(plan)
+    }
+
+    /// Roles contribute items into named slots (6.4): every `defrole` whose
+    /// atom is one of the host's roles, its contributions to the slot in
+    /// order of priority (default 100, lower first) and then role name. A
+    /// slot no role fills stays a slot.
+    fn fill_slots(
+        &self,
+        module: usize,
+        items: &mut Vec<Item>,
+        owner: &Contract,
+        scope: &mut Scope,
+        diags: &mut Vec<Diagnostic>,
+    ) {
+        let mut out = Vec::with_capacity(items.len());
+        for it in items.drain(..) {
+            match it {
+                Item::Slot { name } => {
+                    let mut contributions: Vec<(u32, String, &Stmt)> = Vec::new();
+                    for (_, role) in self.program.defs(module, "defrole") {
+                        if !owner.roles.contains(&role.name) {
+                            continue;
+                        }
+                        for st in &role.body {
+                            if let Stmt::Contribution {
+                                slot,
+                                priority,
+                                item,
+                                ..
+                            } = st
+                            {
+                                if *slot == name {
+                                    contributions.push((
+                                        priority.unwrap_or(100),
+                                        role.name.clone(),
+                                        item,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    contributions.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+                    if contributions.is_empty() {
+                        out.push(Item::Slot { name });
+                    } else {
+                        for (_, _, st) in contributions {
+                            let expanded = self.expand_items(
+                                module,
+                                std::slice::from_ref(st),
+                                owner,
+                                scope,
+                                diags,
+                            );
+                            out.extend(expanded);
+                        }
+                    }
+                }
+                Item::Par { mut children } => {
+                    self.fill_slots(module, &mut children, owner, scope, diags);
+                    out.push(Item::Par { children });
+                }
+                Item::Repeat {
+                    form,
+                    var,
+                    mut body,
+                } => {
+                    self.fill_slots(module, &mut body, owner, scope, diags);
+                    out.push(Item::Repeat { form, var, body });
+                }
+                Item::When {
+                    guard,
+                    window,
+                    on_lapse,
+                    mut then_,
+                    mut else_,
+                } => {
+                    self.fill_slots(module, &mut then_, owner, scope, diags);
+                    self.fill_slots(module, &mut else_, owner, scope, diags);
+                    out.push(Item::When {
+                        guard,
+                        window,
+                        on_lapse,
+                        then_,
+                        else_,
+                    });
+                }
+                other => out.push(other),
+            }
+        }
+        *items = out;
     }
 
     /// Two clauses of one name with the same pattern are indistinguishable (E0103).
@@ -402,21 +506,15 @@ impl<'a> Context<'a> {
                     }
                 }
                 Stmt::Step(s) => {
-                    if let Some(it) = self.expand_step(module, s, owner, scope, false, diags) {
-                        items.push(it);
-                    }
+                    items.extend(self.expand_step(module, s, owner, scope, false, diags));
                 }
                 Stmt::Pipeline(steps) => {
                     for s in steps {
-                        if let Some(it) = self.expand_step(module, s, owner, scope, false, diags) {
-                            items.push(it);
-                        }
+                        items.extend(self.expand_step(module, s, owner, scope, false, diags));
                     }
                 }
                 Stmt::Knell(s) => {
-                    if let Some(it) = self.expand_step(module, s, owner, scope, true, diags) {
-                        items.push(it);
-                    }
+                    items.extend(self.expand_step(module, s, owner, scope, true, diags));
                 }
                 Stmt::Block(bl) if bl.keyword == "par" => {
                     let children = self.expand_items(module, &bl.body, owner, scope, diags);
@@ -543,11 +641,27 @@ impl<'a> Context<'a> {
                     range,
                 } => {
                     if let Some(guard) = self.guard_of(module, args, *range, diags) {
+                        let before = scope.aliases.clone();
                         let then_ = self.expand_items(module, then_, owner, scope, diags);
+                        let then_aliases = scope.aliases.clone();
+                        scope.aliases = before.clone();
                         let else_ = else_
                             .as_ref()
                             .map(|e| self.expand_items(module, e, owner, scope, diags))
                             .unwrap_or_default();
+                        for (alias, outs) in &then_aliases {
+                            if before.contains_key(alias) {
+                                continue;
+                            }
+                            if let Some(other) = scope.aliases.get(alias) {
+                                if other != outs {
+                                    diags.push(self.err(module, *range, Code::E0114, format!("the when's arms bind {alias} to outputs of different kinds")));
+                                }
+                            }
+                        }
+                        for (alias, outs) in then_aliases {
+                            scope.aliases.entry(alias).or_insert(outs);
+                        }
                         items.push(Item::When {
                             guard,
                             window: kw_duration(args, "window"),
@@ -677,6 +791,123 @@ impl<'a> Context<'a> {
     // --- steps and ops ----------------------------------------------------
 
     fn expand_step(
+        &self,
+        module: usize,
+        s: &Step,
+        owner: &Contract,
+        scope: &mut Scope,
+        knell: bool,
+        diags: &mut Vec<Diagnostic>,
+    ) -> Vec<Item> {
+        if let Expr::Call { path, .. } = &s.call {
+            if self.program.lookup(module, "defop", path).is_empty() {
+                if let Some((_, proto)) = self.program.lookup(module, "defprotocol", path).first() {
+                    return self.expand_protocol(module, s, proto, owner, scope, diags);
+                }
+            }
+        }
+        self.expand_step_one(module, s, owner, scope, knell, diags)
+            .map(|it| vec![it])
+            .unwrap_or_default()
+    }
+
+    /// A protocol call (`quiesce()`): the `defimpl` for one of the host's
+    /// roles, else the protocol's `default` item. A protocol with an
+    /// `inverse:` needs an impl of the inverse for every role that impls
+    /// it (E0103).
+    fn expand_protocol(
+        &self,
+        module: usize,
+        s: &Step,
+        proto: &Def,
+        owner: &Contract,
+        scope: &mut Scope,
+        diags: &mut Vec<Diagnostic>,
+    ) -> Vec<Item> {
+        let impls_of = |name: &str| -> Vec<(String, &Def)> {
+            self.program
+                .defs(module, "defimpl")
+                .into_iter()
+                .filter(|(_, d)| d.name == name)
+                .filter_map(|(_, d)| {
+                    d.params
+                        .iter()
+                        .find(|k| k.name == "for")
+                        .and_then(|k| atom_of(&k.value))
+                        .map(|role| (role, d))
+                })
+                .collect()
+        };
+        let impls = impls_of(&proto.name);
+        if let Some(inv) = proto
+            .params
+            .iter()
+            .find(|k| k.name == "inverse")
+            .and_then(|k| atom_of(&k.value))
+        {
+            if self
+                .program
+                .defs(module, "defprotocol")
+                .iter()
+                .all(|(_, d)| d.name != inv)
+            {
+                diags.push(self.err(
+                    module,
+                    proto.name_range,
+                    Code::E0102,
+                    format!(
+                        "protocol {} names an inverse {inv} that is not defined",
+                        proto.name
+                    ),
+                ));
+            }
+            let inverse_impls = impls_of(&inv);
+            for (role, d) in &impls {
+                if !inverse_impls.iter().any(|(r, _)| r == role) {
+                    diags.push(self.err(
+                        module,
+                        d.name_range,
+                        Code::E0103,
+                        format!("defimpl :{} for :{role} has no paired inverse defimpl :{inv} for :{role}", proto.name),
+                    ));
+                }
+            }
+        }
+        let chosen = impls.iter().find(|(role, _)| owner.roles.contains(role));
+        match chosen {
+            Some((_, d)) => self.expand_items(module, &d.body, owner, scope, diags),
+            None => {
+                let default = super::lines(&proto.body).find(|l| l.keyword == "default");
+                match default.and_then(|l| l.args.first()) {
+                    Some(Arg::Expr(call @ Expr::Call { .. })) => {
+                        let st = Step {
+                            range: s.range,
+                            call: call.clone(),
+                            kws: s.kws.clone(),
+                            alias: s.alias.clone(),
+                        };
+                        self.expand_step(module, &st, owner, scope, false, diags)
+                    }
+                    _ => {
+                        diags.push(self.err(
+                            module,
+                            s.range,
+                            Code::E0112,
+                            format!(
+                                "no defimpl of {} for the roles of {} ({}) and no default",
+                                proto.name,
+                                owner.name,
+                                owner.roles.join(", ")
+                            ),
+                        ));
+                        Vec::new()
+                    }
+                }
+            }
+        }
+    }
+
+    fn expand_step_one(
         &self,
         module: usize,
         s: &Step,
@@ -861,6 +1092,28 @@ impl<'a> Context<'a> {
         // Declared parameters with defaults fill what the call left unbound.
         let mut bindings = bindings.clone();
         for p in &def.params {
+            if let Some(Bound::Literal(given)) = bindings.get(&p.name) {
+                if let Arg::Expr(default @ Expr::Lit { .. }) = &*p.value {
+                    let want = value::eval(default, &parse_expr);
+                    if let (Some(w), Some(g)) = (want.kind(), given.kind()) {
+                        if w != g {
+                            diags.push(self.err(
+                                module,
+                                range,
+                                Code::E0107,
+                                format!(
+                                    "op {}: {} expects {}, got {}",
+                                    def.name,
+                                    p.name,
+                                    w.name(),
+                                    g.name()
+                                ),
+                            ));
+                        }
+                    }
+                }
+                continue;
+            }
             if bindings.contains_key(&p.name) {
                 continue;
             }
@@ -1385,17 +1638,106 @@ impl<'a> Context<'a> {
                 })
             }
             other => {
+                if let Some((_, def)) = self.program.lookup(cx.module, "defprim", path).first() {
+                    return self.call_prim(cx, def, args, diags);
+                }
                 let mut d = self.err(
                     cx.module,
                     *range,
                     Code::E0102,
                     format!("unknown primitive {other}"),
                 );
-                d.nearest = nearest(other, PRIMS.iter().copied());
+                let mut names: Vec<&str> = PRIMS.to_vec();
+                let declared = self.program.visible_names(cx.module, "defprim");
+                names.extend(declared.iter().map(String::as_str));
+                d.nearest = nearest(other, names);
                 diags.push(d);
                 None
             }
         }
+    }
+
+    /// A `defprim` call: the declaration's `run` template with the call's
+    /// arguments substituted, and every argument with the class the
+    /// declaration gives it (closure reads the classes).
+    fn call_prim(
+        &self,
+        cx: &OpCx,
+        def: &Def,
+        args: &[Arg],
+        diags: &mut Vec<Diagnostic>,
+    ) -> Option<Prim> {
+        let run_line = super::lines(&def.body).find(|l| l.keyword == "run")?;
+        let raw = match run_line.args.first() {
+            Some(Arg::Expr(Expr::Lit {
+                lit: Lit::Str(s), ..
+            })) => s.clone(),
+            _ => {
+                diags.push(self.err(
+                    cx.module,
+                    def.range,
+                    Code::E0101,
+                    format!("defprim {} needs `run \"...\"`", def.name),
+                ));
+                return None;
+            }
+        };
+        let classes: BTreeMap<String, b::ArgClass> =
+            match site::kw(&run_line.args, "classes").map(|k| &*k.value) {
+                Some(Arg::Expr(Expr::Record { entries, .. })) => entries
+                    .iter()
+                    .map(|e| {
+                        let class = match atom_of(&e.value).as_deref() {
+                            Some("controller") => b::ArgClass::Controller,
+                            _ => b::ArgClass::TargetLocal,
+                        };
+                        (crate::ast::unquote(&e.name), class)
+                    })
+                    .collect(),
+                _ => BTreeMap::new(),
+            };
+        // The call's keyword arguments, as values in the calling op's scope.
+        let mut values: BTreeMap<String, Value> = BTreeMap::new();
+        for a in args {
+            if let Arg::Kw(k) = a {
+                values.insert(k.name.clone(), self.value(cx, &k.value, diags));
+            }
+        }
+        let template: Template = value::string_parts(&raw, &parse_expr)
+            .into_iter()
+            .flat_map(|p| match p {
+                value::Part::Lit(s) => vec![Part::Lit(s)],
+                value::Part::Expr(Expr::Ref { path, .. })
+                    if path.len() == 1 && values.contains_key(&path[0]) =>
+                {
+                    match &values[&path[0]] {
+                        Value::Lit(s) => vec![Part::Lit(s.clone())],
+                        Value::Ref(r) => vec![Part::Ref(r.clone())],
+                        Value::Template(parts) => parts.clone(),
+                    }
+                }
+                value::Part::Expr(e) => match self.classify_expr(cx, &e, diags) {
+                    Some(r) => vec![Part::Ref(r)],
+                    None => vec![Part::Lit(self.src(cx.module, e.range()))],
+                },
+            })
+            .collect();
+        let cargs = values
+            .into_iter()
+            .map(|(name, value)| b::ClassedArg {
+                class: classes
+                    .get(&name)
+                    .copied()
+                    .unwrap_or(b::ArgClass::TargetLocal),
+                name,
+                value,
+            })
+            .collect();
+        Some(Prim::Call(b::Call {
+            prim: def.name.clone(),
+            run: template,
+            args: cargs,
+        }))
     }
 
     /// A string as a template: literal parts and classified references.

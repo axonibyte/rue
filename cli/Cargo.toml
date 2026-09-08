@@ -18,6 +18,7 @@ rue-surface = { path = "../surface" }
 clap.workspace = true
 # The binary's error type; the library crates have their own.
 anyhow.workspace = true
+miette.workspace = true
 
 [dev-dependencies]
 rue-tenants = { path = "../tenants/harness" }

@@ -18,7 +18,7 @@ site do
     identity :ops_requester, user: "ops", operator_for: :all, admin: true
   end
   hooks do
-    registrar :authority, user: "approvald", may_register: [:authority, :escrow]
+    registrar :authority, user: "approvald", may_register: [:authority, :escrow, :bmc_api]
   end
 end
 

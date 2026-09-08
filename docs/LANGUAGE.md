@@ -129,6 +129,25 @@ order and each at most once: `gate`, `wane`, `backstop`, `fires_by_construction:
 `strictness:`, `mode:`, `exclusivity:`, `require journal:`. Their meaning is
 section 5's.
 
+## Roles, protocols and primitives
+
+A `defrole :db do ... end` contributes items to named slots: each line is
+`:slot [priority] item`, priority 100 when absent. A plan's `slot :name`
+is filled by every role whose atom is one of the host's roles (its
+inventory `roles`), their contributions in order of priority, lower first,
+ties by role name; a slot no role fills stays empty. A
+`defprotocol :quiesce, inverse: :resume do default item end` names a
+capability; `defimpl :quiesce, for: :db do items end` implements it for
+a role; a step `quiesce()` expands to the impl for one of the host's
+roles, else to the default. A protocol with an `inverse:` needs an impl
+of the inverse for every role that implements it (E0103), and the
+inverse must itself be a protocol (E0102). A `defprim :svc, name: name do
+run "service #{name} restart", classes: %{name: :target_local} end`
+declares a primitive: a call `svc(name: "sshd")` in a body is the run
+template with the arguments substituted, each carrying the class the
+declaration gives it (`:target_local` or `:controller`), which closure
+reads.
+
 ## Items
 
 A plan's body is a sequence of items: a step (`op_name(args) ... as alias`,
@@ -161,8 +180,19 @@ end
 
 A file's site is its own block when it has one, else the site of the one
 file it imports; a path in a site resolves relative to the file that
-declares it. The checker's site is derived from the block and the
-inventory it names (a TOML file of `[[host]]` records and an
+declares it. The block is validated before anything is read from it: every binding is
+a kind its line admits (E0601; `inventory from:` takes `rue_toml`, `file`
+or `hook`; `journal to:` `file`, `stdout`, `local` or `hook`; `approval
+via:` `always` or `hook`; `secrets from:` `file` or `hook`; `secrets
+deliver_to:` `requester`, `hold` or `hook`; `notify via:` `stdout` or
+`hook`; `execute via:` `local`, `ssh` or `hook`; `backstop scheduler:`
+`cron`, `task_scheduler`, `launchd` or `hook`), each with the argument
+its contract asks (E0602: a path string for `file` and `rue_toml`, the
+hook's atom for `hook`, `until:` for `hold`, none for the rest, and
+`transport:` on an execute hook), a journal is declared (E0603), an
+operators block declares an identity (E0604), and every `hook(:x)` has a
+registrar whose `may_register` names it (E0605). The checker's site is
+derived from the block and the inventory it names (a TOML file of `[[host]]` records and an
 `[authenticators]` table, Appendix C):
 
 | Site field | From |
@@ -233,9 +263,14 @@ file with parse errors rather than rewrite it.
 ## Diagnostics
 
 A diagnostic names the file, line and column, its code (section 6.7), a
-message, and what was expected and found. The parser raises E0101 (a
+message, and what was expected and found; on the command line it is
+printed with the source line and a caret. The parser raises E0101 (a
 parse error; at most one per line, so a recovered line cannot cascade)
 and E0105 (the version marker); the resolver raises E0102, E0103, E0104,
-E0106, E0108, E0110, E0111, E0112 and E0113 as the sections above say,
-and E0204 for a knell without a cost. Every other code is the checker's
-and reaches the verdict.
+E0106, E0107 (a call binding a declared parameter to a value of another
+kind, or a plan option of the wrong kind), E0108, E0110, E0111, E0112,
+E0113, E0114 (the arms of a `when` binding one alias to outputs of
+different kinds), E0204 for a knell without a cost, and E0601 to E0605
+for the site. Every one of them has a golden under `tenants/_negative/`
+with its text and its rendered diagnostics. Every other code is the
+checker's and reaches the verdict; E0109 is the renderer's.

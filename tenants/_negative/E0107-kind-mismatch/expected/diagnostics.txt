@@ -1,0 +1,1 @@
+tenants/_negative/E0107-kind-mismatch/plan.rue:22:3: E0107: op posture: drift expects atom, got int

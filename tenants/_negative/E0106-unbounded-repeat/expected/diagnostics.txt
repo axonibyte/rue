@@ -1,0 +1,1 @@
+tenants/_negative/E0106-unbounded-repeat/plan.rue:22:3: E0106: repeat over: without max: is unbounded; give the literal cap the bounded form needs

@@ -43,6 +43,131 @@ pub struct NegativeCase {
     pub slug: &'static str,
 }
 
+/// A negative the front end refuses before a plan exists: its golden is
+/// the rendered diagnostics, not a verdict. The text is resolved for
+/// `host` on the lab site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SurfaceNegative {
+    pub code: Code,
+    pub slug: &'static str,
+    pub host: &'static str,
+}
+
+impl SurfaceNegative {
+    pub fn name(&self) -> String {
+        format!("{}-{}", self.code, self.slug)
+    }
+    pub fn dir(&self) -> String {
+        format!("tenants/_negative/{}/expected", self.name())
+    }
+    pub fn text(&self) -> String {
+        format!("tenants/_negative/{}/plan.rue", self.name())
+    }
+}
+
+macro_rules! surface_negatives {
+    ($($code:ident => $slug:literal),* $(,)?) => {
+        pub const SURFACE_NEGATIVES: &[SurfaceNegative] = &[
+            $(SurfaceNegative { code: Code::$code, slug: $slug, host: "db-01" },)*
+        ];
+    };
+}
+
+surface_negatives! {
+    E0101 => "parse-error",
+    E0102 => "unknown-op",
+    E0103 => "duplicate-clause",
+    E0104 => "import-cycle",
+    E0105 => "version-missing",
+    E0106 => "unbounded-repeat",
+    E0107 => "kind-mismatch",
+    E0108 => "compare-unknown",
+    E0110 => "output-before-step",
+    E0111 => "clause-on-probed-fact",
+    E0112 => "no-clause-for-host",
+    E0113 => "repeat-not-set-valued",
+    E0114 => "when-arms-differ",
+    E0204 => "knell-without-cost",
+    E0601 => "unknown-binding",
+    E0602 => "binding-contract",
+    E0603 => "no-journal",
+    E0604 => "no-operators",
+    E0605 => "hook-without-registrar",
+}
+
+/// The codes the front end raises, each with a surface negative.
+pub const SURFACE_CODES: &[Code] = &[
+    Code::E0101,
+    Code::E0102,
+    Code::E0103,
+    Code::E0104,
+    Code::E0105,
+    Code::E0106,
+    Code::E0107,
+    Code::E0108,
+    Code::E0110,
+    Code::E0111,
+    Code::E0112,
+    Code::E0113,
+    Code::E0114,
+    Code::E0204,
+    Code::E0601,
+    Code::E0602,
+    Code::E0603,
+    Code::E0604,
+    Code::E0605,
+];
+
+/// The codes the renderer raises, unit-tested in `render/tests`.
+pub const RENDER_CODES: &[Code] = &[Code::E0109];
+
+/// The codes nothing in the workspace raises, each with the reason.
+pub const UNMODELED_CODES: &[(Code, &str)] = &[
+    (
+        Code::E0402,
+        "renewal ordering against a rearm is engine time (Phase 3)",
+    ),
+    (
+        Code::E0406,
+        "installation precedes the first covered step by construction; unreachable in this model",
+    ),
+    (
+        Code::E0408,
+        "snapshot sizes are observed at apply (Phase 3)",
+    ),
+    (
+        Code::E0409,
+        "a multi-host plan's owner is fixed by --host; inference is Phase 3's",
+    ),
+    (Code::E0411, "the site does not declare sinks"),
+];
+
+/// The diagnostics a surface negative's text raises, rendered with paths
+/// relative to the repository root so the golden is location-free.
+pub fn surface_diagnostics(root: &Path, n: &SurfaceNegative) -> Result<String, String> {
+    let opts = rue_surface::resolve::Options {
+        host: Some(n.host.to_string()),
+        plan: None,
+        requester: None,
+    };
+    match rue_surface::resolve::resolve(&root.join(n.text()), &opts) {
+        Ok(_) => Err(format!(
+            "{}: the front end accepted a text that must refuse",
+            n.name()
+        )),
+        Err(diags) => {
+            let prefix = format!(
+                "{}/",
+                root.canonicalize().unwrap_or(root.to_path_buf()).display()
+            );
+            Ok(diags
+                .iter()
+                .map(|d| format!("{}\n", d.render().replace(&prefix, "")))
+                .collect())
+        }
+    }
+}
+
 pub const TENANT_CASES: &[TenantCase] = &[
     TenantCase {
         tenant: "t1",
@@ -432,6 +557,13 @@ pub fn artifacts() -> Vec<Artifact> {
                 bytes: a.map(|a| a.text.into_bytes()).map_err(|e| e.to_string()),
             });
         }
+    }
+    let root = golden::repo_root().unwrap_or_default();
+    for n in SURFACE_NEGATIVES {
+        out.push(Artifact {
+            path: format!("{}/diagnostics.txt", n.dir()),
+            bytes: surface_diagnostics(&root, n).map(String::into_bytes),
+        });
     }
     out.push(Artifact {
         path: STATE_TABLE.to_string(),

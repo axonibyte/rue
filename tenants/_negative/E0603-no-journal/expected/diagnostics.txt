@@ -1,0 +1,1 @@
+tenants/_negative/E0603-no-journal/plan.rue:5:1: E0603: no journal declared (journal to: ...); nothing would record what ran

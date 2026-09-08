@@ -1,0 +1,19 @@
+rue 0
+# Negative case E0604: no operators block; nothing may request a plan.
+# The front end must refuse with exactly E0604.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: :restore
+end
+
+defplan :posture, %{name: "db-01"} do
+  wane 1h
+  posture()
+end

@@ -1,0 +1,21 @@
+rue 0
+# Negative case E0603: no journal declared; nothing would record what ran.
+# The front end must refuse with exactly E0603.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: :restore
+end
+
+defplan :posture, %{name: "db-01"} do
+  wane 1h
+  posture()
+end

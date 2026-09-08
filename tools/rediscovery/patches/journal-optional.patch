@@ -1,0 +1,13 @@
+# Reverts: a site with no journal refuses (section 7.3, E0603) -- nothing would record what ran.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/site.rs
++++ b/surface/src/resolve/site.rs
+@@ -278,7 +278,7 @@
+             }
+         }
+     }
+-    if decl.journal.is_none() {
++    if false && decl.journal.is_none() {
+         with(
+             block.range,
+             Code::E0603,

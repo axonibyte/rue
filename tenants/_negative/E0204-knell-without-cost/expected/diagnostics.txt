@@ -1,0 +1,1 @@
+tenants/_negative/E0204-knell-without-cost/plan.rue:17:12: E0204: knell fence needs cost: a probe or :none with a reason

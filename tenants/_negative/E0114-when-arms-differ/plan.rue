@@ -1,0 +1,40 @@
+rue 0
+# Negative case E0114: the arms of a when bind one alias to outputs of
+# different kinds (a secret in one arm, plain in the other). The front end
+# must refuse with exactly E0114.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :issue_secret, _ do
+  footprint modified: api.a
+  do: hook(:a)
+  undo: hook(:ua, idempotent: true)
+  undo_pre api.a
+  outputs tok, secret: true
+  locus: :controller
+end
+
+defop :issue_plain, _ do
+  footprint modified: api.b
+  do: hook(:b)
+  undo: hook(:ub, idempotent: true)
+  undo_pre api.b
+  outputs tok
+  locus: :controller
+end
+
+defplan :posture, %{name: "db-01"} do
+  wane 1h
+  when healthy do
+    issue_secret() as t
+  else
+    issue_plain() as t
+  end
+end

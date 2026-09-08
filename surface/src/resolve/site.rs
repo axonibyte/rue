@@ -4,7 +4,9 @@
 
 use std::path::Path;
 
+use rowan::TextRange;
 use rue_core::artifact;
+use rue_core::diagnostics::{Code, Diagnostic};
 use rue_core::model::{ArtifactLanguage, Authenticator, Duration, HostRecord, Site};
 use serde::Deserialize;
 
@@ -82,9 +84,22 @@ pub struct SiteDecl {
 /// A binding call: `file("x")`, `hook(:name, transport: :api)`, `local()`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Binding {
+    pub range: TextRange,
     pub kind: String,
     pub arg: Option<String>,
     pub kws: Vec<(String, String)>,
+    /// Whether the one positional argument was a string, an atom, or absent.
+    pub arg_kind: ArgKind,
+    /// The site line it stands on.
+    pub slot: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArgKind {
+    None,
+    Str,
+    Atom,
+    Other,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,14 +127,26 @@ fn atom_or_str(e: &Expr) -> Option<String> {
     }
 }
 
-fn binding_of(e: &Expr) -> Option<Binding> {
+fn binding_of(e: &Expr, slot: &'static str) -> Option<Binding> {
     match e {
-        Expr::Call { path, args, .. } => {
+        Expr::Call { path, args, range } => {
             let mut arg = None;
+            let mut arg_kind = ArgKind::None;
             let mut kws = Vec::new();
             for a in args {
                 match a {
-                    Arg::Expr(x) => arg = atom_or_str(x),
+                    Arg::Expr(x) => {
+                        arg = atom_or_str(x);
+                        arg_kind = match x {
+                            Expr::Lit {
+                                lit: Lit::Str(_), ..
+                            } => ArgKind::Str,
+                            Expr::Lit {
+                                lit: Lit::Atom(_), ..
+                            } => ArgKind::Atom,
+                            _ => ArgKind::Other,
+                        };
+                    }
                     Arg::Kw(k) => {
                         if let Arg::Expr(x) = &*k.value {
                             if let Some(v) = atom_or_str(x) {
@@ -130,21 +157,142 @@ fn binding_of(e: &Expr) -> Option<Binding> {
                 }
             }
             Some(Binding {
+                range: *range,
                 kind: path.join("."),
                 arg,
                 kws,
+                arg_kind,
+                slot,
             })
         }
         _ => None,
     }
 }
 
-fn bindings_of(a: &Arg) -> Vec<Binding> {
+fn bindings_of(a: &Arg, slot: &'static str) -> Vec<Binding> {
     match a {
-        Arg::Expr(Expr::List { items, .. }) => items.iter().flat_map(bindings_of).collect(),
-        Arg::Expr(e) => binding_of(e).into_iter().collect(),
-        Arg::Kw(k) => bindings_of(&k.value),
+        Arg::Expr(Expr::List { items, .. }) => {
+            items.iter().flat_map(|i| bindings_of(i, slot)).collect()
+        }
+        Arg::Expr(e) => binding_of(e, slot).into_iter().collect(),
+        Arg::Kw(k) => bindings_of(&k.value, slot),
     }
+}
+
+/// The binding kinds each site line admits (section 7.3, with the
+/// spellings the tenants use: `file` for an inventory as well as
+/// `rue_toml`, `local` for the controller's own journal, `launchd` beside
+/// `cron` and `task_scheduler`).
+fn admitted(slot: &str) -> &'static [&'static str] {
+    match slot {
+        "inventory" => &["rue_toml", "file", "hook"],
+        "journal" => &["file", "stdout", "local", "hook"],
+        "approval" => &["always", "hook"],
+        "secrets_from" => &["file", "hook"],
+        "deliver_to" => &["requester", "hold", "hook"],
+        "notify" => &["stdout", "hook"],
+        "execute" => &["local", "ssh", "hook"],
+        "scheduler" => &["cron", "task_scheduler", "launchd", "hook"],
+        _ => &[],
+    }
+}
+
+/// E0601 to E0605 as far as a site block decides them: every binding is a
+/// kind its line admits (E0601); each carries the arguments its contract
+/// asks (E0602); a journal is declared (E0603); an operators block with an
+/// identity exists (E0604); every `hook(:x)` has a registrar that may
+/// register it (E0605).
+pub fn validate(
+    decl: &SiteDecl,
+    block: &Block,
+    at: &dyn Fn(TextRange) -> Diagnostic,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let mut with = |range: TextRange, code: Code, message: String| {
+        let mut d = at(range);
+        d.code = code;
+        d.message = message;
+        out.push(d);
+    };
+    let all: Vec<&Binding> = decl
+        .inventory
+        .iter()
+        .chain(decl.journal.iter())
+        .chain(decl.approval.iter())
+        .chain(decl.secrets_from.iter())
+        .chain(decl.deliver_to.iter())
+        .chain(decl.execute.iter())
+        .chain(decl.scheduler.iter())
+        .chain(decl.notify.iter())
+        .collect();
+    for b in &all {
+        let kinds = admitted(b.slot);
+        if !kinds.contains(&b.kind.as_str()) {
+            with(
+                b.range,
+                Code::E0601,
+                format!(
+                    "{}() is not a binding this line admits ({})",
+                    b.kind,
+                    kinds.join(", ")
+                ),
+            );
+            continue;
+        }
+        let contract = match b.kind.as_str() {
+            "file" | "rue_toml" => (b.arg_kind == ArgKind::Str, "a path string"),
+            "hook" => (b.arg_kind == ArgKind::Atom, "the hook's atom"),
+            "hold" => (
+                b.kws.iter().any(|(k, _)| k == "until"),
+                "until: :wane or a duration",
+            ),
+            _ => (b.arg_kind == ArgKind::None, "no argument"),
+        };
+        if !contract.0 {
+            with(
+                b.range,
+                Code::E0602,
+                format!("{}() takes {}", b.kind, contract.1),
+            );
+        }
+        if b.slot == "execute" && b.kind == "hook" && !b.kws.iter().any(|(k, _)| k == "transport") {
+            with(
+                b.range,
+                Code::E0602,
+                "an execute hook names its transport: hook(:x, transport: :t)".into(),
+            );
+        }
+        if b.kind == "hook" {
+            if let Some(name) = &b.arg {
+                let registered = decl
+                    .registrars
+                    .iter()
+                    .any(|r| r.may_register.contains(name));
+                if !registered {
+                    with(
+                        b.range,
+                        Code::E0605,
+                        format!("hook(:{name}) has no registrar that may register it (hooks do ... may_register: [...])"),
+                    );
+                }
+            }
+        }
+    }
+    if decl.journal.is_none() {
+        with(
+            block.range,
+            Code::E0603,
+            "no journal declared (journal to: ...); nothing would record what ran".into(),
+        );
+    }
+    if decl.identities.is_empty() {
+        with(
+            block.range,
+            Code::E0604,
+            "no operators block, or none declares an identity; nothing may request a plan".into(),
+        );
+    }
+    out
 }
 
 /// Read the site block.
@@ -157,19 +305,33 @@ pub fn declare(block: &Block) -> SiteDecl {
                     Arg::Kw(k) => Some(k),
                     _ => None,
                 });
-                let bs: Vec<Binding> = l.args.iter().flat_map(bindings_of).collect();
-                match (l.keyword.as_str(), first_kw.map(|k| k.name.as_str())) {
-                    ("inventory", Some("from")) => d.inventory = bs.into_iter().next(),
-                    ("journal", Some("to")) => d.journal = bs.into_iter().next(),
-                    ("approval", Some("via")) => d.approval = bs.into_iter().next(),
-                    ("secrets", Some("from")) => d.secrets_from = bs.into_iter().next(),
-                    ("secrets", Some("deliver_to")) => d.deliver_to = bs,
-                    ("execute", Some("via")) => d.execute = bs,
-                    ("backstop", Some("scheduler")) => d.scheduler = bs.into_iter().next(),
-                    ("notify", Some("via")) => d.notify = bs.into_iter().next(),
-                    ("max_wait", _) => d.max_wait = duration_arg(&l.args),
-                    ("skew_tolerance", _) => d.skew_tolerance = duration_arg(&l.args),
-                    _ => {}
+                let slot: &'static str =
+                    match (l.keyword.as_str(), first_kw.map(|k| k.name.as_str())) {
+                        ("inventory", Some("from")) => "inventory",
+                        ("journal", Some("to")) => "journal",
+                        ("approval", Some("via")) => "approval",
+                        ("secrets", Some("from")) => "secrets_from",
+                        ("secrets", Some("deliver_to")) => "deliver_to",
+                        ("execute", Some("via")) => "execute",
+                        ("backstop", Some("scheduler")) => "scheduler",
+                        ("notify", Some("via")) => "notify",
+                        _ => "",
+                    };
+                let bs: Vec<Binding> = l.args.iter().flat_map(|a| bindings_of(a, slot)).collect();
+                match slot {
+                    "inventory" => d.inventory = bs.into_iter().next(),
+                    "journal" => d.journal = bs.into_iter().next(),
+                    "approval" => d.approval = bs.into_iter().next(),
+                    "secrets_from" => d.secrets_from = bs.into_iter().next(),
+                    "deliver_to" => d.deliver_to = bs,
+                    "execute" => d.execute = bs,
+                    "scheduler" => d.scheduler = bs.into_iter().next(),
+                    "notify" => d.notify = bs.into_iter().next(),
+                    _ => match l.keyword.as_str() {
+                        "max_wait" => d.max_wait = duration_arg(&l.args),
+                        "skew_tolerance" => d.skew_tolerance = duration_arg(&l.args),
+                        _ => {}
+                    },
                 }
             }
             Stmt::Block(b) if b.keyword == "operators" => {

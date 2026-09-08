@@ -1,0 +1,1 @@
+tenants/_negative/E0601-unknown-binding/plan.rue:6:19: E0601: ldap() is not a binding this line admits (rue_toml, file, hook)

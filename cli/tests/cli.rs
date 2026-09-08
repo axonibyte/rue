@@ -370,3 +370,25 @@ fn check_explain_and_artifact_read_a_rue_file_for_one_host() {
     ]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[test]
+fn a_diagnostic_on_stderr_shows_the_code_the_source_line_and_the_suggestion() {
+    let root = repo_root().unwrap();
+    let neg = root.join("tenants/_negative/E0102-unknown-op/plan.rue");
+    let out = rue(&["check", neg.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains(&rue_core::diagnostics::Code::E0102.to_string()),
+        "{err}"
+    );
+    assert!(err.contains("postrue()"), "the source line is shown: {err}");
+    assert!(err.contains("did you mean posture"), "{err}");
+    assert!(
+        err.contains(&format!(
+            "{}-unknown-op/plan.rue:",
+            rue_core::diagnostics::Code::E0102
+        )),
+        "{err}"
+    );
+}

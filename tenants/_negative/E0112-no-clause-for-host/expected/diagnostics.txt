@@ -1,0 +1,1 @@
+tenants/_negative/E0112-no-clause-for-host/plan.rue:22:3: E0112: no clause of op posture matches host db-01 (os freebsd)

@@ -1,0 +1,1 @@
+tenants/_negative/E0103-duplicate-clause/plan.rue:20:7: E0103: posture is defined twice with the same clause pattern

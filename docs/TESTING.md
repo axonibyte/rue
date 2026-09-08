@@ -101,6 +101,19 @@ refusal of every error snippet. The goldens are read-only in the suite;
 them, the same variable as the tenants' writer, and the diff is read the
 same way.
 
+## Diagnostic goldens
+
+Every code the front end raises has a negative directory under
+`tenants/_negative/` holding the `plan.rue` that provokes it and, under
+`expected/`, `diagnostics.txt`: the rendered diagnostics with paths
+relative to the repository root. `rue_tenants::SURFACE_NEGATIVES` is the
+table; `rue-goldens` writes the files by resolving the text; the tenant
+suite holds each text to exactly its code, and holds the fifty-six codes
+of section 6.7 to a partition into the checker's (`EMITTED_CODES`), the
+front end's (`SURFACE_CODES`), the renderer's (`RENDER_CODES`) and the
+unmodeled with a reason each (`UNMODELED_CODES`), so a code can be in no
+list and in no two.
+
 ## The texts and the terms
 
 `tenants/harness/tests/surface.rs` resolves every tenant case and every

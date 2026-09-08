@@ -1,0 +1,33 @@
+rue 0
+# Negative case E0110: a step reads an output of a step that has not run.
+# The front end must refuse with exactly E0110.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :use_token, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: tok)
+  undo: :restore
+end
+
+defop :issue, _ do
+  footprint modified: api.token
+  do: hook(:issue)
+  undo: hook(:revoke, idempotent: true)
+  undo_pre api.token
+  outputs tok, secret: true
+  locus: :controller
+end
+
+defplan :posture, %{name: "db-01"} do
+  wane 1h
+  use_token(tok: issued.tok)
+  issue() as issued
+end

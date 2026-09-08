@@ -315,6 +315,18 @@ pub fn resolve(path: &Path, opts: &Options) -> Result<PlanIr, Vec<Diagnostic>> {
     // The site.
     let (site_module, site_block) = program.site_of(0).map_err(|d| vec![*d])?;
     let decl = site::declare(site_block);
+    diags.extend(site::validate(&decl, site_block, &|range| {
+        diag(
+            Code::E0601,
+            Some(span_of(&program.modules[site_module], range)),
+            String::new(),
+        )
+    }));
+    // A site that does not stand is not read further: its inventory line
+    // may be the very binding refused.
+    if !diags.is_empty() {
+        return Err(diags);
+    }
     let site_dir = program.modules[site_module]
         .path
         .parent()

@@ -312,3 +312,50 @@ fn every_artifact_holds_exactly_the_covered_steps_in_reverse() {
     }
     assert_eq!(seen, 6, "six cases carry a :target backstop");
 }
+
+/// Every surface negative refuses with exactly its code, and the fifty-six
+/// codes of section 6.7 partition into the checker's, the front end's, the
+/// renderer's, and the unmodeled with a reason each.
+#[test]
+fn the_codes_partition_and_every_surface_negative_refuses_with_exactly_its_code() {
+    use rue_tenants::{
+        surface_diagnostics, RENDER_CODES, SURFACE_CODES, SURFACE_NEGATIVES, UNMODELED_CODES,
+    };
+    let root = repo_root().unwrap();
+    for n in SURFACE_NEGATIVES {
+        let text = surface_diagnostics(&root, n).unwrap();
+        let codes: BTreeSet<String> = text
+            .lines()
+            .filter_map(|l| {
+                l.split(": ")
+                    .find(|p| p.starts_with('E') && p.len() == 5)
+                    .map(str::to_string)
+            })
+            .collect();
+        assert_eq!(
+            codes,
+            BTreeSet::from([n.code.to_string()]),
+            "{}:\n{text}",
+            n.name()
+        );
+    }
+    let surface: BTreeSet<Code> = SURFACE_NEGATIVES.iter().map(|n| n.code).collect();
+    assert_eq!(
+        surface,
+        SURFACE_CODES.iter().copied().collect::<BTreeSet<_>>()
+    );
+    let mut all: Vec<Code> = Vec::new();
+    all.extend(EMITTED_CODES);
+    all.extend(SURFACE_CODES);
+    all.extend(RENDER_CODES);
+    all.extend(UNMODELED_CODES.iter().map(|(c, _)| *c));
+    let mut sorted = all.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(sorted.len(), all.len(), "a code is in two lists");
+    assert_eq!(
+        sorted,
+        Code::ALL.to_vec(),
+        "every code of section 6.7 is in exactly one list"
+    );
+}

@@ -1,0 +1,1 @@
+tenants/_negative/E0114-when-arms-differ/plan.rue:35:3: E0114: the when's arms bind t to outputs of different kinds

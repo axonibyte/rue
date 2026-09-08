@@ -1,0 +1,13 @@
+# Reverts: a defprim's declared argument classes reach the call (section 6.4) -- a controller-class argument classed target-local would pass closure and be baked into a :target undo.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -1688,7 +1688,7 @@
+                     .iter()
+                     .map(|e| {
+                         let class = match atom_of(&e.value).as_deref() {
+-                            Some("controller") => b::ArgClass::Controller,
++                            Some("controller") => b::ArgClass::TargetLocal,
+                             _ => b::ArgClass::TargetLocal,
+                         };
+                         (crate::ast::unquote(&e.name), class)

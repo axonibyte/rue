@@ -104,6 +104,53 @@ struct Select {
     requester: Option<String>,
 }
 
+/// A diagnostic on stderr: miette's report with the source line and a
+/// caret when the diagnostic has a span in a readable file, else the
+/// one-line rendering.
+fn report(d: &rue_core::diagnostics::Diagnostic) {
+    use miette::{
+        GraphicalReportHandler, GraphicalTheme, LabeledSpan, MietteDiagnostic, NamedSource, Report,
+    };
+    let Some(span) = &d.span else {
+        eprintln!("{}", d.render());
+        return;
+    };
+    let Ok(src) = fs::read_to_string(&span.file) else {
+        eprintln!("{}", d.render());
+        return;
+    };
+    let offset: usize = src
+        .lines()
+        .take(span.line.saturating_sub(1) as usize)
+        .map(|l| l.len() + 1)
+        .sum::<usize>()
+        + span.col.saturating_sub(1) as usize;
+    let len = src[offset.min(src.len())..]
+        .chars()
+        .take_while(|c| !c.is_whitespace() && !matches!(c, ',' | ')' | ']' | '}'))
+        .map(char::len_utf8)
+        .sum::<usize>()
+        .max(1);
+    let mut message = d.message.clone();
+    if let Some(e) = &d.expected {
+        message.push_str(&format!("; expected {e}"));
+    }
+    if let Some(f) = &d.found {
+        message.push_str(&format!(", found {f}"));
+    }
+    let mut diag = MietteDiagnostic::new(message)
+        .with_code(d.code.to_string())
+        .with_label(LabeledSpan::at(offset..offset + len, "here"));
+    if let Some(n) = &d.nearest {
+        diag = diag.with_help(format!("did you mean {n}?"));
+    }
+    let report = Report::new(diag).with_source_code(NamedSource::new(&span.file, src));
+    let mut out = String::new();
+    let _ = GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor())
+        .render_report(&mut out, report.as_ref());
+    eprint!("{out}");
+}
+
 /// A plan IR document, or a `.rue` file resolved for one host. A resolver
 /// diagnostic is a refusal (exit 1) with the diagnostics on stderr.
 fn load_input(
@@ -121,7 +168,7 @@ fn load_input(
             Ok(ir) => Ok(ir),
             Err(diags) => {
                 for d in &diags {
-                    eprintln!("{}", d.render());
+                    report(d);
                 }
                 Err(ExitCode::from(1))
             }
@@ -204,7 +251,7 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
                 }
                 Err(diagnostics) => {
                     for d in &diagnostics {
-                        eprintln!("{}", d.render());
+                        report(d);
                     }
                     Ok(ExitCode::from(1))
                 }

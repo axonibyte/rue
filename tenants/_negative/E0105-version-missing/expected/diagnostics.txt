@@ -1,0 +1,1 @@
+tenants/_negative/E0105-version-missing/plan.rue:1:1: E0105: language version marker missing; expected `rue 0` on the first line

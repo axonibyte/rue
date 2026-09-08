@@ -1,0 +1,1 @@
+tenants/_negative/E0108-compare-unknown/plan.rue:22:10: E0108: comparison against :unknown; ask defined?() or unknown?() instead

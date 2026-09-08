@@ -1,0 +1,13 @@
+# Reverts: a protocol with an inverse needs a paired impl of the inverse for every role that impls it (section 6.4, E0103) -- else the inverse silently falls back to the default on that role.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -863,7 +863,7 @@
+             }
+             let inverse_impls = impls_of(&inv);
+             for (role, d) in &impls {
+-                if !inverse_impls.iter().any(|(r, _)| r == role) {
++                if false && !inverse_impls.iter().any(|(r, _)| r == role) {
+                     diags.push(self.err(
+                         module,
+                         d.name_range,

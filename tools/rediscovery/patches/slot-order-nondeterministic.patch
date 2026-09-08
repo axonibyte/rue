@@ -1,0 +1,13 @@
+# Reverts: slot contributions run by priority, lower first, ties by role name (section 6.4) -- any other order makes a plan's step sequence depend on who wrote which role last.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -401,7 +401,7 @@
+                             }
+                         }
+                     }
+-                    contributions.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
++                    contributions.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+                     if contributions.is_empty() {
+                         out.push(Item::Slot { name });
+                     } else {

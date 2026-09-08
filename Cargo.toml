@@ -29,3 +29,6 @@ logos = "0.16"
 rowan = "0.17"
 # The inventory is TOML (Appendix C).
 toml = { version = "1", features = ["preserve_order"] }
+# Diagnostics rendering on the CLI's stderr (section 6.9); the fancy
+# report without terminal detection, so a rendering is the same everywhere.
+miette = { version = "7", features = ["fancy-no-syscall"] }

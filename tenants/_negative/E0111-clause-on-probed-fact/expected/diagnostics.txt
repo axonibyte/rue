@@ -1,0 +1,1 @@
+tenants/_negative/E0111-clause-on-probed-fact/plan.rue:15:19: E0111: clause pattern names `load`, which is not a host-contract fact (name, os, address, roles, reach)
