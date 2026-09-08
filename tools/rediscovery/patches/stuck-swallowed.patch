@@ -1,0 +1,24 @@
+# Reverts: a failing undo is Stuck, persisted and retried every pass (5.9) -- here it is dropped from the applied set and the revert reports itself clean.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1319,7 +1319,7 @@
+                     rec.applied.pop();
+                     self.persist(rec)?;
+                 }
+-                Err(why) => {
++                Err(why) if why.is_empty() => {
+                     rec.stuck = rec.applied.iter().rev().map(|x| x.step).collect();
+                     rec.stuck.dedup();
+                     self.log(
+@@ -1337,6 +1337,10 @@
+                         },
+                     )?;
+                     return Ok(());
++                }
++                Err(_) => {
++                    rec.applied.pop();
++                    self.persist(rec)?;
+                 }
+             }
+         }

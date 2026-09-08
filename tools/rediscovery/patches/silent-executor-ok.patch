@@ -1,0 +1,13 @@
+# Reverts: the Silent rule (7.2) -- an op that promised an output and got none is a refusal; here the step counts as done with the output unbound.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1130,7 +1130,7 @@
+                     .filter(|o| !out.outputs.contains_key(&o.name))
+                     .map(|o| o.name.as_str())
+                     .collect();
+-                if !missing.is_empty() {
++                if !missing.is_empty() && std::env::var_os("RUE_NEVER_SET").is_some() {
+                     self.log(
+                         rec,
+                         J::StepFailed {

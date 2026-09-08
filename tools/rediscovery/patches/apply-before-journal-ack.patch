@@ -1,0 +1,45 @@
+# Reverts: the write-ahead rule (7.6, 5.9) -- the Applying entry is acknowledged by every sink before a step's do runs; here the do runs first, so a crash or a refusing sink between the two leaves a step applied that no journal admits to.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1094,17 +1094,15 @@
+                 }
+             }
+         }
+-        // Write-ahead: the entry is acknowledged and the record persisted in
+-        // Applying before anything runs.
+-        self.log(
+-            rec,
+-            J::Applying {
+-                step: n,
+-                undo_line: undo_line(&op),
+-            },
+-        )?;
+-        self.persist(rec)?;
+         if rec.rehearsal {
++            self.log(
++                rec,
++                J::Applying {
++                    step: n,
++                    undo_line: undo_line(&op),
++                },
++            )?;
++            self.persist(rec)?;
+             self.log(rec, J::StepDone { step: n })?;
+             return self.after_step(rec, n, iteration, &op, vars);
+         }
+@@ -1121,6 +1119,14 @@
+                 .ok_or_else(|| EngineError::Internal("executor vanished".into()))?;
+             ex.run(&host, &id, &body)
+         };
++        self.log(
++            rec,
++            J::Applying {
++                step: n,
++                undo_line: undo_line(&op),
++            },
++        )?;
++        self.persist(rec)?;
+         match result {
+             Ok(out) => {
+                 // Every declared output must be present: silence is refusal.

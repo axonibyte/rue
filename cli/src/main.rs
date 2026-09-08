@@ -59,6 +59,11 @@ enum Verb {
     },
     /// Print the runtime state machine's transition table.
     States,
+    /// The journal: verify a chain end to end (section 5.10).
+    Journal {
+        #[command(subcommand)]
+        verb: JournalVerb,
+    },
     /// Format a .rue file (section 6.9): the canonical layout, comments
     /// kept; the identity on a formatted file.
     Fmt {
@@ -87,6 +92,20 @@ enum Verb {
         /// A plan parameter the artifact bakes in, `name=value`; repeatable.
         #[arg(long = "set", value_name = "NAME=VALUE")]
         set: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum JournalVerb {
+    /// Verify a journal file (one JSON entry a line): genesis, sequence,
+    /// every link and every hash; with --key, every signature too, and an
+    /// unsigned entry is then a failure.
+    Verify {
+        /// The journal file.
+        file: PathBuf,
+        /// The public key (OpenSSH format) every entry must be signed with.
+        #[arg(long)]
+        key: Option<PathBuf>,
     },
 }
 
@@ -227,6 +246,44 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
                 eprint!("{}", prose(&v));
             }
             Ok(status_code(&v))
+        }
+        Verb::Journal {
+            verb: JournalVerb::Verify { file, key },
+        } => {
+            let entries =
+                rue_engine::store::read_ndjson(&file).map_err(|e| anyhow::anyhow!("{e}"))?;
+            if entries.is_empty() {
+                eprintln!(
+                    "rue: {}: no entries; a chain with nothing in it verifies nothing",
+                    file.display()
+                );
+                return Ok(ExitCode::from(1));
+            }
+            let pk = match &key {
+                Some(k) => {
+                    Some(rue_engine::sign::load_public(k).map_err(|e| anyhow::anyhow!("{e}"))?)
+                }
+                None => None,
+            };
+            match rue_engine::sign::verify_chain(&entries, pk.as_ref()) {
+                Ok(()) => {
+                    let signed = match &key {
+                        Some(k) => format!(", every signature verified with {}", k.display()),
+                        None => String::new(),
+                    };
+                    writeln!(
+                        out,
+                        "rue: {}: {} entries, chain verified{signed}",
+                        file.display(),
+                        entries.len()
+                    )?;
+                    Ok(ExitCode::SUCCESS)
+                }
+                Err(e) => {
+                    eprintln!("rue: {}: {e}", file.display());
+                    Ok(ExitCode::from(1))
+                }
+            }
         }
         Verb::States => {
             out.write_all(render_table().as_bytes())?;

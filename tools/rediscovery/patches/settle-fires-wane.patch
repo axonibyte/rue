@@ -1,0 +1,13 @@
+# Reverts: settle (7.8) -- no wane fires and no stuck retry runs until every held footprint is reestablished or lost; here the reap pass ignores the settle flag.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1600,7 +1600,7 @@
+             {
+                 report.notify.push((rec.id.clone(), rec.state));
+             }
+-            if self.settling {
++            if self.settling && std::env::var_os("RUE_NEVER_SET").is_some() {
+                 continue;
+             }
+             // Wane: every bounded state of a temporary plan, observed before

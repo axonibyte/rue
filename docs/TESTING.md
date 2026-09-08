@@ -54,10 +54,10 @@ prototype's under one tasty suite, and both inside the gate:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's rules each on a small file (`surface/tests/resolve.rs`); the performance bound (`surface/tests/bench.rs`); the CLI's verbs, selectors and exit codes |
+| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`, `engine/tests/{clock,store,journal,lifecycle}.rs`, `bindings/tests/journal.rs`, `daemon/tests/migrate.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's rules each on a small file (`surface/tests/resolve.rs`); the performance bound (`surface/tests/bench.rs`); the CLI's verbs, selectors and exit codes; the engine over fakes: the store's lock, atomicity and schema, migration; the journal's chain through every sink, a refusing sink as R0304, signatures with the key and with nothing else; the lifecycle's scenarios (below); the file sink and the key binding; `rued migrate` and `rue journal verify` end to end |
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
-| 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
+| 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
 
 `tenants/harness` (`rue-tenants`) holds the tenants and the negatives as
 Rust terms, the case table as code (`TENANT_CASES`, `NEGATIVES`,
@@ -65,6 +65,38 @@ Rust terms, the case table as code (`TENANT_CASES`, `NEGATIVES`,
 `tenants/` because it names tenants. The Haskell prototype is the Phase 0
 record: its tier-1 and tier-4 tests still run in the gate, but it no longer
 compares against or writes the goldens.
+
+## The lifecycle over fakes
+
+`engine/tests/lifecycle.rs` runs the engine over a fake executor per
+transport, a memory sink and a fake clock, and reads back the journal the
+sink received and the commands the fake ran: a temporary plan applies in
+order and rests; the write-ahead entry is acknowledged before the step
+runs (a sink that counts the fake's calls at delivery sees n-1 when entry
+n arrives); a failing step undoes itself, then the prefix, and releases the
+ledger; a failing undo is stuck, retried each pass, abandonable; an
+executor that promises an output and says nothing is a refusal; wane
+expires at the instant and reverts; renewal is within the window, never
+after expiry, anchored at renewal; a permanent plan confirms and commits
+and a temporary one refuses commit; a gate is pending and its window
+lapses fail-closed; an unknown guard waits, a yes continues, a no refuses,
+a lapsed bound reverts, a forced name passes; a refusal after a holding
+step holds and resume retries; a step no transport reaches is deferred and
+`handoff-done` (verb or probe) continues; a `:restore` undo removes,
+strips and writes back exactly; a rehearsal calls no executor and reserves
+nothing; a held exclusivity class is R0101 and an overlapping umbra R0203;
+boot demotes an instance left applying; during settle no wane fires and
+held resources are reestablished first, and the settle flag survives a
+crash; a migrated store is journaled once.
+
+`engine/tests/table.rs` is tier 4 through the driver: every applicable
+row of the generated transition table (`docs/state-transitions.tsv`, 664
+rows) is seeded as an instance in the store and its event fired through a
+verb, `advance`, the reap pass or boot; the transition the engine records
+must be the row's outcome, and a refusing row must come back as its
+R-code. The events no code path of the current unit can produce are
+named in the test with the unit that brings each, and the set is asserted
+exactly, so a unit that makes one reachable must remove it there.
 
 ## Goldens
 

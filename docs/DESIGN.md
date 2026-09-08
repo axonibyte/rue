@@ -105,6 +105,70 @@ transition table is generated and is itself a golden
 (`docs/state-transitions.tsv`). `core/src/ledger.rs` holds the cross-plan
 reservations of section 5.12.
 
+## The engine
+
+`engine/` (rue-engine) is the runtime of ROADMAP section 7, arriving by
+unit. What is in place:
+
+- **The clock** (`engine/src/clock.rs`): a trait every module reads time
+  through. `SystemClock` is the wall clock in whole seconds; `FakeClock` is
+  set and advanced by tests and the simulation, in either direction.
+- **The store** (`engine/src/store.rs`, 7.1 and 7.13): a directory with a
+  `schema` file, a `lock` held exclusively for the daemon's life (`flock`;
+  an exclusive open on Windows), `instances/<id>.json` in canonical JSON,
+  `ledger.json` and the engine's own copy of the chain in `journal.ndjson`.
+  Every write goes to a temporary name beside the file and is renamed after
+  a sync. An unknown or missing schema is R0502; `rued migrate` is the only
+  migration, dry-runnable, refused on a store another account owns, and
+  recorded in `migrated.json` for the daemon's next start to journal.
+- **The journal** (`engine/src/journal.rs`, 7.6): entries chained by core's
+  `append`, optionally signed (SSHSIG, Ed25519, namespace `rue-journal`,
+  `engine/src/sign.rs`), written to the store, then delivered to every sink
+  synchronously; a sink that does not acknowledge is R0304, the refusal is
+  chained after the entry and delivered to the sinks that still
+  acknowledge, and the plan refuses to proceed. `rue journal verify`
+  checks a file's chain and, with `--key`, every signature.
+- **The executor seam** (`engine/src/executor.rs`, 7.2): one object-safe
+  trait for everything done to a host. The engine hands it a resolved body
+  (`engine/src/resolve.rs`: every reference already a string with its
+  secrecy), so an executor never sees where a value came from. Empty output
+  where an op promised one is `Silent`, a refusal. The fake records every
+  call, runs a scripted outcome per body, and keeps file facts so a restore
+  can be checked end to end.
+- **The lifecycle** (`engine/src/lifecycle.rs`, 5.9, 7.1, 7.8): the driver
+  over core's `states::transition`. Events come from verbs, from a step's
+  outcome, or from the reap pass observing time. Progress is a set (the
+  applied leaves with their repeat iteration, and the arm each `when`
+  chose), not a cursor: the plan is walked from its start every time,
+  skipping what is done, so a walk after a crash makes the same choices.
+  The write-ahead `Applying{step, undo_line}` entry is acknowledged and the
+  record persisted before a `do` runs. A failed step is undone at once; a
+  refusal then holds (an earlier step with `refusal: :hold`) or reverts
+  last-in-first-out, and a failing undo is `Stuck`, retried every pass.
+  `:restore` undoes from the footprint: an owned file removed, a region
+  stripped, a modified file written back from the snapshot taken before
+  `do`. The reap pass observes the approval window, wane (before anything
+  else), a wait's bound, an unknown guard, a handoff probe, and retries
+  `Stuck`; boot demotes `Applying` to `Reverting`, reestablishes held
+  resources (or suspends the instance), re-observes owned footprints, and
+  only then leaves settle, during which no wane fires and no retry runs;
+  the flag is persisted so a crash during settle stays settling. The
+  request reserves every touched host's umbra in the ledger (R0101,
+  R0203); a rehearsal journals every step, calls no executor and reserves
+  nothing.
+
+Positions the engine takes where section 7 is silent, for the owner: a
+step gate, a knell's acknowledgement and an unknown guard all enter
+`Waiting`, and a knell acknowledged up front (`--ack`) is journaled
+`KnellAcknowledged` by the requester with no proof yet (the gates unit
+brings the proofs); a `when` guard observed unknown takes the arm its
+declared value names; a `repeat over:` list is read from a parameter, an
+output, a controller variable or the owner host's probe, comma-separated;
+an `observe` and a guard are answered by the owner host's executor; a
+non-file fact under `:restore` with no snapshot is a failing undo, not a
+guess; the `:controller` host is the machine the engine runs on, reached
+by `local()`.
+
 ## The backstop artifact
 
 A `:target` backstop is a standalone script in the instance directory on

@@ -2,7 +2,7 @@
 //! exit codes are section 6.8's.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use rue_tenants::golden::repo_root;
@@ -386,4 +386,139 @@ fn a_diagnostic_on_stderr_shows_the_code_the_source_line_and_the_suggestion() {
         )) && err.contains("plan.rue:22:3"),
         "{err}"
     );
+}
+
+// --- rue journal verify ------------------------------------------------------
+
+fn journal_dir(name: &str) -> PathBuf {
+    let p = std::env::temp_dir().join(format!(
+        "rue-cli-journal-{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&p).unwrap();
+    p
+}
+
+fn write_chain(path: &std::path::Path, entries: &[rue_core::journal::Entry]) {
+    let mut text = String::new();
+    for e in entries {
+        text.push_str(&serde_json::to_string(e).unwrap());
+        text.push('\n');
+    }
+    fs::write(path, text).unwrap();
+}
+
+#[test]
+fn journal_verify_accepts_a_chain_names_a_broken_link_and_refuses_an_empty_file() {
+    use rue_core::journal::{append, Event};
+    use rue_core::model::Instant;
+    let d = journal_dir("chain");
+    let e1 = append(&[], Instant::new(1), "p", "i", "h", Event::Checked, vec![]);
+    let e2 = append(
+        std::slice::from_ref(&e1),
+        Instant::new(2),
+        "p",
+        "i",
+        "h",
+        Event::Requested,
+        vec![],
+    );
+    let file = d.join("journal.ndjson");
+    write_chain(&file, &[e1.clone(), e2.clone()]);
+    let out = rue(&["journal", "verify", file.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("2 entries, chain verified"), "{text}");
+
+    let mut broken = e2.clone();
+    broken.prev_hash = rue_core::journal::Hash::ZERO;
+    write_chain(&file, &[e1, broken]);
+    let out = rue(&["journal", "verify", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("entry 2") && err.contains("prev_hash"),
+        "{err}"
+    );
+    assert!(out.stdout.is_empty());
+
+    fs::write(&file, "").unwrap();
+    let out = rue(&["journal", "verify", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no entries"));
+
+    let out = rue(&["journal", "verify", d.join("missing").to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a missing file is an empty chain: refused"
+    );
+    let _ = fs::remove_dir_all(&d);
+}
+
+#[test]
+fn journal_verify_with_a_key_checks_every_signature_and_refuses_an_unsigned_entry() {
+    use rue_core::journal::{append, Event};
+    use rue_core::model::Instant;
+    let d = journal_dir("signed");
+    let key = d.join("id_ed25519");
+    let signer = rue_engine::sign::generate(&key).unwrap();
+    let mut e1 = append(&[], Instant::new(1), "p", "i", "h", Event::Checked, vec![]);
+    e1.sig = Some(signer.sign(&e1).unwrap());
+    let mut e2 = append(
+        std::slice::from_ref(&e1),
+        Instant::new(2),
+        "p",
+        "i",
+        "h",
+        Event::Requested,
+        vec![],
+    );
+    e2.sig = Some(signer.sign(&e2).unwrap());
+    let file = d.join("journal.ndjson");
+    write_chain(&file, &[e1.clone(), e2.clone()]);
+    let pub_key = key.with_extension("pub");
+    let out = rue(&[
+        "journal",
+        "verify",
+        file.to_str().unwrap(),
+        "--key",
+        pub_key.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("every signature verified with"));
+
+    let mut unsigned = e2.clone();
+    unsigned.sig = None;
+    write_chain(&file, &[e1, unsigned]);
+    let out = rue(&["journal", "verify", file.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "without a key the chain is what is checked"
+    );
+    let out = rue(&[
+        "journal",
+        "verify",
+        file.to_str().unwrap(),
+        "--key",
+        pub_key.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unsigned"));
+    let _ = fs::remove_dir_all(&d);
 }

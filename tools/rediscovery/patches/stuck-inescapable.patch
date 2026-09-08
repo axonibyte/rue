@@ -1,0 +1,15 @@
+# Reverts: Stuck is retried each reap pass (5.9: Stuck -retry each pass-> Reverting); here the pass leaves it alone, so only abandon ends it.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1686,9 +1686,7 @@
+                     }
+                 }
+                 State::Stuck => {
+-                    self.step(&mut rec, E::Retry)?;
+-                    self.revert(&mut rec)?;
+-                    report.actions.push(format!("{}: retried the undo", rec.id));
++                    report.notify.push((rec.id.clone(), State::Stuck));
+                 }
+                 State::Deferred => {
+                     if let Some(d) = rec.deferred.clone() {

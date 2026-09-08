@@ -1,0 +1,13 @@
+[package]
+name = "rue-bindings"
+description = "rue's generic built-in bindings (docs/ROADMAP.md section 7.3): the one generic implementation the engine ships per binding kind"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rue-core = { path = "../core" }
+rue-engine = { path = "../engine" }
+serde_json.workspace = true

@@ -9,3 +9,24 @@ repository.workspace = true
 
 [dependencies]
 rue-core = { path = "../core" }
+rue-render = { path = "../render" }
+serde.workspace = true
+serde_json.workspace = true
+# The journal's optional signing: OpenSSH Ed25519 keys and SSHSIG
+# signatures, pure Rust (docs/ROADMAP.md 5.10).
+ssh-key = { version = "0.6", default-features = false, features = ["ed25519", "std", "rand_core"] }
+# The CSPRNG the key generator draws from.
+rand_core = { version = "0.6", features = ["getrandom"] }
+# The SSHSIG's binary form (ssh-key's Encode and Decode are this crate's).
+ssh-encoding = { version = "0.2", default-features = false, features = ["alloc"] }
+# The request nonce (section 5.11): core stays free of randomness.
+getrandom = "0.3"
+
+[dev-dependencies]
+libc = "0.2"
+# A key that is not Ed25519, generated in-process for the signer's refusal.
+ssh-key = { version = "0.6", default-features = false, features = ["ed25519", "std", "rand_core", "p256"] }
+
+[target.'cfg(unix)'.dependencies]
+# flock on the store's lock file; the effective uid the store must be owned by.
+libc = "0.2"

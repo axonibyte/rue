@@ -1,0 +1,1912 @@
+//! The lifecycle, docs/ROADMAP.md 5.9, 7.1 and 7.8: an instance from check
+//! to a terminal state, over the store, the journal, the clock and the
+//! executors.
+//!
+//! The state machine is core's (`rue_core::states::transition`); this
+//! module derives the events. An event comes from a verb (`apply`,
+//! `recant`, `renew`, `confirm`, `commit`, `resume`, `handoff-done`,
+//! `abandon`, `cancel`), from a step's outcome (a refusal, a guard, a
+//! deferred host, the last step, `commit()`), or from the reap pass
+//! observing time (wane, an approval window, a wait's bound). Every
+//! transition is journaled; every `now` is the clock's.
+//!
+//! Write-ahead: the `Applying{step, undo_line}` entry is recorded and
+//! acknowledged by every sink, and the instance persisted in `Applying`,
+//! before a step's `do` runs; a crash after that point is demoted to
+//! `Reverting` at boot and the step's undo runs whether or not its `do`
+//! finished (section 5.9: a failed step is itself reverted; it may be
+//! half-applied).
+//!
+//! Progress is a set, not a cursor: the applied leaves (with their repeat
+//! iteration) and the arm each `when` chose are persisted, and the plan is
+//! walked from its start every time, skipping what is done. A walk after a
+//! crash therefore makes the same choices and resumes at the same leaf.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+use std::sync::Arc;
+
+use rue_core::algebra::{numbered, op_of};
+use rue_core::body::Body;
+use rue_core::check;
+use rue_core::explain::undo_line;
+use rue_core::intent::{effective_wane, infer_intent, Intent};
+use rue_core::interference::{maywrite, step_facts, writes};
+use rue_core::ir::PlanIr;
+use rue_core::journal::Event as J;
+use rue_core::ledger::{Instance as Held, Ledger, LedgerCode};
+use rue_core::model::{
+    Ack, Duration, FootprintEntry, ForceName, Guard, HostRef, Instant, Item, Kind, Locus, Mode,
+    OnLapse, Op, Plan, Refusal, RepeatForm, StepI, Tri, Undo,
+};
+use rue_core::request::hash_json;
+use rue_core::states::{self, Ctx, Event as E, Outcome as Verdict_, RCode, State};
+use rue_core::verdict::{Status, Verdict};
+use serde::{Deserialize, Serialize};
+
+use crate::clock::Clock;
+use crate::executor::{Executor, RPrim, Resolved};
+use crate::host::Host;
+use crate::journal::{About, Journal, JournalError};
+use crate::resolve::{resolve_body, Env};
+use crate::store::{Store, StoreError};
+
+// ---------------------------------------------------------------------------
+// The persisted record
+
+fn state_name(s: State) -> String {
+    s.to_string()
+}
+
+fn parse_state(s: &str) -> Option<State> {
+    states::ALL_STATES
+        .iter()
+        .copied()
+        .find(|st| st.to_string() == s)
+}
+
+mod state_serde {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(s: &State, ser: S) -> Result<S::Ok, S::Error> {
+        ser.serialize_str(&state_name(*s))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<State, D::Error> {
+        let text = String::deserialize(de)?;
+        parse_state(&text).ok_or_else(|| serde::de::Error::custom(format!("no such state: {text}")))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppliedStep {
+    pub step: u32,
+    pub iteration: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Wait {
+    pub step: u32,
+    pub reason: String,
+    pub since: Instant,
+    /// The wait's own bound (window or max_wait); wane still wins.
+    pub bound: Option<Instant>,
+    /// The guard being waited on, when the wait is an unknown guard.
+    pub guard: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeferredAt {
+    pub step: u32,
+    pub handoff: String,
+}
+
+/// One instance, as the store keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InstanceRecord {
+    pub id: String,
+    pub ir: PlanIr,
+    pub params: BTreeMap<String, String>,
+    #[serde(with = "state_serde")]
+    pub state: State,
+    pub permanent: bool,
+    pub rehearsal: bool,
+    pub requested_at: Option<Instant>,
+    pub approved_at: Option<Instant>,
+    /// The wane deadline of a temporary plan, anchored at approval or the
+    /// last renewal.
+    pub deadline: Option<Instant>,
+    pub approval_deadline: Option<Instant>,
+    pub applied: Vec<AppliedStep>,
+    /// The arm each `when` chose, by the leaf number of its first leaf.
+    pub choices: BTreeMap<String, bool>,
+    pub outputs: BTreeMap<String, String>,
+    /// Controller-side snapshots of file facts before `do`, by `step/k`
+    /// (unit C moves those of run-capable hosts to the instance directory).
+    pub snapshots: BTreeMap<String, String>,
+    pub waiting: Option<Wait>,
+    pub held_at: Option<u32>,
+    pub deferred: Option<DeferredAt>,
+    pub stuck: Vec<u32>,
+    pub drift_held: Vec<u32>,
+    /// Knells acknowledged up front (`--ack`), by step.
+    pub acks: Vec<u32>,
+    /// Guard names forced by the request or a `recant --force`.
+    pub forced: Vec<String>,
+    pub ledger_ids: Vec<String>,
+    pub refusal: Option<String>,
+    pub closed_reason: Option<String>,
+}
+
+impl InstanceRecord {
+    pub fn plan(&self) -> &Plan {
+        &self.ir.plan
+    }
+
+    pub fn intent(&self) -> Intent {
+        if self.permanent {
+            Intent::Permanent
+        } else {
+            Intent::Temporary
+        }
+    }
+
+    pub fn is_applied(&self, step: u32, iteration: u32) -> bool {
+        self.applied
+            .iter()
+            .any(|a| a.step == step && a.iteration == iteration)
+    }
+
+    /// The context the state machine reads (section 5.9).
+    pub fn ctx(&self) -> Ctx {
+        let earlier_hold = self.applied.iter().any(|a| {
+            self.op_at(a.step)
+                .is_some_and(|o| matches!(o.refusal, Refusal::Hold { .. }))
+        });
+        let on_lapse = self
+            .waiting
+            .as_ref()
+            .and_then(|w| self.step_at(w.step))
+            .map(|s| s.on_lapse)
+            .unwrap_or(OnLapse::Revert);
+        Ctx {
+            intent: self.intent(),
+            mode: self.plan().mode,
+            earlier_hold,
+            on_lapse,
+        }
+    }
+
+    pub fn op_at(&self, step: u32) -> Option<&Op> {
+        numbered(&self.plan().body)
+            .into_iter()
+            .find(|(n, _)| *n == step)
+            .and_then(|(_, it)| op_of(it))
+    }
+
+    pub fn step_at(&self, step: u32) -> Option<&StepI> {
+        numbered(&self.plan().body)
+            .into_iter()
+            .find(|(n, _)| *n == step)
+            .and_then(|(_, it)| rue_core::algebra::step_of(it))
+    }
+
+    pub fn about(&self) -> About {
+        About {
+            plan: self.plan().id.clone(),
+            instance: self.id.clone(),
+            host: self.plan().owner.clone(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Outcomes and errors
+
+/// What a verb reports: the state reached and the exit code of 6.8.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    pub id: String,
+    pub state: State,
+    pub exit: u8,
+    pub line: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineError {
+    /// The check refused the plan; the verdict is the reason.
+    Refused(Box<Verdict>),
+    /// R0101 (exit 75) or R0203 at request.
+    Ledger(LedgerCode, String),
+    /// R0102, R0103: the verb is not admitted here.
+    NotAdmitted(RCode, String),
+    NoSuchInstance(String),
+    /// A verb that has no meaning in the instance's state.
+    WrongState {
+        state: State,
+        verb: String,
+    },
+    Journal(JournalError),
+    Store(StoreError),
+    /// A malformed plan the checker should have refused.
+    Internal(String),
+}
+
+impl fmt::Display for EngineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EngineError::Refused(v) => write!(f, "refused: {}", rue_core::prose::prose(v)),
+            EngineError::Ledger(c, m) => write!(f, "{c:?}: {m}"),
+            EngineError::NotAdmitted(c, m) => write!(f, "{c:?}: {m}"),
+            EngineError::NoSuchInstance(id) => write!(f, "no such instance: {id}"),
+            EngineError::WrongState { state, verb } => {
+                write!(f, "{verb} has no meaning in state {state}")
+            }
+            EngineError::Journal(e) => write!(f, "{e}"),
+            EngineError::Store(e) => write!(f, "{e}"),
+            EngineError::Internal(s) => write!(f, "internal: {s}"),
+        }
+    }
+}
+
+impl std::error::Error for EngineError {}
+
+impl From<JournalError> for EngineError {
+    fn from(e: JournalError) -> EngineError {
+        EngineError::Journal(e)
+    }
+}
+
+impl From<StoreError> for EngineError {
+    fn from(e: StoreError) -> EngineError {
+        EngineError::Store(e)
+    }
+}
+
+/// The exit code of section 6.8 for a state.
+pub fn exit_of(state: State, secret_undelivered: bool) -> u8 {
+    match state {
+        State::Held => 3,
+        State::Stuck => 4,
+        State::Deferred => 5,
+        State::Pending | State::Waiting => 6,
+        State::DriftHeld => 8,
+        State::Closed => 1,
+        _ if secret_undelivered => 7,
+        _ => 0,
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ApplyOptions {
+    pub rehearsal: bool,
+    pub acks: Vec<u32>,
+    pub forced: Vec<String>,
+    pub mode: Option<Mode>,
+    /// Who is acting, for the journal.
+    pub by: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReapReport {
+    /// What the pass did, one line per action.
+    pub actions: Vec<String>,
+    /// Unbounded states whose notification is re-sent: (instance, state).
+    pub notify: Vec<(String, State)>,
+    /// True when the pass skipped wane and retries because the engine is
+    /// settling after boot.
+    pub settling: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BootReport {
+    pub demoted: Vec<String>,
+    pub reestablished: Vec<(String, u32)>,
+    pub lost: Vec<(String, u32)>,
+    pub reobserved: Vec<(String, String)>,
+    pub migrated: Option<(u32, u32)>,
+}
+
+// ---------------------------------------------------------------------------
+// The engine
+
+/// How a step's walk ended.
+enum Flow {
+    Continue,
+    /// The instance left `Applying`; stop walking.
+    Stop,
+}
+
+/// One transition the machine made (or refused), as the engine observed
+/// it: what `rue status` reports as history and what the tier-4 table test
+/// reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transition {
+    pub id: String,
+    pub from: State,
+    pub event: E,
+    pub outcome: Verdict_,
+}
+
+pub struct Engine {
+    store: Store,
+    journal: Journal,
+    clock: Arc<dyn Clock>,
+    executors: Vec<Box<dyn Executor>>,
+    hosts: BTreeMap<String, Host>,
+    controller: Host,
+    ledger: Ledger,
+    settling: bool,
+    trace: Vec<Transition>,
+}
+
+impl fmt::Debug for Engine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Engine(store {}, {} executors, {} hosts, settling {})",
+            self.store.root().display(),
+            self.executors.len(),
+            self.hosts.len(),
+            self.settling
+        )
+    }
+}
+
+/// The controller as a host: where `:controller` steps and probes run.
+pub fn controller_host() -> Host {
+    let os = match std::env::consts::OS {
+        "macos" => "macos",
+        "windows" => "windows",
+        "freebsd" => "freebsd",
+        _ => "linux",
+    };
+    Host {
+        record: rue_core::model::HostRecord {
+            name: "controller".into(),
+            os: os.into(),
+            reach: vec!["local".into()],
+            filesystem: true,
+            stdin_preamble: true,
+            artifact: None,
+        },
+        address: "127.0.0.1".into(),
+        scheduler: None,
+        rue_root: None,
+        facts: BTreeMap::new(),
+    }
+}
+
+impl Engine {
+    pub fn open(
+        store: Store,
+        journal: Journal,
+        clock: Arc<dyn Clock>,
+        executors: Vec<Box<dyn Executor>>,
+        hosts: Vec<Host>,
+    ) -> Result<Engine, EngineError> {
+        let ledger = store.read_ledger()?;
+        let settling = store
+            .read_meta("settle")
+            .map(|m| m.get("settling").map(String::as_str) == Some("true"))
+            .unwrap_or(false);
+        Ok(Engine {
+            store,
+            journal,
+            clock,
+            executors,
+            hosts: hosts
+                .into_iter()
+                .map(|h| (h.name().to_string(), h))
+                .collect(),
+            controller: controller_host(),
+            ledger,
+            settling,
+            trace: Vec::new(),
+        })
+    }
+
+    /// Every transition since the engine opened, in order.
+    pub fn trace(&self) -> &[Transition] {
+        &self.trace
+    }
+
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    pub fn journal(&self) -> &Journal {
+        &self.journal
+    }
+
+    pub fn settling(&self) -> bool {
+        self.settling
+    }
+
+    pub fn now(&self) -> Instant {
+        self.clock.now()
+    }
+
+    pub fn status(&self, id: &str) -> Result<Option<InstanceRecord>, EngineError> {
+        Ok(self.store.read_instance(id)?)
+    }
+
+    pub fn instances(&self) -> Result<Vec<InstanceRecord>, EngineError> {
+        let mut v = Vec::new();
+        for id in self.store.instance_ids()? {
+            if let Some(r) = self.store.read_instance(&id)? {
+                v.push(r);
+            }
+        }
+        Ok(v)
+    }
+
+    fn load(&self, id: &str) -> Result<InstanceRecord, EngineError> {
+        self.store
+            .read_instance(id)?
+            .ok_or_else(|| EngineError::NoSuchInstance(id.to_string()))
+    }
+
+    fn persist(&self, rec: &InstanceRecord) -> Result<(), EngineError> {
+        Ok(self.store.write_instance(&rec.id, rec)?)
+    }
+
+    fn log(&mut self, rec: &InstanceRecord, ev: J) -> Result<(), EngineError> {
+        let at = self.clock.now();
+        self.journal
+            .record(&self.store, at, &rec.about(), ev, Vec::new())?;
+        Ok(())
+    }
+
+    fn set_settling(&mut self, on: bool) -> Result<(), EngineError> {
+        self.settling = on;
+        let mut m = BTreeMap::new();
+        m.insert("settling".to_string(), on.to_string());
+        Ok(self.store.write_meta("settle", &m)?)
+    }
+
+    fn outcome(&self, rec: &InstanceRecord) -> Outcome {
+        let exit = exit_of(rec.state, false);
+        let line = match rec.state {
+            State::Closed => format!(
+                "{}: closed ({})",
+                rec.id,
+                rec.closed_reason.as_deref().unwrap_or("no reason recorded")
+            ),
+            State::Waiting => format!(
+                "{}: waiting at step {} ({})",
+                rec.id,
+                rec.waiting.as_ref().map(|w| w.step).unwrap_or(0),
+                rec.waiting
+                    .as_ref()
+                    .map(|w| w.reason.as_str())
+                    .unwrap_or("")
+            ),
+            State::Pending => format!("{}: pending approval", rec.id),
+            State::Held => format!("{}: held at step {}", rec.id, rec.held_at.unwrap_or(0)),
+            State::Deferred => format!(
+                "{}: deferred at step {}",
+                rec.id,
+                rec.deferred.as_ref().map(|d| d.step).unwrap_or(0)
+            ),
+            State::Stuck => format!("{}: stuck at steps {:?}", rec.id, rec.stuck),
+            State::DriftHeld => format!("{}: drift-held at steps {:?}", rec.id, rec.drift_held),
+            State::Applied if rec.rehearsal => {
+                format!("{}: applied (rehearsal: no reservation)", rec.id)
+            }
+            s => format!("{}: {}", rec.id, s.to_string().to_lowercase()),
+        };
+        Outcome {
+            id: rec.id.clone(),
+            state: rec.state,
+            exit,
+            line,
+        }
+    }
+
+    // --- executors and hosts ------------------------------------------------
+
+    fn host_of(&self, name: &str) -> Option<Host> {
+        if name == "controller" {
+            return Some(self.controller.clone());
+        }
+        self.hosts.get(name).cloned()
+    }
+
+    /// The host a step acts on; `Err` names the output a bound host comes
+    /// from (the step is deferred).
+    fn step_host(&self, rec: &InstanceRecord, op: &Op) -> Result<Host, String> {
+        let name = match &op.locus {
+            Locus::Controller => return Ok(self.controller.clone()),
+            Locus::Target => rec.plan().owner.clone(),
+            Locus::Host(HostRef::Static(h)) => h.clone(),
+            Locus::Host(HostRef::Bound(b)) => return Err(b.clone()),
+        };
+        self.host_of(&name)
+            .ok_or_else(|| format!("no host record for {name}"))
+    }
+
+    /// The executor for a host: `local()` for the controller; otherwise the
+    /// first of the host's `reach` transports an executor serves.
+    fn executor_for(&mut self, host: &Host) -> Option<&mut Box<dyn Executor>> {
+        let wanted: Vec<String> = if host.name() == "controller" {
+            vec!["local".to_string()]
+        } else {
+            host.record.reach.clone()
+        };
+        for t in wanted {
+            if let Some(i) = self
+                .executors
+                .iter()
+                .position(|e| e.locus().transport() == t)
+            {
+                return Some(&mut self.executors[i]);
+            }
+        }
+        None
+    }
+
+    fn observe(&mut self, host: &Host, probe: &str) -> Result<Tri, String> {
+        let ex = self
+            .executor_for(host)
+            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
+        match ex.observe(host, probe) {
+            Ok(o) => Ok(o.as_tri()),
+            Err(e) => Err(format!("observing {probe} on {}: {e}", host.name())),
+        }
+    }
+
+    fn observe_text(&mut self, host: &Host, probe: &str) -> Result<String, String> {
+        let ex = self
+            .executor_for(host)
+            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
+        ex.observe(host, probe)
+            .map(|o| o.text)
+            .map_err(|e| format!("observing {probe} on {}: {e}", host.name()))
+    }
+
+    // --- request -----------------------------------------------------------
+
+    /// The instance id: plan, owner host and the parameters' hash (5.12).
+    pub fn instance_id(ir: &PlanIr, params: &BTreeMap<String, String>) -> String {
+        let ph = hash_json(&serde_json::to_value(params).unwrap_or_default())
+            .map(|h| h.to_hex())
+            .unwrap_or_else(|_| "00000000".into());
+        format!("{}.{}.{}", ir.plan.id, ir.plan.owner, &ph[..8])
+    }
+
+    /// Check, request, approve (no gate) or hold pending (a gate), then
+    /// apply. A rehearsal journals every step and reserves nothing.
+    pub fn apply(
+        &mut self,
+        mut ir: PlanIr,
+        params: BTreeMap<String, String>,
+        opts: ApplyOptions,
+    ) -> Result<Outcome, EngineError> {
+        if let Some(m) = opts.mode {
+            ir.plan.mode = m;
+        }
+        let verdict = check::check(&ir.site, &ir.requester, &ir.plan);
+        if verdict.status != Status::Ok {
+            return Err(EngineError::Refused(Box::new(verdict)));
+        }
+        let permanent = matches!(infer_intent(&ir.plan), Some(Intent::Permanent));
+        let id = Engine::instance_id(&ir, &params);
+        let now = self.clock.now();
+        let mut rec = InstanceRecord {
+            id: id.clone(),
+            ir,
+            params,
+            state: State::Unchecked,
+            permanent,
+            rehearsal: opts.rehearsal,
+            requested_at: None,
+            approved_at: None,
+            deadline: None,
+            approval_deadline: None,
+            applied: Vec::new(),
+            choices: BTreeMap::new(),
+            outputs: BTreeMap::new(),
+            snapshots: BTreeMap::new(),
+            waiting: None,
+            held_at: None,
+            deferred: None,
+            stuck: Vec::new(),
+            drift_held: Vec::new(),
+            acks: opts.acks.clone(),
+            forced: opts.forced.clone(),
+            ledger_ids: Vec::new(),
+            refusal: None,
+            closed_reason: None,
+        };
+        if let Some(existing) = self.store.read_instance::<InstanceRecord>(&id)? {
+            if !states::terminal(existing.state) {
+                return Err(EngineError::Ledger(
+                    LedgerCode::R0101,
+                    format!("instance {id} is already {}", existing.state),
+                ));
+            }
+        }
+        self.step(&mut rec, E::Check)?;
+        self.log(&rec, J::Checked)?;
+        // Request: reserve every touched host's umbra, unless rehearsing.
+        let reservations = umbras(rec.plan());
+        let mut ledger = self.ledger.clone();
+        for (host, umbra) in reservations {
+            let lid = format!("{id}@{host}");
+            ledger = ledger
+                .request(Held {
+                    id: lid.clone(),
+                    host,
+                    umbra,
+                    exclusivity: rec.plan().exclusivity.clone(),
+                    rehearsal: rec.rehearsal,
+                })
+                .map_err(|(c, m)| EngineError::Ledger(c, m))?;
+            if !rec.rehearsal {
+                rec.ledger_ids.push(lid);
+            }
+        }
+        self.ledger = ledger;
+        self.store.write_ledger(&self.ledger)?;
+        rec.requested_at = Some(now);
+        self.step(&mut rec, E::Request)?;
+        self.log(&rec, J::Requested)?;
+        if rec.plan().gate.is_some() && !rec.rehearsal {
+            let window = rec
+                .plan()
+                .gate
+                .as_ref()
+                .and_then(|g| g.window)
+                .or(rec.ir.site.max_wait);
+            rec.approval_deadline = window.map(|w| now.plus(w));
+            self.persist(&rec)?;
+            return Ok(self.outcome(&rec));
+        }
+        self.approve(&mut rec)?;
+        self.persist(&rec)?;
+        self.walk(&mut rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    fn approve(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+        let now = self.clock.now();
+        rec.approved_at = Some(now);
+        if !rec.permanent {
+            rec.deadline = effective_wane(rec.plan()).map(|w| now.plus(w));
+        }
+        self.step(rec, E::Approve)?;
+        self.log(
+            rec,
+            J::Approved {
+                rehearsal: rec.rehearsal,
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Feed one event to the machine; refuse per its verdict; persist.
+    fn step(&mut self, rec: &mut InstanceRecord, ev: E) -> Result<Outcome_, EngineError> {
+        let outcome = states::transition(rec.ctx(), rec.state, ev);
+        if outcome != Verdict_::NotApplicable {
+            self.trace.push(Transition {
+                id: rec.id.clone(),
+                from: rec.state,
+                event: ev,
+                outcome,
+            });
+        }
+        match outcome {
+            Verdict_::To(s) => {
+                rec.state = s;
+                self.persist(rec)?;
+                Ok(Outcome_::Moved)
+            }
+            Verdict_::Stay => Ok(Outcome_::Stayed),
+            Verdict_::Refuse(code) => Err(EngineError::NotAdmitted(
+                code,
+                format!("{ev} in {} ({:?} plan)", rec.state, rec.intent()),
+            )),
+            Verdict_::NotApplicable => Err(EngineError::WrongState {
+                state: rec.state,
+                verb: ev.to_string(),
+            }),
+        }
+    }
+
+    // --- the walk ----------------------------------------------------------
+
+    /// Walk the plan from its start, skipping what is applied, until it
+    /// ends or the instance leaves `Applying`.
+    fn walk(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+        if rec.state != State::Applying {
+            return Ok(());
+        }
+        let items = rec.plan().body.clone();
+        let mut leaf = 1u32;
+        let flow = self.walk_items(rec, &items, 0, &mut leaf, &BTreeMap::new())?;
+        if matches!(flow, Flow::Continue) && rec.state == State::Applying {
+            // Every leaf done and no commit() item: a temporary plan rests.
+            self.step(rec, E::AllStepsDone)?;
+            self.log(rec, J::Applied)?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn walk_items(
+        &mut self,
+        rec: &mut InstanceRecord,
+        items: &[Item],
+        iteration: u32,
+        leaf: &mut u32,
+        vars: &BTreeMap<String, String>,
+    ) -> Result<Flow, EngineError> {
+        for it in items {
+            let flow = match it {
+                Item::Par { children } => self.walk_items(rec, children, iteration, leaf, vars)?,
+                Item::Repeat { form, var, body } => {
+                    let start = *leaf;
+                    let count = leaf_count(body);
+                    let values: Vec<String> = match form {
+                        RepeatForm::Count(n) => (0..*n).map(|i| i.to_string()).collect(),
+                        RepeatForm::Over { list, .. } => self.list_value(rec, list, vars)?,
+                    };
+                    let mut flow = Flow::Continue;
+                    for (i, v) in values.iter().enumerate() {
+                        let mut inner = vars.clone();
+                        inner.insert(var.clone(), v.clone());
+                        let mut l = start;
+                        flow = self.walk_items(rec, body, i as u32, &mut l, &inner)?;
+                        if matches!(flow, Flow::Stop) {
+                            break;
+                        }
+                    }
+                    *leaf = start + count;
+                    flow
+                }
+                Item::When {
+                    guard,
+                    then_,
+                    else_,
+                    ..
+                } => {
+                    let key = format!("w{}", *leaf);
+                    let choice = match rec.choices.get(&key) {
+                        Some(c) => *c,
+                        None => {
+                            let owner = self.owner_host(rec)?;
+                            let tri = self.observe(&owner, &guard.name);
+                            let c = match tri {
+                                Ok(Tri::Yes) => true,
+                                Ok(Tri::No) => false,
+                                Ok(Tri::Unknown) => guard.value == Tri::Yes,
+                                Err(e) => {
+                                    return self.refuse(
+                                        rec,
+                                        *leaf,
+                                        &format!("when guard {}: {e}", guard.name),
+                                    );
+                                }
+                            };
+                            rec.choices.insert(key, c);
+                            self.persist(rec)?;
+                            c
+                        }
+                    };
+                    let then_count = leaf_count(then_);
+                    let else_count = leaf_count(else_);
+                    if choice {
+                        let f = self.walk_items(rec, then_, iteration, leaf, vars)?;
+                        *leaf += else_count;
+                        f
+                    } else {
+                        *leaf += then_count;
+                        self.walk_items(rec, else_, iteration, leaf, vars)?
+                    }
+                }
+                leaf_item => {
+                    let n = *leaf;
+                    *leaf += 1;
+                    if rec.is_applied(n, iteration) {
+                        continue;
+                    }
+                    self.run_leaf(rec, n, iteration, leaf_item, vars)?
+                }
+            };
+            if matches!(flow, Flow::Stop) {
+                return Ok(Flow::Stop);
+            }
+        }
+        Ok(Flow::Continue)
+    }
+
+    fn owner_host(&self, rec: &InstanceRecord) -> Result<Host, EngineError> {
+        self.host_of(&rec.plan().owner).ok_or_else(|| {
+            EngineError::Internal(format!("no host record for owner {}", rec.plan().owner))
+        })
+    }
+
+    fn list_value(
+        &mut self,
+        rec: &InstanceRecord,
+        list: &str,
+        vars: &BTreeMap<String, String>,
+    ) -> Result<Vec<String>, EngineError> {
+        let text = if let Some(v) = vars.get(list) {
+            v.clone()
+        } else if let Some(v) = rec.params.get(list) {
+            v.clone()
+        } else if let Some(v) = rec.outputs.get(list) {
+            v.clone()
+        } else {
+            let owner = self.owner_host(rec)?;
+            self.observe_text(&owner, list)
+                .map_err(|e| EngineError::Internal(format!("repeat over {list}: {e}")))?
+        };
+        Ok(text
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect())
+    }
+
+    fn env_for(&self, rec: &InstanceRecord, vars: &BTreeMap<String, String>) -> Env {
+        Env {
+            params: rec.params.clone(),
+            outputs: rec.outputs.clone(),
+            controller: vars.clone(),
+            facts: BTreeMap::new(),
+            secrets: BTreeMap::new(),
+        }
+    }
+
+    fn run_leaf(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        iteration: u32,
+        it: &Item,
+        vars: &BTreeMap<String, String>,
+    ) -> Result<Flow, EngineError> {
+        match it {
+            Item::Step(s) => self.run_step(rec, n, iteration, s, false, vars),
+            Item::Knell(s) => self.run_step(rec, n, iteration, s, true, vars),
+            Item::Confirm => {
+                self.step(rec, E::Confirm)?;
+                self.log(rec, J::Confirmed)?;
+                self.mark_applied(rec, n, iteration)?;
+                Ok(Flow::Continue)
+            }
+            Item::Commit => {
+                self.step(rec, E::CommitItem)?;
+                self.log(
+                    rec,
+                    J::Committed {
+                        by: rec.ir.requester.clone(),
+                        reason: "commit() item".into(),
+                    },
+                )?;
+                self.release(rec)?;
+                self.persist(rec)?;
+                Ok(Flow::Stop)
+            }
+            Item::Observe { probe, alias } => {
+                let owner = self.owner_host(rec)?;
+                match self.observe_text(&owner, probe) {
+                    Ok(text) => {
+                        rec.outputs.insert(alias.clone(), text);
+                        self.mark_applied(rec, n, iteration)?;
+                        Ok(Flow::Continue)
+                    }
+                    Err(e) => self.refuse(rec, n, &e),
+                }
+            }
+            Item::Preflight { guards } => {
+                for g in guards {
+                    if let Some(flow) = self.guard_blocks(rec, n, g, &[])? {
+                        return Ok(flow);
+                    }
+                }
+                self.mark_applied(rec, n, iteration)?;
+                Ok(Flow::Continue)
+            }
+            Item::Assert { guard, window, .. } => {
+                let bound = window.or(rec.ir.site.max_wait);
+                if let Some(flow) = self.guard_blocks_with_bound(rec, n, guard, &[], bound)? {
+                    return Ok(flow);
+                }
+                self.mark_applied(rec, n, iteration)?;
+                Ok(Flow::Continue)
+            }
+            Item::Slot { name } => Err(EngineError::Internal(format!(
+                "slot {name} reached the engine unfilled"
+            ))),
+            Item::Par { .. } | Item::Repeat { .. } | Item::When { .. } => {
+                Err(EngineError::Internal("a container reached run_leaf".into()))
+            }
+        }
+    }
+
+    fn mark_applied(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        iteration: u32,
+    ) -> Result<(), EngineError> {
+        rec.applied.push(AppliedStep { step: n, iteration });
+        self.persist(rec)
+    }
+
+    /// Evaluate a guard on the owner host. `None` means it passed; `Some`
+    /// carries the flow after a wait or a refusal.
+    fn guard_blocks(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        g: &Guard,
+        force: &[ForceName],
+    ) -> Result<Option<Flow>, EngineError> {
+        let bound = rec.ir.site.max_wait;
+        self.guard_blocks_with_bound(rec, n, g, force, bound)
+    }
+
+    fn guard_blocks_with_bound(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        g: &Guard,
+        force: &[ForceName],
+        bound: Option<Duration>,
+    ) -> Result<Option<Flow>, EngineError> {
+        let owner = self.owner_host(rec)?;
+        let tri = match self.observe(&owner, &g.name) {
+            Ok(t) => t,
+            Err(e) => return self.refuse(rec, n, &e).map(Some),
+        };
+        match tri {
+            Tri::Yes => Ok(None),
+            Tri::No => self
+                .refuse(rec, n, &format!("guard {} is no", g.name))
+                .map(Some),
+            Tri::Unknown => {
+                let forced = !g.force_never
+                    && rec.plan().mode == Mode::Manual
+                    && (rec.forced.iter().any(|f| f == &g.name)
+                        || force.iter().any(|f| {
+                            matches!(f, ForceName::Guard(x) if x == &g.name)
+                                || matches!(f, ForceName::Unknown)
+                        }));
+                if forced {
+                    Ok(None)
+                } else {
+                    self.wait(
+                        rec,
+                        n,
+                        &format!("unknown guard {}", g.name),
+                        Some(g.name.clone()),
+                        bound,
+                    )
+                    .map(Some)
+                }
+            }
+        }
+    }
+
+    fn wait(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        reason: &str,
+        guard: Option<String>,
+        bound: Option<Duration>,
+    ) -> Result<Flow, EngineError> {
+        let now = self.clock.now();
+        rec.waiting = Some(Wait {
+            step: n,
+            reason: reason.to_string(),
+            since: now,
+            bound: bound.map(|b| now.plus(b)),
+            guard,
+        });
+        self.step(rec, E::WaitAtStep)?;
+        self.log(
+            rec,
+            J::Waiting {
+                step: n,
+                reason: reason.to_string(),
+            },
+        )?;
+        Ok(Flow::Stop)
+    }
+
+    fn run_step(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        iteration: u32,
+        s: &StepI,
+        knell: bool,
+        vars: &BTreeMap<String, String>,
+    ) -> Result<Flow, EngineError> {
+        let op = s.op.clone();
+        // A bound host, or one no transport reaches, defers the step.
+        let host = match self.step_host(rec, &op) {
+            Ok(h) => h,
+            Err(from) => return self.defer(rec, n, &op, &from),
+        };
+        if host.name() != "controller" && self.executor_for(&host).is_none() {
+            return self.defer(
+                rec,
+                n,
+                &op,
+                &format!("no transport reaches {}", host.name()),
+            );
+        }
+        // A step gate: proofs arrive with the gates unit; the wait is real now.
+        if s.gate.is_some() {
+            let bound = s.window.or(rec.ir.site.max_wait);
+            return self.wait(rec, n, "gate", None, bound);
+        }
+        for g in &op.pre {
+            if let Some(flow) = self.guard_blocks(rec, n, g, &s.force)? {
+                return Ok(flow);
+            }
+        }
+        if knell {
+            if let Refusal::Knell { guard, cost, ack } = &op.refusal {
+                if let Some(g) = guard {
+                    if let Some(flow) = self.guard_blocks(rec, n, g, &s.force)? {
+                        return Ok(flow);
+                    }
+                }
+                let cost_text = match cost {
+                    rue_core::model::Cost::Probe(p) => p.clone(),
+                    rue_core::model::Cost::NoCost(_) => "none".into(),
+                };
+                if matches!(ack, Ack::Gate(_)) {
+                    if rec.acks.contains(&n) {
+                        self.log(
+                            rec,
+                            J::KnellAcknowledged {
+                                step: n,
+                                cost: cost_text,
+                                by: rec.ir.requester.clone(),
+                            },
+                        )?;
+                    } else {
+                        self.log(
+                            rec,
+                            J::AckRequested {
+                                step: n,
+                                cost: cost_text,
+                            },
+                        )?;
+                        let bound = s.window.or(rec.ir.site.max_wait);
+                        return self.wait(rec, n, "ack", None, bound);
+                    }
+                }
+            }
+        }
+        // Write-ahead: the entry is acknowledged and the record persisted in
+        // Applying before anything runs.
+        self.log(
+            rec,
+            J::Applying {
+                step: n,
+                undo_line: undo_line(&op),
+            },
+        )?;
+        self.persist(rec)?;
+        if rec.rehearsal {
+            self.log(rec, J::StepDone { step: n })?;
+            return self.after_step(rec, n, iteration, &op, vars);
+        }
+        self.snapshot(rec, n, &op, &host)?;
+        let env = self.env_for(rec, vars);
+        let body = match resolve_body(&op.do_, &host, &env) {
+            Ok(b) => b,
+            Err(u) => return self.refuse(rec, n, &format!("step {n}: {u}")),
+        };
+        let id = rec.id.clone();
+        let result = {
+            let ex = self
+                .executor_for(&host)
+                .ok_or_else(|| EngineError::Internal("executor vanished".into()))?;
+            ex.run(&host, &id, &body)
+        };
+        match result {
+            Ok(out) => {
+                // Every declared output must be present: silence is refusal.
+                let missing: Vec<&str> = op
+                    .outputs
+                    .iter()
+                    .filter(|o| !out.outputs.contains_key(&o.name))
+                    .map(|o| o.name.as_str())
+                    .collect();
+                if !missing.is_empty() {
+                    self.log(
+                        rec,
+                        J::StepFailed {
+                            step: n,
+                            error: format!("silent: no output for {}", missing.join(", ")),
+                        },
+                    )?;
+                    self.undo_failed(rec, n, iteration, &op)?;
+                    return self.refuse_applied(rec, n);
+                }
+                let alias = s.alias.clone().unwrap_or_else(|| op.id.clone());
+                for o in &op.outputs {
+                    if !o.secret {
+                        if let Some(v) = out.outputs.get(&o.name) {
+                            rec.outputs.insert(format!("{alias}.{}", o.name), v.clone());
+                        }
+                    }
+                }
+                self.log(rec, J::StepDone { step: n })?;
+                self.after_step(rec, n, iteration, &op, vars)
+            }
+            Err(e) => {
+                self.log(
+                    rec,
+                    J::StepFailed {
+                        step: n,
+                        error: e.to_string(),
+                    },
+                )?;
+                self.undo_failed(rec, n, iteration, &op)?;
+                self.refuse_applied(rec, n)
+            }
+        }
+    }
+
+    /// A failed step is itself reverted at once (it may be half-applied).
+    /// If that undo fails too, the step stays in the applied set so the
+    /// revert retries it and reports it stuck.
+    fn undo_failed(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        iteration: u32,
+        op: &Op,
+    ) -> Result<(), EngineError> {
+        if let Err(why) = self.undo_step(rec, n, op) {
+            rec.applied.push(AppliedStep { step: n, iteration });
+            self.log(
+                rec,
+                J::StepFailed {
+                    step: n,
+                    error: format!("undo: {why}"),
+                },
+            )?;
+        }
+        self.persist(rec)
+    }
+
+    /// After a step's `do`: mark it applied, then its post guards.
+    fn after_step(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        iteration: u32,
+        op: &Op,
+        _vars: &BTreeMap<String, String>,
+    ) -> Result<Flow, EngineError> {
+        self.mark_applied(rec, n, iteration)?;
+        if rec.rehearsal {
+            return Ok(Flow::Continue);
+        }
+        for g in &op.post {
+            if let Some(flow) = self.guard_blocks(rec, n, g, &[])? {
+                return Ok(flow);
+            }
+        }
+        Ok(Flow::Continue)
+    }
+
+    fn snapshot(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        op: &Op,
+        host: &Host,
+    ) -> Result<(), EngineError> {
+        for (k, e) in op.footprint.iter().enumerate() {
+            if !matches!(e.kind, Kind::Modified | Kind::Region) || !e.shape.starts_with("file:") {
+                continue;
+            }
+            let ex = match self.executor_for(host) {
+                Some(ex) => ex,
+                None => continue,
+            };
+            if let Ok(Some(bytes)) = ex.read_fact(host, &e.shape) {
+                rec.snapshots.insert(
+                    format!("{n}/{k}"),
+                    String::from_utf8_lossy(&bytes).into_owned(),
+                );
+            }
+        }
+        self.persist(rec)
+    }
+
+    fn defer(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        op: &Op,
+        why: &str,
+    ) -> Result<Flow, EngineError> {
+        let handoff = op
+            .handoff_done
+            .clone()
+            .unwrap_or_else(|| format!("handoff-done {n}"));
+        rec.deferred = Some(DeferredAt {
+            step: n,
+            handoff: handoff.clone(),
+        });
+        self.step(rec, E::DeferAtStep)?;
+        self.log(
+            rec,
+            J::Deferred {
+                step: n,
+                handoff: format!("{handoff} ({why})"),
+            },
+        )?;
+        Ok(Flow::Stop)
+    }
+
+    /// A refusal at step `n` before its `do` ran: rule 4.
+    fn refuse(
+        &mut self,
+        rec: &mut InstanceRecord,
+        n: u32,
+        reason: &str,
+    ) -> Result<Flow, EngineError> {
+        rec.refusal = Some(format!("step {n}: {reason}"));
+        self.log(
+            rec,
+            J::Refused {
+                reason: rec.refusal.clone().unwrap_or_default(),
+            },
+        )?;
+        self.refuse_applied(rec, n)
+    }
+
+    /// The refusal proper: Held when an earlier applied step holds, else
+    /// Reverting, and the revert runs.
+    fn refuse_applied(&mut self, rec: &mut InstanceRecord, n: u32) -> Result<Flow, EngineError> {
+        self.step(rec, E::Refuse)?;
+        if rec.state == State::Held {
+            rec.held_at = Some(n);
+            self.persist(rec)?;
+            self.log(rec, J::Held { step: n })?;
+            return Ok(Flow::Stop);
+        }
+        self.revert(rec)?;
+        Ok(Flow::Stop)
+    }
+
+    // --- revert ------------------------------------------------------------
+
+    /// Undo the applied steps last-in-first-out. Clean: Closed. A failing
+    /// undo: Stuck, retried each reap pass from where it stopped.
+    fn revert(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+        let steps: Vec<u32> = {
+            let mut v: Vec<u32> = rec.applied.iter().rev().map(|a| a.step).collect();
+            v.dedup();
+            v
+        };
+        self.log(rec, J::Reverting { steps })?;
+        rec.stuck.clear();
+        while let Some(a) = rec.applied.last().cloned() {
+            let op = match rec.op_at(a.step) {
+                Some(o) => o.clone(),
+                None => {
+                    // confirm(), observe, assert, preflight: nothing to undo.
+                    rec.applied.pop();
+                    self.persist(rec)?;
+                    continue;
+                }
+            };
+            match self.undo_step(rec, a.step, &op) {
+                Ok(()) => {
+                    rec.applied.pop();
+                    self.persist(rec)?;
+                }
+                Err(why) => {
+                    rec.stuck = rec.applied.iter().rev().map(|x| x.step).collect();
+                    rec.stuck.dedup();
+                    self.log(
+                        rec,
+                        J::StepFailed {
+                            step: a.step,
+                            error: format!("undo: {why}"),
+                        },
+                    )?;
+                    self.step(rec, E::UndoFailed)?;
+                    self.log(
+                        rec,
+                        J::Stuck {
+                            steps: rec.stuck.clone(),
+                        },
+                    )?;
+                    return Ok(());
+                }
+            }
+        }
+        self.step(rec, E::UndoClean)?;
+        self.log(rec, J::Reverted)?;
+        let reason = rec
+            .refusal
+            .clone()
+            .map(|r| format!("reverted after refusal: {r}"))
+            .unwrap_or_else(|| "reverted".into());
+        rec.closed_reason = Some(reason.clone());
+        self.log(rec, J::Closed { reason })?;
+        self.release(rec)?;
+        self.persist(rec)
+    }
+
+    fn undo_step(&mut self, rec: &InstanceRecord, n: u32, op: &Op) -> Result<(), String> {
+        if rec.rehearsal {
+            return Ok(());
+        }
+        let host = self.step_host(rec, op)?;
+        let env = self.env_for(rec, &BTreeMap::new());
+        let body: Vec<RPrim> = match &op.undo {
+            Undo::NoUndo => return Ok(()),
+            Undo::Restore => restore_body(n, &op.footprint, &rec.snapshots)?,
+            Undo::Computed { body, .. } | Undo::Compensate { body, .. } => {
+                resolve_body(body, &host, &env).map_err(|u| u.to_string())?
+            }
+        };
+        if body.is_empty() {
+            return Ok(());
+        }
+        let id = rec.id.clone();
+        let ex = self
+            .executor_for(&host)
+            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
+        ex.run(&host, &id, &body)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    fn release(&mut self, rec: &mut InstanceRecord) -> Result<(), EngineError> {
+        for lid in rec.ledger_ids.drain(..) {
+            self.ledger = self.ledger.release(&lid);
+        }
+        Ok(self.store.write_ledger(&self.ledger)?)
+    }
+
+    // --- verbs ---------------------------------------------------------------
+
+    /// Continue an `Applying` instance's walk (after boot or a satisfied
+    /// wait); any other state is left as it is.
+    pub fn advance(&mut self, id: &str) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        self.walk(&mut rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    pub fn recant(&mut self, id: &str, force: &[ForceName]) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        if rec.state == State::DriftHeld && force.iter().any(|f| matches!(f, ForceName::Drift)) {
+            self.step(&mut rec, E::ForceDrift)?;
+        } else {
+            self.step(&mut rec, E::Recant)?;
+        }
+        for f in force {
+            if let ForceName::Guard(g) = f {
+                rec.forced.push(g.clone());
+            }
+        }
+        self.log(&rec, J::Recant)?;
+        self.revert(&mut rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    pub fn renew(&mut self, id: &str, wane: Duration) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        self.step(&mut rec, E::Renew)?;
+        let deadline = rec
+            .deadline
+            .ok_or_else(|| EngineError::Internal("a temporary plan with no deadline".into()))?;
+        let within = rec.plan().renew_within.ok_or_else(|| {
+            EngineError::NotAdmitted(RCode::R0102, "the plan declares no renew_within".into())
+        })?;
+        let now = self.clock.now();
+        match states::renew(now, deadline, within, wane) {
+            Ok(d) => {
+                rec.deadline = Some(d);
+                self.log(&rec, J::Renewed)?;
+                self.persist(&rec)?;
+                Ok(self.outcome(&rec))
+            }
+            Err(states::RenewRefusal::Expired) => Err(EngineError::NotAdmitted(
+                RCode::R0102,
+                "the plan has expired; an expired plan is never renewed".into(),
+            )),
+            Err(states::RenewRefusal::OutsideWindow { until }) => Err(EngineError::NotAdmitted(
+                RCode::R0102,
+                format!("renewal opens at {}", until.unix_s),
+            )),
+        }
+    }
+
+    pub fn confirm(&mut self, id: &str) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        self.step(&mut rec, E::Confirm)?;
+        self.log(&rec, J::Confirmed)?;
+        Ok(self.outcome(&rec))
+    }
+
+    pub fn commit(&mut self, id: &str, by: &str, reason: &str) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        self.step(&mut rec, E::CommitVerb)?;
+        self.log(
+            &rec,
+            J::Committed {
+                by: by.into(),
+                reason: reason.into(),
+            },
+        )?;
+        self.release(&mut rec)?;
+        self.persist(&rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    pub fn resume(&mut self, id: &str, by: &str) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        let step = rec.held_at.unwrap_or(0);
+        self.step(&mut rec, E::Resume)?;
+        rec.held_at = None;
+        self.log(
+            &rec,
+            J::Resumed {
+                step,
+                by: by.into(),
+            },
+        )?;
+        self.walk(&mut rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    pub fn handoff_done(&mut self, id: &str, step: u32, by: &str) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        let d = rec.deferred.clone();
+        if d.as_ref().map(|d| d.step) != Some(step) {
+            return Err(EngineError::WrongState {
+                state: rec.state,
+                verb: format!("handoff-done {step}"),
+            });
+        }
+        self.step(&mut rec, E::HandoffDone)?;
+        rec.deferred = None;
+        rec.applied.push(AppliedStep { step, iteration: 0 });
+        self.log(
+            &rec,
+            J::HandoffDone {
+                step,
+                by: by.into(),
+            },
+        )?;
+        self.persist(&rec)?;
+        self.walk(&mut rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    pub fn abandon(&mut self, id: &str, by: &str, reason: &str) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        self.step(&mut rec, E::Abandon)?;
+        let not_reverted: Vec<u32> = rec.applied.iter().map(|a| a.step).collect();
+        self.log(
+            &rec,
+            J::Abandoned {
+                steps_not_reverted: not_reverted,
+                artifacts_left_armed: Vec::new(),
+                by: by.into(),
+                reason: reason.into(),
+            },
+        )?;
+        rec.closed_reason = Some(format!("abandoned by {by}: {reason}"));
+        self.log(
+            &rec,
+            J::Closed {
+                reason: rec.closed_reason.clone().unwrap_or_default(),
+            },
+        )?;
+        self.release(&mut rec)?;
+        self.persist(&rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    pub fn cancel(&mut self, id: &str) -> Result<Outcome, EngineError> {
+        let mut rec = self.load(id)?;
+        self.step(&mut rec, E::Cancel)?;
+        self.log(&rec, J::Cancelled)?;
+        rec.closed_reason = Some("cancelled".into());
+        self.log(
+            &rec,
+            J::Closed {
+                reason: "cancelled".into(),
+            },
+        )?;
+        self.release(&mut rec)?;
+        self.persist(&rec)?;
+        Ok(self.outcome(&rec))
+    }
+
+    // --- the reap pass -------------------------------------------------------
+
+    pub fn reap(&mut self) -> Result<ReapReport, EngineError> {
+        let mut report = ReapReport {
+            settling: self.settling,
+            ..ReapReport::default()
+        };
+        let now = self.clock.now();
+        for rec in self.instances()? {
+            let mut rec = rec;
+            if states::terminal(rec.state) {
+                continue;
+            }
+            // Pending: the approval window.
+            if rec.state == State::Pending {
+                if let Some(d) = rec.approval_deadline {
+                    if states::expired(now, d) {
+                        self.step(&mut rec, E::ApprovalWindowLapses)?;
+                        self.log(&rec, J::ApprovalExpired)?;
+                        self.step(&mut rec, E::Cancel)?;
+                        rec.closed_reason = Some("approval window lapsed".into());
+                        self.log(
+                            &rec,
+                            J::Closed {
+                                reason: "approval window lapsed".into(),
+                            },
+                        )?;
+                        self.release(&mut rec)?;
+                        self.persist(&rec)?;
+                        report
+                            .actions
+                            .push(format!("{}: approval window lapsed", rec.id));
+                    }
+                }
+                continue;
+            }
+            if rec.state == State::ApprovalExpired {
+                self.step(&mut rec, E::Cancel)?;
+                rec.closed_reason = Some("approval window lapsed".into());
+                self.log(
+                    &rec,
+                    J::Closed {
+                        reason: "approval window lapsed".into(),
+                    },
+                )?;
+                self.release(&mut rec)?;
+                self.persist(&rec)?;
+                report
+                    .actions
+                    .push(format!("{}: reaped after the approval window", rec.id));
+                continue;
+            }
+            if matches!(rec.state, State::DriftHeld | State::Stuck)
+                || (rec.permanent && matches!(rec.state, State::Held | State::Deferred))
+            {
+                report.notify.push((rec.id.clone(), rec.state));
+            }
+            if self.settling {
+                continue;
+            }
+            // Wane: every bounded state of a temporary plan, observed before
+            // anything else the pass does to the instance.
+            if let Some(d) = rec.deadline {
+                if states::expired(now, d) {
+                    match states::transition(rec.ctx(), rec.state, E::WaneElapses) {
+                        Verdict_::To(State::Expired) => {
+                            self.step(&mut rec, E::WaneElapses)?;
+                            self.log(&rec, J::Expired)?;
+                            rec.refusal = None;
+                            self.revert(&mut rec)?;
+                            report.actions.push(format!("{}: wane elapsed", rec.id));
+                            continue;
+                        }
+                        // DriftHeld, Stuck and Expired: observed, unchanged
+                        // (rule 3); the notification above is the response.
+                        Verdict_::Stay => {
+                            self.step(&mut rec, E::WaneElapses)?;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            // An undo the engine was in the middle of when it stopped.
+            if matches!(rec.state, State::Reverting | State::Expired) {
+                self.revert(&mut rec)?;
+                report.actions.push(format!("{}: undo continued", rec.id));
+                continue;
+            }
+            match rec.state {
+                State::Waiting => {
+                    let w = rec.waiting.clone().unwrap_or(Wait {
+                        step: 0,
+                        reason: String::new(),
+                        since: now,
+                        bound: None,
+                        guard: None,
+                    });
+                    if w.bound.is_some_and(|b| states::expired(now, b)) {
+                        self.log(
+                            &rec,
+                            J::WaitLapsed {
+                                step: w.step,
+                                reason: w.reason.clone(),
+                            },
+                        )?;
+                        self.step(&mut rec, E::BoundLapses)?;
+                        rec.waiting = None;
+                        if rec.state == State::Held {
+                            rec.held_at = Some(w.step);
+                            self.log(&rec, J::Held { step: w.step })?;
+                            self.persist(&rec)?;
+                        } else {
+                            rec.refusal =
+                                Some(format!("step {}: wait lapsed ({})", w.step, w.reason));
+                            self.revert(&mut rec)?;
+                        }
+                        report
+                            .actions
+                            .push(format!("{}: wait at step {} lapsed", rec.id, w.step));
+                    } else if let Some(g) = &w.guard {
+                        let owner = self.owner_host(&rec)?;
+                        match self.observe(&owner, g) {
+                            Ok(Tri::Yes) => {
+                                self.step(&mut rec, E::WaitSatisfied)?;
+                                rec.waiting = None;
+                                self.log(&rec, J::StepGateSatisfied { step: w.step })?;
+                                self.persist(&rec)?;
+                                self.walk(&mut rec)?;
+                                report
+                                    .actions
+                                    .push(format!("{}: guard {g} now yes", rec.id));
+                            }
+                            Ok(Tri::No) => {
+                                self.step(&mut rec, E::WaitSatisfied)?;
+                                rec.waiting = None;
+                                self.refuse(&mut rec, w.step, &format!("guard {g} is no"))?;
+                                report.actions.push(format!("{}: guard {g} now no", rec.id));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                State::Stuck => {
+                    self.step(&mut rec, E::Retry)?;
+                    self.revert(&mut rec)?;
+                    report.actions.push(format!("{}: retried the undo", rec.id));
+                }
+                State::Deferred => {
+                    if let Some(d) = rec.deferred.clone() {
+                        if let Some(op) = rec.op_at(d.step).cloned() {
+                            if let Some(probe) = &op.handoff_done {
+                                let owner = self.owner_host(&rec)?;
+                                if let Ok(Tri::Yes) = self.observe(&owner, probe) {
+                                    let id = rec.id.clone();
+                                    self.handoff_done(&id, d.step, "probe")?;
+                                    report
+                                        .actions
+                                        .push(format!("{}: handoff done by probe {probe}", id));
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(report)
+    }
+
+    // --- boot recovery and settle --------------------------------------------
+
+    /// Boot recovery (7.8): demote `Applying` to `Reverting` and revert;
+    /// reestablish every `Held` resource of an applied step or record it
+    /// lost; re-observe every owned footprint; only then leave settle, during
+    /// which no wane fires and no stuck retry runs.
+    pub fn boot(&mut self) -> Result<BootReport, EngineError> {
+        let mut report = BootReport::default();
+        self.set_settling(true)?;
+        let migrated = self.store.read_meta("migrated")?;
+        if let (Some(from), Some(to), Some(by)) =
+            (migrated.get("from"), migrated.get("to"), migrated.get("by"))
+        {
+            let (f, t) = (
+                from.parse().unwrap_or(0),
+                to.parse().unwrap_or(crate::store::SCHEMA),
+            );
+            let about = About {
+                plan: String::new(),
+                instance: String::new(),
+                host: String::new(),
+            };
+            let at = self.clock.now();
+            self.journal.record(
+                &self.store,
+                at,
+                &about,
+                J::Migrated {
+                    from: f,
+                    to: t,
+                    by: by.clone(),
+                },
+                Vec::new(),
+            )?;
+            self.store.write_meta("migrated", &BTreeMap::new())?;
+            report.migrated = Some((f, t));
+        }
+        for rec in self.instances()? {
+            let mut rec = rec;
+            if rec.state == State::Applying {
+                rec.refusal = Some("the engine restarted while applying".into());
+                self.step(&mut rec, E::Refuse)?;
+                if rec.state == State::Held {
+                    rec.held_at = rec.applied.last().map(|a| a.step);
+                    self.log(
+                        &rec,
+                        J::Held {
+                            step: rec.held_at.unwrap_or(0),
+                        },
+                    )?;
+                    self.persist(&rec)?;
+                } else {
+                    self.revert(&mut rec)?;
+                }
+                report.demoted.push(rec.id.clone());
+                continue;
+            }
+            if states::terminal(rec.state) {
+                continue;
+            }
+            // Held resources of applied steps.
+            for a in rec.applied.clone() {
+                let op = match rec.op_at(a.step) {
+                    Some(o) => o.clone(),
+                    None => continue,
+                };
+                if !op.footprint.iter().any(|e| e.kind == Kind::Held) {
+                    continue;
+                }
+                let ok = match &op.reestablish {
+                    Some(body) => self.run_body(&rec, &op, body).is_ok(),
+                    None => false,
+                };
+                if ok {
+                    if rec.state == State::Suspended {
+                        self.step(&mut rec, E::Reestablish)?;
+                    }
+                    self.log(&rec, J::Reestablished)?;
+                    report.reestablished.push((rec.id.clone(), a.step));
+                } else {
+                    if states::transition(rec.ctx(), rec.state, E::Suspend)
+                        == Verdict_::To(State::Suspended)
+                    {
+                        self.step(&mut rec, E::Suspend)?;
+                        self.log(&rec, J::Suspended)?;
+                    }
+                    report.lost.push((rec.id.clone(), a.step));
+                }
+            }
+            // Owned footprints re-observed.
+            for a in rec.applied.clone() {
+                let op = match rec.op_at(a.step) {
+                    Some(o) => o.clone(),
+                    None => continue,
+                };
+                let host = match self.step_host(&rec, &op) {
+                    Ok(h) => h,
+                    Err(_) => continue,
+                };
+                for e in op
+                    .footprint
+                    .iter()
+                    .filter(|e| matches!(e.kind, Kind::Owned | Kind::Region))
+                {
+                    if let Some(ex) = self.executor_for(&host) {
+                        let _ = ex.observe(&host, &e.shape);
+                    }
+                    report.reobserved.push((rec.id.clone(), e.shape.clone()));
+                }
+            }
+        }
+        self.set_settling(false)?;
+        Ok(report)
+    }
+
+    fn run_body(&mut self, rec: &InstanceRecord, op: &Op, body: &Body) -> Result<(), String> {
+        let host = self.step_host(rec, op)?;
+        let env = self.env_for(rec, &BTreeMap::new());
+        let rb = resolve_body(body, &host, &env).map_err(|u| u.to_string())?;
+        let id = rec.id.clone();
+        let ex = self
+            .executor_for(&host)
+            .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
+        ex.run(&host, &id, &rb)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
+enum Outcome_ {
+    Moved,
+    Stayed,
+}
+
+fn leaf_count(items: &[Item]) -> u32 {
+    numbered(items).len() as u32
+}
+
+/// The umbra each host reserves at request (5.12): the facts every leaf
+/// writes or may write, grouped by the leaf's host.
+fn umbras(p: &Plan) -> Vec<(String, Vec<rue_core::interference::Fact>)> {
+    let mut by_host: BTreeMap<String, Vec<rue_core::interference::Fact>> = BTreeMap::new();
+    for leaf in step_facts(&p.owner, &p.body) {
+        let e = by_host.entry(leaf.host.clone()).or_default();
+        e.extend(writes(leaf.op));
+        e.extend(maywrite(leaf.op));
+    }
+    by_host.into_iter().collect()
+}
+
+/// The body a `:restore` undo runs, from the footprint and the snapshots
+/// taken before `do`: an owned file is removed, a region stripped, a
+/// modified file written back. A non-file fact under restore is the
+/// executor's to know how to restore; the engine has nothing to restore it
+/// from, and says so rather than guessing.
+pub fn restore_body(
+    n: u32,
+    footprint: &[FootprintEntry],
+    snapshots: &BTreeMap<String, String>,
+) -> Result<Vec<RPrim>, String> {
+    let mut body = Vec::new();
+    for (k, e) in footprint.iter().enumerate() {
+        match e.kind {
+            Kind::Owned => body.push(RPrim::Remove {
+                shape: e.shape.clone(),
+            }),
+            Kind::Region => body.push(RPrim::RegionClear {
+                shape: e.shape.clone(),
+                anchor: e.anchor.clone(),
+            }),
+            Kind::Modified => match snapshots.get(&format!("{n}/{k}")) {
+                Some(s) => body.push(RPrim::Write {
+                    shape: e.shape.clone(),
+                    content: Resolved::plain(s),
+                }),
+                None if e.shape.starts_with("file:") => body.push(RPrim::Remove {
+                    shape: e.shape.clone(),
+                }),
+                None => {
+                    return Err(format!(
+                        "restore of {} has no snapshot and is not a file",
+                        e.shape
+                    ))
+                }
+            },
+            Kind::Held => body.push(RPrim::Release {
+                name: e.shape.clone(),
+            }),
+            Kind::Derived | Kind::AppendOnly => {}
+        }
+    }
+    Ok(body)
+}
+
+/// The steps a record has applied, for tests and `rue status`.
+pub fn applied_steps(rec: &InstanceRecord) -> BTreeSet<u32> {
+    rec.applied.iter().map(|a| a.step).collect()
+}

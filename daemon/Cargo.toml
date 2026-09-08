@@ -1,0 +1,17 @@
+[package]
+name = "rued"
+description = "rue's standalone engine daemon (docs/ROADMAP.md section 7); this unit brings `rued migrate`"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "rued"
+path = "src/main.rs"
+
+[dependencies]
+rue-engine = { path = "../engine" }
+clap.workspace = true
+anyhow.workspace = true
