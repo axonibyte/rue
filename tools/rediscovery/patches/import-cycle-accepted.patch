@@ -4,7 +4,7 @@
 +++ b/surface/src/resolve/mod.rs
 @@ -97,7 +97,7 @@
      ) -> Option<usize> {
-         let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+         let canonical = display_path(path);
          // A file still being loaded is a cycle; one loaded before is shared.
 -        if stack.contains(&canonical) {
 +        if false && stack.contains(&canonical) {

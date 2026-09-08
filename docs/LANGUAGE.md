@@ -274,3 +274,86 @@ different kinds), E0204 for a knell without a cost, and E0601 to E0605
 for the site. Every one of them has a golden under `tenants/_negative/`
 with its text and its rendered diagnostics. Every other code is the
 checker's and reaches the verdict; E0109 is the renderer's.
+
+## T3 by hand
+
+Everything a commit-confirmed firewall change needs, from this document
+alone. A site with an inventory of two firewalls, a journal, an approval
+hook with its registrar, a scheduler, and an operator:
+
+```
+rue 0
+
+site do
+  inventory from: file("inventory.toml")
+  journal to: local()
+  approval via: hook(:authority)
+  backstop scheduler: cron()
+  operators do
+    identity :netops_requester, user: "netops", operator_for: :all, admin: true
+  end
+  hooks do
+    registrar :authority, user: "approvald", may_register: [:authority]
+  end
+end
+```
+
+A probe the plan observes after the change, run on the controller:
+
+```
+defprobe :verify_reach do
+  run "true"
+  locus :controller
+  produces reach
+end
+```
+
+Two clauses of one op, dispatched on the host's os. The FreeBSD one owns a
+fenced region of `pf.conf` and restores it; the Windows one owns a firewall
+rule and removes it by a run it declares idempotent. Both reach the host by
+ssh and undo on the target, so a severed session still reverts:
+
+```
+defop :pf_allow, %{os: :freebsd} do
+  footprint region: file("/etc/pf.conf", anchor: "rue-mgmt")
+  reach ssh(host)
+  do: [region_set(file("/etc/pf.conf", anchor: "rue-mgmt"), content: "pass in proto tcp to port #{port}"), run("pfctl -f /etc/pf.conf")]
+  undo: :restore
+  undo_locus: :target
+end
+
+defop :winfw_allow, %{os: :windows} do
+  footprint owned: winfw.rule("rue-mgmt")
+  reach ssh(host)
+  do: run("New-NetFirewallRule -Name rue-mgmt -Direction Inbound -Protocol TCP -LocalPort #{port} -Action Allow")
+  undo: run("Remove-NetFirewallRule -Name rue-mgmt", idempotent: true)
+  undo_pre winfw.rule("rue-mgmt")
+  undo_locus: :target
+end
+```
+
+A permanent plan (it ends in `commit()`) with a backstop that fires unless
+confirmed within ten minutes, armed before the change, one clause per os:
+
+```
+defplan :open_mgmt_port, %{os: :freebsd} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  pf_allow(port: 8443)
+  observe verify_reach() as reach
+  confirm()
+  commit()
+end
+
+defplan :open_mgmt_port, %{os: :windows} do
+  backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
+  winfw_allow(port: 8443)
+  observe verify_reach() as reach
+  confirm()
+  commit()
+end
+```
+
+`rue check plan.rue --host fw-01` then says: permanent; commits at step 4;
+reversible through step 1; the backstop covers step 1 on the target, armed
+before it; step 1 reverts unaided. `tenants/t3/plan.rue` is this file with
+three more hosts.

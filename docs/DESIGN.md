@@ -31,6 +31,21 @@ vocabulary that says which shell family an `os` implies and which artifact
 languages have a template, because the checker refuses a plan with no
 template at check time (E0403) and core cannot depend on render.
 
+## The front end
+
+`rue-surface` (docs/LANGUAGE.md is the reader's guide): a logos lexer, a
+hand-written recursive-descent parser with statement-level recovery
+emitting rowan's lossless tree (`surface/src/parser.rs`), a formatter that
+is the identity on the canonical layout (`fmt.rs`), the tree lowered to
+plain data (`ast.rs`), and the resolver (`resolve/`): a file and its
+imports to one `PlanIr` per host, the site derived from the block and the
+inventory it names, clauses dispatched on the host's contract facts, every
+step's op expanded at its call with the parameters bound and every
+reference classified by origin, bodies lowered to primitives, footprints
+to shapes by one rule, roles filling slots, protocols expanding to their
+impls, `defprim` calls to classed templates. Its diagnostics are core's
+`Diagnostic` type; the CLI renders them through miette.
+
 ## The model and the checker
 
 `core/src/model.rs` is section 5 as Rust types with serde: facts and
@@ -139,14 +154,17 @@ intact.
 
 ## The harness and the goldens
 
-`tenants/harness` holds the four tenants and every negative as Rust terms
-transcribed from the `.rue` texts beside their goldens. `TENANT_CASES` and
-`NEGATIVES` are the directory contract; `artifacts()` is the list of every
-expected file, computed from the terms; `rue-goldens` is the only writer and
-refuses without `RUE_UPDATE_GOLDENS=1`. Every case yields `plan.json`,
-`verdict.json` and `verdict.txt`; a tenant case also `explain.txt`; a case
-with a `:target` backstop also its artifact. `docs/TESTING.md` says what the
-suites may and may not do.
+`tenants/harness` holds the case tables: `TENANT_CASES` and `NEGATIVES`
+name each case's directory and the host, plan and requester its `.rue`
+text is resolved for; `SURFACE_NEGATIVES` the texts the front end refuses.
+`cases()` resolves every text through `rue-surface`; `artifacts()` is the
+list of every expected file, computed from that; `rue-goldens` is the only
+writer and refuses without `RUE_UPDATE_GOLDENS=1`. Every case yields
+`plan.json`, `verdict.json` and `verdict.txt`; a tenant case also
+`explain.txt`; a case with a `:target` backstop also its artifact; a
+front-end negative `diagnostics.txt`. The Rust terms that carried Phase
+0's record retired at Phase 2's exit, after the front end had been held
+equal to each. `docs/TESTING.md` says what the suites may and may not do.
 
 ## Testing, in one paragraph
 

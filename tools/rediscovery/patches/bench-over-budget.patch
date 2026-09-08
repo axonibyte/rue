@@ -1,0 +1,12 @@
+# Plants: a twelve-second stall in resolve -- the performance acceptance (Phase 2: a 200-step plan over 1,000 hosts under 2 s on the CI image, 5 s on FreeBSD) must notice.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/mod.rs
++++ b/surface/src/resolve/mod.rs
+@@ -310,6 +310,7 @@
+ 
+ /// Resolve a file to the plan IR for one host.
+ pub fn resolve(path: &Path, opts: &Options) -> Result<PlanIr, Vec<Diagnostic>> {
++    std::thread::sleep(std::time::Duration::from_secs(12));
+     let program = Program::load(path)?;
+     let mut diags = Vec::new();
+     // The site.

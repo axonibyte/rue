@@ -1,5 +1,6 @@
-//! Tier 2: every declared artifact -- the IR, the verdicts and the listings
-//! the terms produce, and the state table -- matches its expected file byte
+//! Tier 2: every declared artifact -- the IR, the verdicts, the listings and
+//! the artifacts the texts produce, the front end's diagnostics for the
+//! texts it refuses, and the state table -- matches its expected file byte
 //! for byte; every file under an expected directory is an artifact; and the
 //! writer refuses to write unless told to.
 

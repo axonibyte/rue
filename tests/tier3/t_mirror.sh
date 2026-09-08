@@ -6,8 +6,15 @@ set -u
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
 script=$root/ci/mirror.sh
-command -v bash > /dev/null 2>&1 || { echo "bash is absent" >&2; exit 77; }
-command -v git > /dev/null 2>&1 || { echo "git is absent" >&2; exit 77; }
+# The mirror script is bash over git. A host with neither (the FreeBSD
+# reaper guest, base system only) cannot exercise it and says so; the
+# Ubuntu guest and every pipeline image run it in full.
+for tool in bash git; do
+    if ! command -v "$tool" > /dev/null 2>&1; then
+        echo "--      ci/mirror.sh: not run here ($tool absent; the Ubuntu guest and the pipeline run it)"
+        exit 0
+    fi
+done
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/rue-t-mirror.XXXXXX") || exit 2
 trap 'rm -rf "$tmp"' EXIT INT TERM

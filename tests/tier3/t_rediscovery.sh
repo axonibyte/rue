@@ -74,7 +74,19 @@ sed '/^[a-z]/d' "$root/tools/rediscovery/table.tsv" > "$tmp/tree/tools/rediscove
 rm -f "$tmp/tree/tools/rediscovery/patches/"*.patch
 expect 2 "empty table refuses with exit 2"
 
-# 6. The real tree passes.
+# 6. A hunk with unbalanced context: FreeBSD patch applies it, GNU patch
+# anchors it to the file's edge and fails. The guard refuses the shape.
+# The sample gains one more leading context line (the source line above
+# its hunk) and stays a correct diff of the file.
+reset_tree
+patch=$tmp/tree/tools/rediscovery/patches/reach-late-arm.patch
+above=$(sed -n '65p' "$root/proto/src/Rue/Proto/Backstop.hs")
+awk -v l=" $above" '/^@@ -66,7 \+66,7 @@$/ { print "@@ -65,8 +65,8 @@"; print l; next } { print }' \
+    "$patch" > "$tmp/hunk" && mv "$tmp/hunk" "$patch"
+grep -q '^@@ -65,8' "$patch" || { bad "sample hunk rewritten"; }
+expect 1 "unbalanced hunk context is refused"
+
+# 7. The real tree passes.
 if sh "$guard" > "$tmp/out" 2>&1; then
     ok "the repository's patches all apply"
 else

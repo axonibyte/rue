@@ -6,7 +6,23 @@ use std::path::Path;
 use std::process::Command;
 
 use rue_tenants::golden::repo_root;
-use rue_tenants::{NegativeCase, TenantCase, STATE_TABLE};
+use rue_tenants::{NegativeCase, TenantCase, NEGATIVES, STATE_TABLE, TENANT_CASES};
+
+/// A tenant case from the table, by tenant and case directory.
+fn tenant_case(tenant: &str, host: &str) -> TenantCase {
+    *TENANT_CASES
+        .iter()
+        .find(|c| c.tenant == tenant && c.host == host)
+        .unwrap_or_else(|| panic!("no case {tenant}/{host}"))
+}
+
+/// A negative from the table, by code and slug.
+fn negative_case(code: rue_core::diagnostics::Code, slug: &str) -> NegativeCase {
+    *NEGATIVES
+        .iter()
+        .find(|n| n.code == code && n.slug == slug)
+        .unwrap_or_else(|| panic!("no negative {code}-{slug}"))
+}
 
 fn rue(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_rue"))
@@ -22,10 +38,7 @@ fn golden(root: &Path, rel: &str) -> Vec<u8> {
 #[test]
 fn check_prints_the_prose_verdict_and_exits_zero_on_a_clean_plan() {
     let root = repo_root().unwrap();
-    let case = TenantCase {
-        tenant: "t1",
-        host: "db-01",
-    };
+    let case = tenant_case("t1", "db-01");
     let out = rue(&["check", root.join(case.input()).to_str().unwrap()]);
     assert!(
         out.status.success(),
@@ -42,10 +55,7 @@ fn check_prints_the_prose_verdict_and_exits_zero_on_a_clean_plan() {
 #[test]
 fn check_json_prints_the_canonical_verdict() {
     let root = repo_root().unwrap();
-    let case = TenantCase {
-        tenant: "t3",
-        host: "fw-01",
-    };
+    let case = tenant_case("t3", "fw-01");
     let out = rue(&["check", "--json", root.join(case.input()).to_str().unwrap()]);
     assert!(out.status.success());
     assert_eq!(
@@ -57,10 +67,7 @@ fn check_json_prints_the_canonical_verdict() {
 #[test]
 fn explain_prints_the_listing() {
     let root = repo_root().unwrap();
-    let case = TenantCase {
-        tenant: "t2",
-        host: "node-b-manual",
-    };
+    let case = tenant_case("t2", "node-b-manual");
     let out = rue(&["explain", root.join(case.input()).to_str().unwrap()]);
     assert!(out.status.success());
     assert_eq!(
@@ -72,10 +79,10 @@ fn explain_prints_the_listing() {
 #[test]
 fn a_refused_plan_exits_one_with_its_verdict() {
     let root = repo_root().unwrap();
-    let neg = NegativeCase {
-        code: rue_core::diagnostics::Code::E0401,
-        slug: "backstop-armed-after-reach",
-    };
+    let neg = negative_case(
+        rue_core::diagnostics::Code::E0401,
+        "backstop-armed-after-reach",
+    );
     let out = rue(&["check", root.join(neg.input()).to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
@@ -103,14 +110,7 @@ fn a_missing_file_a_wrong_version_and_a_usage_error_exit_two_with_nothing_on_std
     assert!(out.stdout.is_empty());
     assert!(String::from_utf8_lossy(&out.stderr).contains("cannot read"));
 
-    let doc = golden(
-        &root,
-        &TenantCase {
-            tenant: "t4",
-            host: "site-ctl",
-        }
-        .input(),
-    );
+    let doc = golden(&root, &tenant_case("t4", "site-ctl").input());
     let doctored =
         String::from_utf8(doc)
             .unwrap()
@@ -145,7 +145,7 @@ fn artifact_prints_the_golden_and_reports_refusals_by_exit_code() {
         ("t3", "fw-win-01", "artifact.ps1"),
         ("t3", "fw-02", "artifact.py"),
     ] {
-        let case = TenantCase { tenant, host };
+        let case = tenant_case(tenant, host);
         let out = rue(&[
             "artifact",
             root.join(case.input()).to_str().unwrap(),
@@ -163,10 +163,7 @@ fn artifact_prints_the_golden_and_reports_refusals_by_exit_code() {
         assert_eq!(out.stdout, expected, "{tenant}/{host}");
     }
     // --host selects another record of the site; --rue-root is baked.
-    let t3 = TenantCase {
-        tenant: "t3",
-        host: "fw-01",
-    };
+    let t3 = tenant_case("t3", "fw-01");
     let out = rue(&[
         "artifact",
         root.join(t3.input()).to_str().unwrap(),
@@ -193,10 +190,7 @@ fn artifact_prints_the_golden_and_reports_refusals_by_exit_code() {
 
     // A call that cannot apply (no :target backstop; an unknown host; a bad
     // --set) is exit 2 with nothing on stdout.
-    let t4 = TenantCase {
-        tenant: "t4",
-        host: "site-ctl",
-    };
+    let t4 = tenant_case("t4", "site-ctl");
     let out = rue(&[
         "artifact",
         root.join(t4.input()).to_str().unwrap(),
@@ -384,11 +378,12 @@ fn a_diagnostic_on_stderr_shows_the_code_the_source_line_and_the_suggestion() {
     );
     assert!(err.contains("postrue()"), "the source line is shown: {err}");
     assert!(err.contains("did you mean posture"), "{err}");
+    // The file and the position, whichever separator the platform writes.
     assert!(
         err.contains(&format!(
-            "{}-unknown-op/plan.rue:",
+            "{}-unknown-op",
             rue_core::diagnostics::Code::E0102
-        )),
+        )) && err.contains("plan.rue:22:3"),
         "{err}"
     );
 }

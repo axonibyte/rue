@@ -37,12 +37,14 @@ the injected `now`, the backstop artifact in `sh`, PowerShell and Python
 tests) and the seeded fuzz properties are in; the Phase 1 acceptance is
 met as far as a workstation and a pipeline can prove it, and
 [`docs/DESIGN.md`](docs/DESIGN.md) says how the crates fit. Phase 2 is
-under way: `rue-surface` parses every `.rue` text under `tenants/` into a
-lossless tree, `rue fmt` is the identity on each, and the resolver turns
-a text into the checker's input for one host (`rue check file.rue --host
-H`), held structurally equal to the terms for every case;
-[`docs/LANGUAGE.md`](docs/LANGUAGE.md) is the reader's guide as far as
-the front end goes. The Phase 0 prototype under `proto/` is the record of what the
+complete as far as a workstation and a pipeline can prove it: `rue-surface`
+parses every `.rue` text under `tenants/` into a lossless tree, `rue fmt`
+is the identity on each, the resolver turns a text into the checker's
+input for one host (`rue check file.rue --host H`), the texts are the
+source of every golden, every code the front end raises has a diagnostic
+golden, and the 200-step, 1,000-host check runs in tens of milliseconds
+against a 2 s bound. [`docs/LANGUAGE.md`](docs/LANGUAGE.md) is the
+language's guide, complete enough to write a tenant from. The Phase 0 prototype under `proto/` is the record of what the
 tenants taught ([`proto/README.md`](proto/README.md)); its own tests still
 run in the gate. The falsification sweep is in
 [`docs/prior-art.md`](docs/prior-art.md).
@@ -90,7 +92,7 @@ for the owner to reconcile.
 | Claim | Status |
 |---|---|
 | Verdicts on plans the tenants do not exercise | The checker is exercised by four tenants (seven host cases) and thirty-five negatives; nothing is proven about a construct none of them uses |
-| The `.rue` text | Parsed, formatted and resolved: `rue check tenants/t1/plan.rue` derives the plan IR from the text, and a test holds it structurally equal to the Rust term's for every case; the terms stay the writer's source until Phase 2's exit, when the texts take over |
+| The `.rue` text | The source: every golden is derived from a text by the front end (`rue check tenants/t1/plan.rue`); the Rust terms that carried Phase 0's record retired once the front end reproduced each of them. What the grammar admits beyond the constructs the tenants use is proven by the parser corpus and the diagnostic goldens only |
 | 51 of the 56 diagnostic codes | Each with a golden: 31 by the checker with a verdict golden (E0201-E0203, E0205-E0211, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509, E0606); 19 by the front end with a diagnostics golden (E0101-E0108, E0110-E0114, E0204, E0601-E0605); E0109 by the renderer, unit-tested. A test holds the 56 to a partition of these lists and the next row |
 | The other 5 codes | Not modeled, each with its reason in `rue_tenants::UNMODELED_CODES`: E0402 and E0408 are engine time, E0406 cannot arise (installation precedes the first covered step by construction), E0409 is fixed by `--host`, E0411 needs sinks the site does not declare |
 | The backstop artifact | Rendered in `sh`, PowerShell and Python, and the `sh` and Python ones executed against a temporary instance directory in every scenario the tests name; that Phase 3's engine writes that directory as `docs/DESIGN.md` states, and that a real scheduler runs the script, are Phase 3's to prove. PowerShell is executed nowhere: no gate host runs it. A non-file fact under a computed undo is undone as if intact; a fact read in a covered undo is not bakeable this unit |

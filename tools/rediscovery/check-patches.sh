@@ -54,6 +54,41 @@ if [ ! -s "$tmp/rows" ]; then
     exit 2
 fi
 
+# Every hunk of a unified diff has as many leading as trailing context
+# lines, unless it really touches the file's start (old line 1) or end
+# (its old range reaches the file's last line, counted in the tree).
+balanced_hunks() { # balanced_hunks <patch>
+    awk -v root="$root" '
+        function flush() {
+            if (!inhunk) return
+            if (lead != trail) {
+                at_start = (start == 1)
+                cmd = "wc -l < \"" root "/" file "\""
+                cmd | getline total; close(cmd)
+                at_end = (start + len - 1 == total + 0)
+                if (!(lead < trail && at_start) && !(lead > trail && at_end)) {
+                    printf "%s: hunk at %d has %d leading and %d trailing context lines\n", file, start, lead, trail
+                    bad = 1
+                }
+            }
+            inhunk = 0
+        }
+        /^\+\+\+ b\// { flush(); file = substr($0, 7); next }
+        /^@@ / {
+            flush()
+            split($2, r, /[,]/); start = substr(r[1], 2) + 0
+            len = (r[2] == "" ? 1 : r[2] + 0)
+            inhunk = 1; lead = 0; trail = 0; seen = 0
+            next
+        }
+        inhunk && /^ / { if (seen) trail++; else lead++; next }
+        inhunk && /^[-+]/ { seen = 1; trail = 0; next }
+        inhunk && /^\\/ { next }
+        { flush() }
+        END { flush(); exit bad }
+    ' "$1"
+}
+
 rc=0
 : > "$tmp/listed"
 while IFS="$tab" read -r c1 c2 c3 c4 c5 c6 extra; do
@@ -76,6 +111,17 @@ while IFS="$tab" read -r c1 c2 c3 c4 c5 c6 extra; do
     echo "$c1" >> "$tmp/listed"
     if [ ! -r "$here/patches/$c1" ]; then
         echo "check-patches: $c1: listed but not present under tools/rediscovery/patches/" >&2
+        rc=1
+        continue
+    fi
+    # A hunk with more leading than trailing context is, to GNU patch, one
+    # that reaches the end of its file (and the reverse, the start): it is
+    # tried there and nowhere else. FreeBSD's patch is lenient, so a hunk
+    # written that way passes here and fails on every GNU host. The guard
+    # refuses the shape itself, wherever it runs.
+    if ! balanced_hunks "$here/patches/$c1" > "$tmp/out" 2>&1; then
+        echo "check-patches: $c1: a hunk's context is unbalanced (GNU patch would anchor it to the file's edge)" >&2
+        sed 's/^/        /' "$tmp/out" >&2
         rc=1
         continue
     fi

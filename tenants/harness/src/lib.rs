@@ -1,16 +1,19 @@
 //! The acceptance tenants and everything golden-tested about them.
 //!
-//! The terms under [`tenants`] are the record of what Phase 0 proved and the
-//! source of every golden: `plan.json` is a case's term as the plan IR,
-//! `verdict.json`, `verdict.txt` and `explain.txt` are what `rue-core` says
-//! about it, and `docs/state-transitions.tsv` is the state machine's table.
-//! The case table below ([`TENANT_CASES`], [`NEGATIVES`]) is the authority on
-//! which goldens exist; the tests hold the terms and the table 1:1, compare
-//! every artifact byte for byte, and refuse an expected file nothing
+//! The `.rue` texts under `tenants/` are the source of every golden (from
+//! Phase 2; the Rust terms that carried Phase 0's record retired once the
+//! front end reproduced each of them): `plan.json` is a case's text
+//! resolved for its host as the plan IR, `verdict.json`, `verdict.txt` and
+//! `explain.txt` are what `rue-core` says about it, an artifact file is what
+//! `rue-render` installs, `diagnostics.txt` is what the front end says of a
+//! text it refuses, and `docs/state-transitions.tsv` is the state machine's
+//! table. The case tables below ([`TENANT_CASES`], [`NEGATIVES`],
+//! [`SURFACE_NEGATIVES`]) are the authority on which goldens exist and name
+//! the host, plan and requester each text is resolved for; the tests
+//! compare every artifact byte for byte and refuse an expected file nothing
 //! declares. `rue-goldens` is the only writer, and only when told to.
 
 pub mod golden;
-pub mod tenants;
 
 use std::fs;
 use std::path::Path;
@@ -18,9 +21,9 @@ use std::path::Path;
 use rue_core::check::{check, deferred_steps};
 use rue_core::diagnostics::Code;
 use rue_core::explain::explain;
-use rue_core::ir::{parse, PlanIr, IR_VERSION};
+use rue_core::ir::{parse, PlanIr};
 use rue_core::json::canonical;
-use rue_core::model::{Plan, Site};
+use rue_core::model::Plan;
 use rue_core::prose::prose;
 use rue_core::states::render_table;
 use rue_core::verdict::{to_json, Verdict};
@@ -33,14 +36,29 @@ pub use golden::Artifact;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TenantCase {
     pub tenant: &'static str,
+    /// The case directory under `expected/`.
     pub host: &'static str,
+    /// The inventory host the text is resolved for.
+    pub owner: &'static str,
+    /// The plan name in the text.
+    pub plan: &'static str,
+    pub requester: &'static str,
 }
 
 /// A negative case: the code it must refuse with and its slug.
+/// The requester every negative is checked as (section 5.11: the requester
+/// is an input to `check`; the negatives derived from a tenant keep this
+/// name so E0508 counts it as they always did).
+pub const NEGATIVE_REQUESTER: &str = "requester";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NegativeCase {
     pub code: Code,
     pub slug: &'static str,
+    /// The inventory host the text is resolved for.
+    pub owner: &'static str,
+    /// The plan name in the text.
+    pub plan: &'static str,
 }
 
 /// A negative the front end refuses before a plan exists: its golden is
@@ -156,13 +174,27 @@ pub fn surface_diagnostics(root: &Path, n: &SurfaceNegative) -> Result<String, S
             n.name()
         )),
         Err(diags) => {
+            // The root as the resolver names it, then the platform's
+            // separator; what remains is repo-relative. Windows writes
+            // backslashes between the components and the golden, written
+            // once for every platform, holds none (no message contains a
+            // backslash), so they become slashes there.
             let prefix = format!(
-                "{}/",
-                root.canonicalize().unwrap_or(root.to_path_buf()).display()
+                "{}{}",
+                rue_surface::resolve::display_path(root).display(),
+                std::path::MAIN_SEPARATOR
             );
             Ok(diags
                 .iter()
-                .map(|d| format!("{}\n", d.render().replace(&prefix, "")))
+                .map(|d| {
+                    let line = d.render().replace(&prefix, "");
+                    let line = if cfg!(windows) {
+                        line.replace('\\', "/")
+                    } else {
+                        line
+                    };
+                    format!("{line}\n")
+                })
                 .collect())
         }
     }
@@ -172,42 +204,72 @@ pub const TENANT_CASES: &[TenantCase] = &[
     TenantCase {
         tenant: "t1",
         host: "db-01",
+        owner: "db-01",
+        plan: "breakglass",
+        requester: "ops_requester",
     },
     TenantCase {
         tenant: "t2",
         host: "node-b-auto",
+        owner: "node-b",
+        plan: "promote_auto",
+        requester: "operator",
     },
     TenantCase {
         tenant: "t2",
         host: "node-b-manual",
+        owner: "node-b",
+        plan: "promote",
+        requester: "operator",
     },
     TenantCase {
         tenant: "t3",
         host: "fw-01",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
+        requester: "netops_requester",
     },
     TenantCase {
         tenant: "t3",
         host: "fw-win-01",
+        owner: "fw-win-01",
+        plan: "open_mgmt_port",
+        requester: "netops_requester",
     },
     TenantCase {
         tenant: "t3",
         host: "fw-02",
+        owner: "fw-02",
+        plan: "open_mgmt_port",
+        requester: "netops_requester",
     },
     TenantCase {
         tenant: "t3",
         host: "fw-win-02",
+        owner: "fw-win-02",
+        plan: "open_mgmt_port",
+        requester: "netops_requester",
     },
     TenantCase {
         tenant: "t3",
         host: "fw-mac-01",
+        owner: "fw-mac-01",
+        plan: "open_mgmt_port",
+        requester: "netops_requester",
     },
     TenantCase {
         tenant: "t4",
         host: "site-ctl",
+        owner: "site-ctl",
+        plan: "shed_load",
+        requester: "reactive_host",
     },
     TenantCase {
         tenant: "t4",
         host: "site-ctl-defer",
+        owner: "site-ctl",
+        plan: "shed_load_deferring",
+        requester: "reactive_host",
     },
 ];
 
@@ -217,146 +279,218 @@ pub const NEGATIVES: &[NegativeCase] = &[
     NegativeCase {
         code: Code::E0401,
         slug: "backstop-armed-after-reach",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0401,
         slug: "reach-with-controller-undo",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0404,
         slug: "auto-with-force",
+        owner: "db-01",
+        plan: "breakglass",
     },
     NegativeCase {
         code: Code::E0410,
         slug: "reach-with-defer",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0501,
         slug: "wane-and-commit",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0501,
         slug: "neither-wane-nor-commit",
+        owner: "db-01",
+        plan: "breakglass",
     },
     NegativeCase {
         code: Code::E0502,
         slug: "commit-not-last",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0505,
         slug: "path-without-commit",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0506,
         slug: "unbounded-wait",
+        owner: "fw-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0507,
         slug: "auto-with-human-ack",
+        owner: "node-b",
+        plan: "promote",
     },
     NegativeCase {
         code: Code::E0508,
         slug: "gate-counts-requester",
+        owner: "db-01",
+        plan: "breakglass",
     },
     NegativeCase {
         code: Code::E0509,
         slug: "zero-human-gate",
+        owner: "db-01",
+        plan: "breakglass",
     },
     NegativeCase {
         code: Code::E0201,
         slug: "no-undo-not-knell",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0202,
         slug: "target-undo-not-closed",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0203,
         slug: "none-locus-with-undo",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0205,
         slug: "held-without-suspend",
+        owner: "db-01",
+        plan: "tunnel",
     },
     NegativeCase {
         code: Code::E0207,
         slug: "compensate-without-undo-pre",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0208,
         slug: "undo-not-idempotent",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0407,
         slug: "target-undo-on-api-host",
+        owner: "db-01",
+        plan: "bmc",
     },
     NegativeCase {
         code: Code::E0301,
         slug: "umbra-conflict",
+        owner: "db-01",
+        plan: "twice",
     },
     NegativeCase {
         code: Code::E0302,
         slug: "may-conflict-strict",
+        owner: "db-01",
+        plan: "any",
     },
     NegativeCase {
         code: Code::E0302,
         slug: "may-conflict-bound-host",
+        owner: "db-01",
+        plan: "any",
     },
     NegativeCase {
         code: Code::E0303,
         slug: "par-not-disjoint",
+        owner: "db-01",
+        plan: "par",
     },
     NegativeCase {
         code: Code::E0304,
         slug: "reach-inside-par",
+        owner: "db-01",
+        plan: "par",
     },
     NegativeCase {
         code: Code::E0305,
         slug: "anchor-twice",
+        owner: "db-01",
+        plan: "regions",
     },
     NegativeCase {
         code: Code::E0403,
         slug: "scheduler-absent",
+        owner: "island",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0405,
         slug: "heartbeat-too-slow",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0503,
         slug: "backstop-after-not-wane",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0504,
         slug: "permanent-backstop-on-timer",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0509,
         slug: "zero-human-step-gate",
+        owner: "db-01",
+        plan: "fence",
     },
     NegativeCase {
         code: Code::E0206,
         slug: "reestablish-reruns-do",
+        owner: "db-01",
+        plan: "tunnel",
     },
     NegativeCase {
         code: Code::E0209,
         slug: "secret-in-run-string",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0210,
         slug: "secret-in-target-undo",
+        owner: "db-01",
+        plan: "posture",
     },
     NegativeCase {
         code: Code::E0211,
         slug: "executor-without-stdin-preamble",
+        owner: "db-01",
+        plan: "bmc_login",
     },
     NegativeCase {
         code: Code::E0403,
         slug: "artifact-language-unsupported",
+        owner: "fw-win-01",
+        plan: "open_mgmt_port",
     },
     NegativeCase {
         code: Code::E0606,
         slug: "secret-without-deliver-to",
+        owner: "db-01",
+        plan: "token",
     },
 ];
 
@@ -424,42 +558,66 @@ impl NegativeCase {
 /// The path of the generated transition table.
 pub const STATE_TABLE: &str = "docs/state-transitions.tsv";
 
-/// A case as a term: its directory, its IR, and whether it has an explain
-/// golden (tenant cases do; negatives do not).
+/// A case: its directory, the plan IR resolved from its text, and whether
+/// it has an explain golden (tenant cases do; negatives do not).
 #[derive(Debug, Clone)]
-pub struct CaseTerm {
+pub struct Case {
     pub dir: String,
     pub ir: PlanIr,
     pub with_explain: bool,
 }
 
-fn ir_of(site: &Site, requester: &str, plan: &Plan) -> PlanIr {
-    PlanIr {
-        ir_version: IR_VERSION,
-        requester: requester.to_string(),
-        site: site.clone(),
-        plan: plan.clone(),
+/// The text a case is derived from: the nearest `plan.rue` above its
+/// expected directory.
+pub fn text_of(root: &Path, dir: &str) -> std::path::PathBuf {
+    let mut p = root.join(dir);
+    while p.pop() {
+        let candidate = p.join("plan.rue");
+        if candidate.is_file() {
+            return candidate;
+        }
     }
+    panic!("{dir}: no plan.rue above it");
+}
+
+fn resolve_case(root: &Path, dir: &str, owner: &str, plan: &str, requester: &str) -> PlanIr {
+    let opts = rue_surface::resolve::Options {
+        host: Some(owner.to_string()),
+        plan: Some(plan.to_string()),
+        requester: Some(requester.to_string()),
+    };
+    rue_surface::resolve::resolve(&text_of(root, dir), &opts).unwrap_or_else(|diags| {
+        panic!(
+            "{dir}: the text does not resolve:\n{}",
+            diags
+                .iter()
+                .map(|d| format!("  {}", d.render()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    })
 }
 
 /// Every case, tenants first in the table's order, then the negatives in
-/// theirs. A term without a table row, or a row without a term, is caught by
-/// the tests.
-pub fn cases() -> Vec<CaseTerm> {
+/// theirs, each resolved from its `.rue` text (the texts are the golden
+/// source from Phase 2 on). A text that does not resolve is a panic here
+/// and a failure of every suite that reads it.
+pub fn cases() -> Vec<Case> {
+    let root = golden::repo_root().unwrap_or_default();
     let mut out = Vec::new();
-    for t in tenants::tenants() {
-        for c in &t.cases {
-            out.push(CaseTerm {
-                dir: format!("tenants/{}/expected/{}", t.name, c.host),
-                ir: ir_of(&t.site, &t.requester, &c.plan),
-                with_explain: true,
-            });
-        }
+    for t in TENANT_CASES {
+        let dir = t.dir();
+        out.push(Case {
+            ir: resolve_case(&root, &dir, t.owner, t.plan, t.requester),
+            dir,
+            with_explain: true,
+        });
     }
-    for n in tenants::negatives() {
-        out.push(CaseTerm {
-            dir: format!("tenants/_negative/{}-{}/expected", n.code, n.slug),
-            ir: ir_of(&n.site, &n.requester, &n.plan),
+    for n in NEGATIVES {
+        let dir = n.dir();
+        out.push(Case {
+            ir: resolve_case(&root, &dir, n.owner, n.plan, NEGATIVE_REQUESTER),
+            dir,
             with_explain: false,
         });
     }

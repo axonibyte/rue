@@ -1206,9 +1206,9 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Exit criteria.** Acceptance met; `LANGUAGE.md` complete enough that a reader can write T3 from it without this roadmap.
 
-**Not proven.** Execution; bindings beyond parse-time validation; editor tooling; performance on Windows and beyond 1,000 hosts.
+**Not proven.** Execution; bindings beyond parse-time validation; editor tooling; performance on Windows and beyond 1,000 hosts. What the grammar admits beyond the constructs the tenants use (`defprim`, roles and slots, protocols, the builtins, operators in guards) is proven by the parser corpus, the resolver's unit tests and the diagnostic goldens, not by a tenant. Positions the front end takes where §6 is silent, stated in docs/LANGUAGE.md for the owner: the site derivation rules (transports from `execute via:` with `[ssh]` the default, the hook's transport named on the binding, acceptors from `secrets deliver_to:`, the preamble from the record or its filesystem, the requester from `--as` or the first identity); one fact-shape rule (`a.b(x)` is `a:b:<x>`, names verbatim, a runtime value as `{name}`); reference classification through the call site; no `undo:` line means no undo; E0208 from `idempotent: true`; `file` admitted for an inventory beside `rue_toml`, `local` for a journal, `launchd` for a scheduler; a `repeat over:` list set-valued unless a literal list repeats a member; E0107 decided for declared defaults and plan options only; E0114 for output secrecy only; an implicit parameter is any free name in a body.
 
-**Rediscovery rows seeded.** `unknown-compare-allowed`, `closure-accepted`, `clause-on-runtime-fact`, `slot-order-nondeterministic`, `fmt-loses-comment`, `items-after-commit`, `implicit-operator-accepted`.
+**Rediscovery rows seeded.** `unknown-compare-allowed`, `closure-accepted`, `clause-on-runtime-fact`, `slot-order-nondeterministic`, `fmt-loses-comment`, `items-after-commit` (carried as core's `commit-before-last-core`; the surface adds no second check), `implicit-operator-accepted` (carried as `hook-without-registrar-accepted` and `journal-optional`, the site rules the front end decides; an operator's implicitness is E0604, whose row is the same guard).
 
 ### Phase 3 — Engine, executors, standalone daemon
 

@@ -54,8 +54,8 @@ prototype's under one tasty suite, and both inside the gate:
 
 | Tier | Group | What |
 |---|---|---|
-| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's diagnostics each on a small file (`surface/tests/resolve.rs`); the CLI's verbs, selectors and exit codes |
-| 2 | Rust `tenants/harness/tests/{goldens,tenants,surface}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; the front end's plan IR from every `.rue` text structurally equal to its term's |
+| 1 | Rust `core/tests/{canonical,canon,diagnostics,ir,laws,interference,gates,intent_backstop,check,render,journal,request}.rs`, `render/tests/{quote,render,execute}.rs`, `surface/tests/tenants.rs`, `cli/tests/cli.rs`; Haskell `Test.Canonical`, `Test.Diagnostics`, `Test.Laws`, `Test.Check` | The canonical encoder's bytes and round trip; the hash encoding's bytes; the code enumeration; the IR spelling; the reversal laws as properties; the interference rules one by one; every emitted code raised by one plan and not by its sibling; the prose and explain clauses; the journal chain and the digests; per-family quoting round-tripped through real unquoters; the artifact's covered set, order, triggers, primitives and refusals in every language; the `sh` and Python artifacts executed against a temporary instance directory (below); every `.rue` text under `tenants/` parsing clean, `fmt` the identity on it and idempotent; the resolver's rules each on a small file (`surface/tests/resolve.rs`); the performance bound (`surface/tests/bench.rs`); the CLI's verbs, selectors and exit codes |
+| 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
 
@@ -68,8 +68,9 @@ compares against or writes the goldens.
 
 ## Goldens
 
-The list of goldens is `rue_tenants::artifacts()`, computed from the terms
-under `tenants/harness/src/tenants/`, never from a directory listing. A
+The list of goldens is `rue_tenants::artifacts()`, computed from the case
+tables and the `.rue` texts they name (each resolved by the front end for
+its host, plan and requester), never from a directory listing. A
 missing expected file fails; an expected file no artifact claims fails
 ("orphan"). The suite is read-only: the only writer is
 `RUE_UPDATE_GOLDENS=1 cargo run -p rue-tenants --bin rue-goldens`, which
@@ -114,15 +115,27 @@ front end's (`SURFACE_CODES`), the renderer's (`RENDER_CODES`) and the
 unmodeled with a reason each (`UNMODELED_CODES`), so a code can be in no
 list and in no two.
 
-## The texts and the terms
+## The texts as the source
 
-`tenants/harness/tests/surface.rs` resolves every tenant case and every
-negative from its `.rue` text (the term names the host, the plan and the
-requester) and holds the plan IR structurally equal to the term's, so the
-verdict, prose, explain and artifact goldens are the text's as much as
-the term's. A disagreement is a defect in the front end or an unfaithful
-term and is fixed as such, named in the commit; the test is what lets the
-terms retire at Phase 2's exit with the texts as the golden source.
+From Phase 2's exit the `.rue` texts are the golden source: `cases()`
+resolves each through the front end for the host, plan and requester its
+table row names, and every verdict, listing and artifact golden is what
+core and render say of that. The Rust terms that carried Phase 0's record
+were held structurally equal to the front end's plan IR for every case
+before they retired (the equality test went with them; its proof is that
+the goldens did not move when the writer switched sources). A text that
+does not resolve fails every suite that reads it. `rue_tenants::text_of`
+finds a case's text; the negatives are checked as the requester
+`requester`, which the ones derived from a tenant need for E0508.
+
+## The performance bound
+
+`surface/tests/bench.rs` writes a 1,000-host inventory and a 200-step
+plan to a temporary directory and holds parse, resolve and check to the
+acceptance's bound (2 s; 5 s on FreeBSD) in release, which is how the
+gate runs the tests; a debug `cargo test` (the workstation, the
+rediscovery battery) asserts twice that and says so. The measured time is far under the bound (tens of milliseconds
+in release); the rediscovery row `bench-over-budget` plants a stall.
 
 ## The artifacts run
 

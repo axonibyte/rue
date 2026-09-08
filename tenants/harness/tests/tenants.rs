@@ -1,9 +1,10 @@
-//! Tier 2, the Phase 0 acceptance (docs/ROADMAP.md section 9) held by the
-//! Rust crates: the terms and the case table agree; every tenant checks
-//! clean; every negative refuses with exactly its code; the negative goldens
-//! cover exactly the codes the checker emits; and the claims section 8 makes
-//! about each verdict hold as fields. Also the source-as-data half: every case
-//! directory carries its `.rue` text and every tenant an inventory.
+//! Tier 2, the acceptance (docs/ROADMAP.md section 9) held by the Rust
+//! crates over the `.rue` texts: every case resolves from its text; every
+//! tenant checks clean; every negative refuses with exactly its code; the
+//! negative goldens cover exactly the codes the checker emits; and the
+//! claims section 8 makes about each verdict hold as fields. Also the
+//! source-as-data half: every case directory carries its `.rue` text and
+//! every tenant an inventory.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -15,19 +16,18 @@ use rue_core::model::{Duration, Strictness};
 use rue_core::verdict::{HostTouched, Status, Verdict};
 use rue_tenants::golden::repo_root;
 use rue_tenants::{
-    artifact_of, cases, load, verdict_of, CaseTerm, TenantCase, EMITTED_CODES, NEGATIVES,
-    TENANT_CASES,
+    artifact_of, cases, load, verdict_of, Case, TenantCase, EMITTED_CODES, NEGATIVES, TENANT_CASES,
 };
 
-fn term(dir: &str) -> CaseTerm {
+fn resolved(dir: &str) -> Case {
     cases()
         .into_iter()
         .find(|c| c.dir == dir)
-        .unwrap_or_else(|| panic!("no term for {dir}"))
+        .unwrap_or_else(|| panic!("no case for {dir}"))
 }
 
 fn verdict(dir: &str) -> (Verdict, PlanIr) {
-    let t = term(dir);
+    let t = resolved(dir);
     (verdict_of(&t.ir), t.ir)
 }
 
@@ -36,7 +36,7 @@ fn case(tenant: &str, host: &str) -> Verdict {
 }
 
 #[test]
-fn the_terms_and_the_case_table_agree_one_to_one() {
+fn the_cases_and_the_case_table_agree_one_to_one() {
     let dirs: Vec<String> = cases().iter().map(|c| c.dir.clone()).collect();
     let table: Vec<String> = TENANT_CASES
         .iter()
@@ -47,7 +47,7 @@ fn the_terms_and_the_case_table_agree_one_to_one() {
 }
 
 #[test]
-fn every_plan_json_parses_back_to_its_term() {
+fn every_plan_json_parses_back_to_its_text_resolved() {
     let root = repo_root().unwrap();
     for c in cases() {
         let ir = load(&root, &format!("{}/plan.json", c.dir)).unwrap_or_else(|e| panic!("{e}"));

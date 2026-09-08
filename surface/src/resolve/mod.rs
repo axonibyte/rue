@@ -95,7 +95,7 @@ impl Program {
         diags: &mut Vec<Diagnostic>,
         from: Option<Span>,
     ) -> Option<usize> {
-        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let canonical = display_path(path);
         // A file still being loaded is a cycle; one loaded before is shared.
         if stack.contains(&canonical) {
             let cycle: Vec<String> = stack
@@ -455,4 +455,36 @@ pub(crate) fn lines(body: &[Stmt]) -> impl Iterator<Item = &ast::Line> {
         Stmt::Line(l) => Some(l),
         _ => None,
     })
+}
+
+/// The path a diagnostic names a file by: canonical (so one file loaded by
+/// two spellings is one module) and, on Windows, without the verbatim
+/// prefix canonicalization adds (`\\?\C:\...`), which no user wrote.
+pub fn display_path(path: &Path) -> PathBuf {
+    without_verbatim_prefix(path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
+}
+
+fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+    match path.to_string_lossy().strip_prefix(r"\\?\") {
+        Some(plain) => PathBuf::from(plain),
+        None => path,
+    }
+}
+
+#[cfg(test)]
+mod verbatim {
+    use super::without_verbatim_prefix;
+    use std::path::PathBuf;
+
+    #[test]
+    fn a_verbatim_windows_path_loses_its_prefix_and_others_are_untouched() {
+        assert_eq!(
+            without_verbatim_prefix(PathBuf::from(r"\\?\Z:\work\plan.rue")),
+            PathBuf::from(r"Z:\work\plan.rue")
+        );
+        assert_eq!(
+            without_verbatim_prefix(PathBuf::from("/work/plan.rue")),
+            PathBuf::from("/work/plan.rue")
+        );
+    }
 }
