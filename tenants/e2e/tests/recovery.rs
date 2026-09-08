@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use rue_e2e::{
     bin, instance_of, must, require_provisioned_host, rue, rue_root, target_exists, target_read,
-    target_write, Daemon, Site,
+    target_run, target_write, Daemon, Site,
 };
 
 /// Two owned files on the target: the second step is slow enough that a
@@ -210,6 +210,38 @@ end
         target_read(f),
         "before\n",
         "a fired artifact would restore the same snapshot, not another"
+    );
+    d.stop();
+}
+
+#[test]
+fn doctor_with_a_canary_proves_a_real_backstop_fires() {
+    require_provisioned_host();
+    // The one proof no unit test can give: this host's cron runs what rue
+    // installs. A throwaway artifact, armed with a deadline already past,
+    // and removed whatever happens.
+    let site = Site::new("recovery-canary-doctor", "");
+    let d = Daemon::start(&site);
+    let out = rue(&d.socket, &["doctor", "--canary", "--canary-wait", "200"]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        text.contains("fired"),
+        "the canary reported: {text}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        out.status.success(),
+        "the canary fired: {text}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // It left nothing behind: no instance directory of its own.
+    let dirs = target_run(&format!(
+        "ls {} 2>/dev/null || true",
+        rue_root().join("instances").display()
+    ));
+    assert!(
+        !dirs.contains("rue-canary-"),
+        "the canary cleaned up after itself: {dirs}"
     );
     d.stop();
 }

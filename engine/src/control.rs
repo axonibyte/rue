@@ -986,9 +986,27 @@ fn dispatch_inner(
         }
         "doctor" => {
             admin(op, verb)?;
+            // `--canary` installs a throwaway artifact on every host with
+            // a scheduler and waits for it to fire: the one proof a unit
+            // test cannot give.
+            let canary = args.get("canary").and_then(Value::as_bool).unwrap_or(false);
+            let wait = args
+                .get("canary_wait_s")
+                .and_then(Value::as_u64)
+                .unwrap_or(180);
             let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
             let r = e.doctor().map_err(engine_error)?;
-            Ok(json!({ "report": r, "healthy": r.healthy(), "hooks": daemon.hooks.names() }))
+            let canaries = if canary {
+                e.canary(RDuration::new(wait)).map_err(engine_error)?
+            } else {
+                Vec::new()
+            };
+            Ok(json!({
+                "report": r,
+                "healthy": r.healthy() && canaries.iter().all(|c| c.fired),
+                "hooks": daemon.hooks.names(),
+                "canaries": canaries,
+            }))
         }
         "hooks" => Ok(json!(daemon.hooks.names())),
         other => Err(ControlError::new(

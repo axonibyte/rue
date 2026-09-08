@@ -276,7 +276,11 @@ unit. What is in place:
   store; one the store does not know that holds an armed, unfired artifact
   is left where it is and journaled `InstanceDirOrphaned{armed: true}`;
   one with no artifact or a `fired` marker is removed and journaled
-  `Reclaimed`. `rue doctor` lists what was left in place. `rue reclaim`
+  `Reclaimed`. `rue doctor` lists what was left in place, and `rue doctor
+  --canary` proves a real backstop fires: a throwaway artifact of the
+  engine's own (no plan, no undo, nothing outside its own instance
+  directory), armed with a deadline already past and removed whatever
+  happened. `rue reclaim`
   refuses while the artifact is armed and its entry present (R0405) until
   `--force --reason`. An artifact `abandon` could not disarm and that
   later fires is read on the next reap and journaled

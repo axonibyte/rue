@@ -20,6 +20,7 @@ use rue_core::model::{Duration, Instant, Trigger};
 use rue_render::{render, Bindings, Instance as RInstance};
 use serde::{Deserialize, Serialize};
 
+use crate::gates::{hex, nonce};
 use crate::host::Host;
 use crate::lifecycle::{applied_steps, Engine, EngineError, InstanceRecord};
 use crate::scheduler::{Job, Presence, Scheduler};
@@ -828,5 +829,172 @@ impl Engine {
             reason: reason.to_string(),
         })?;
         Ok(format!("reclaimed {instance} on {host_name}"))
+    }
+}
+
+/// What a canary found on one host (`rue doctor --canary`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Canary {
+    pub host: String,
+    /// The scheduler binding that was asked to fire it.
+    pub scheduler: String,
+    /// Whether the artifact actually ran and left its marker.
+    pub fired: bool,
+    /// Seconds from arming to the marker, when it fired.
+    pub after_s: Option<u64>,
+    /// What went wrong, when nothing fired.
+    pub note: String,
+}
+
+impl Engine {
+    /// `rue doctor --canary`: prove that a real backstop fires on every
+    /// host that has a scheduler, by installing a throwaway artifact of
+    /// the engine's own, arming it with a deadline already past, and
+    /// waiting for the marker it leaves.
+    ///
+    /// Nothing of a plan is involved: the artifact undoes nothing and
+    /// touches nothing outside its own instance directory, which is
+    /// removed afterwards whatever happened. What it proves is the part
+    /// no unit test can: that this host's scheduler runs what rue
+    /// installs, at the granularity it claims.
+    pub fn canary(&mut self, wait: Duration) -> Result<Vec<Canary>, EngineError> {
+        let hosts: Vec<Host> = self.hosts.values().cloned().collect();
+        let mut out = Vec::new();
+        for host in hosts {
+            let Some(scheduler) = host.scheduler.clone() else {
+                continue;
+            };
+            let mut c = Canary {
+                host: host.name().to_string(),
+                scheduler: scheduler.clone(),
+                fired: false,
+                after_s: None,
+                note: String::new(),
+            };
+            match self.canary_on(&host, &scheduler, wait, &mut c) {
+                Ok(()) => {}
+                Err(why) => c.note = why,
+            }
+            let _ = self.canary_clean(&host, &scheduler, &c);
+            out.push(c);
+        }
+        Ok(out)
+    }
+
+    /// The instance a canary uses: named for what it is, and for this
+    /// engine, so two canaries never collide.
+    fn canary_id(&self) -> String {
+        format!("rue-canary-{}", hex(&nonce()[..6]))
+    }
+
+    fn canary_on(
+        &mut self,
+        host: &Host,
+        scheduler: &str,
+        wait: Duration,
+        c: &mut Canary,
+    ) -> Result<(), String> {
+        let id = self.canary_id();
+        c.note = id.clone();
+        let shell = rue_core::artifact::shell_of(&host.record.os);
+        if matches!(shell, rue_core::artifact::Shell::Powershell) {
+            return Err("a canary on Windows is Phase 3W's; no artifact is installed".into());
+        }
+        let root = RInstance {
+            id: id.clone(),
+            rue_root: host.rue_root.clone(),
+        }
+        .root(shell);
+        let inst = format!("{root}/instances/{id}");
+        // The whole artifact: it leaves a marker and stops. An artifact
+        // that fires twice is no worse than one that fires once.
+        let text = format!("#!/bin/sh\n# rue canary: proves this host's scheduler runs what rue installs.\n[ -e '{inst}/fired' ] && exit 0\nnow=$(date +%s)\nd=$(cat '{inst}/deadline' 2>/dev/null || echo 0)\n[ \"$now\" -ge \"$d\" ] || exit 0\n: > '{inst}/fired'\nexit 0\n");
+        let Some(i) = self.executor_index(host) else {
+            return Err(format!("no transport reaches {}", host.name()));
+        };
+        match self.executors[i].bootstrap_state(host) {
+            Ok(s) if s.ready() => {}
+            Ok(_) => return Err(format!("R0407: {} is not bootstrapped", host.name())),
+            Err(e) => return Err(format!("{}: {e}", host.name())),
+        }
+        self.executors[i]
+            .instance_dir_create(host, &id)
+            .map_err(|e| format!("the canary's directory: {e}"))?;
+        self.executors[i]
+            .put_file(host, &id, "artifact.sh", text.as_bytes(), 0o750)
+            .map_err(|e| format!("the canary's artifact: {e}"))?;
+        let job = Job {
+            instance: id.clone(),
+            artifact: format!("{inst}/artifact.sh"),
+            language: rue_core::model::ArtifactLanguage::Sh,
+            os: host.record.os.clone(),
+        };
+        let Some(s) = self.schedulers.iter_mut().find(|s| s.name() == scheduler) else {
+            return Err(format!("R0401: no scheduler binding named {scheduler}"));
+        };
+        let ex = &mut self.executors[i];
+        s.install(ex.as_mut(), host, &job)
+            .map_err(|e| format!("R0401: the canary's entry: {e}"))?;
+        // Armed with a deadline already past: the next tick is the proof.
+        let armed = self.clock.now();
+        let Some(i) = self.executor_index(host) else {
+            return Err(format!("no transport reaches {}", host.name()));
+        };
+        self.executors[i]
+            .replace_file(
+                host,
+                &id,
+                "deadline",
+                format!("{}\n", armed.unix_s).as_bytes(),
+            )
+            .map_err(|e| format!("the canary's deadline: {e}"))?;
+        let start = std::time::Instant::now();
+        let bound = std::time::Duration::from_secs(wait.seconds);
+        while start.elapsed() < bound {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let Some(i) = self.executor_index(host) else {
+                break;
+            };
+            if self.executors[i].get_file(host, &id, "fired").is_ok() {
+                c.fired = true;
+                c.after_s = Some(start.elapsed().as_secs());
+                c.note = format!("{id} fired");
+                return Ok(());
+            }
+        }
+        Err(format!(
+            "{id} did not fire within {}s; {scheduler} on {} runs nothing rue installs",
+            wait.seconds,
+            host.name()
+        ))
+    }
+
+    /// Whatever happened, the canary leaves nothing behind.
+    fn canary_clean(&mut self, host: &Host, scheduler: &str, c: &Canary) -> Result<(), String> {
+        let id = c
+            .note
+            .split_whitespace()
+            .next()
+            .filter(|s| s.starts_with("rue-canary-"))
+            .unwrap_or_default()
+            .to_string();
+        if id.is_empty() {
+            return Ok(());
+        }
+        let job = Job {
+            instance: id.clone(),
+            artifact: String::new(),
+            language: rue_core::model::ArtifactLanguage::Sh,
+            os: host.record.os.clone(),
+        };
+        let Some(i) = self.executor_index(host) else {
+            return Ok(());
+        };
+        if let Some(s) = self.schedulers.iter_mut().find(|s| s.name() == scheduler) {
+            let ex = &mut self.executors[i];
+            let _ = s.disarm(ex.as_mut(), host, &job);
+        }
+        let _ = self.executors[i].instance_dir_remove(host, &id);
+        Ok(())
     }
 }

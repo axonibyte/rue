@@ -60,6 +60,8 @@ image = "docker.io/library/rust@sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97
 # rustfmt and clippy). TMPDIR sits on the cache so rediscovery scratch copies
 # never touch the root disk.
 cmd = """
+find . -name '*.rs' -not -path './target/*' -exec touch {} + && \
+find . -name '*.toml' -not -path './target/*' -exec touch {} + && \
 export GHCUP_INSTALL_BASE_PREFIX=$REAPER_CACHE_GHCUP PATH=$REAPER_CACHE_GHCUP/.ghcup/bin:$PATH && \
 apt-get -qq update && \
 apt-get -qq install -y --no-install-recommends shellcheck patch libgmp-dev libffi-dev libncurses-dev libtinfo6 gcc-mingw-w64-x86-64 wine python3-pip && \

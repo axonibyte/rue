@@ -172,6 +172,14 @@ impl Site {
     /// after it. The key material is the harness's, by relative path from
     /// the site file, so nothing of the invoking user's is read.
     pub fn new(name: &str, plans: &str) -> Site {
+        Site::with(name, plans, "", "", "")
+    }
+
+    /// As `new`, with extra lines inside the site block, extra hosts in
+    /// the inventory, and extra executors on the one `execute via:` line
+    /// (a second such line replaces the first: the site takes one line
+    /// per slot, and the last wins).
+    pub fn with(name: &str, plans: &str, site_lines: &str, hosts: &str, executors: &str) -> Site {
         let root = e2e_root().expect("the harness root");
         let dir = root.join(format!("case-{name}"));
         let _ = fs::remove_dir_all(&dir);
@@ -206,8 +214,10 @@ impl Site {
                  scheduler = \"cron\"\n\
                  rue_root = \"{}\"\n\
                  \n\
+                 {hosts}\n\
                  [authenticators]\n\
-                 ops = {{ human = true }}\n",
+                 oncall = {{ human = true }}\n\
+                 second = {{ human = true }}\n",
                 os_family(),
                 rue_root().display()
             ),
@@ -221,10 +231,11 @@ impl Site {
                  site do\n  \
                  inventory from: file(\"inventory.toml\")\n  \
                  journal to: file(\"journal.ndjson\")\n  \
-                 execute via: [local(), ssh(identity: \"keys/id_ed25519\", known_hosts: \"known_hosts\", user: \"{TARGET_USER}\")]\n  \
+                 execute via: [local(), ssh(identity: \"keys/id_ed25519\", known_hosts: \"known_hosts\", user: \"{TARGET_USER}\"){executors}]\n  \
                  backstop scheduler: cron()\n  \
                  notify via: stdout()\n  \
-                 max_wait 1h\n  \
+                 max_wait 1h\n\
+                 {site_lines}  \
                  operators do\n    \
                  identity :ops, user: \"{}\", operator_for: :all, admin: true\n  \
                  end\n\
@@ -250,6 +261,11 @@ pub struct Daemon {
 
 impl Daemon {
     pub fn start(site: &Site) -> Daemon {
+        Daemon::start_with(site, &[])
+    }
+
+    /// With extra arguments: `--spawn NAME=COMMAND` for a hook child.
+    pub fn start_with(site: &Site, extra: &[String]) -> Daemon {
         // A daemon that was killed leaves its socket behind; the new one
         // removes it when it binds, and waiting for the file to appear
         // again is how the harness knows which daemon it is talking to.
@@ -266,6 +282,7 @@ impl Daemon {
             .arg("rue")
             .arg("--reap-every")
             .arg("1")
+            .args(extra)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -388,6 +405,21 @@ pub fn must(what: &str, out: &std::process::Output) -> String {
     line
 }
 
+/// A verb whose outcome is a state, not a success: the verdict line, and
+/// the exit code section 6.8 gives that state (6 pending or waiting, 8
+/// drift-held, and so on).
+pub fn expect_exit(what: &str, out: &std::process::Output, code: i32) -> String {
+    let line = last_line(out);
+    assert_eq!(
+        out.status.code(),
+        Some(code),
+        "{what}: expected exit {code}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    line
+}
+
 /// The instance id a verdict line begins with.
 pub fn instance_of(line: &str) -> String {
     line.split(':')
@@ -421,6 +453,33 @@ pub fn target_write(path: &str, content: &str) {
     }
     let out = child.wait_with_output().expect("ssh");
     assert!(out.status.success(), "writing {path} on the target");
+}
+
+/// The Python the hook fixtures run under. FreeBSD's package installs
+/// `python3.12` and no `python3`; a guest that has neither is a refusal
+/// rather than a skipped scenario.
+pub fn python() -> String {
+    for name in ["python3", "python3.12", "python3.11", "python"] {
+        let ok = Command::new(name)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if ok {
+            return name.to_string();
+        }
+    }
+    panic!("no python3 on this guest; the tenant's hook fixtures need one");
+}
+
+/// Run a command on the target and return its stdout.
+pub fn target_run(cmd: &str) -> String {
+    let root = e2e_root().expect("the harness root");
+    let out = ssh_command(&root, TARGET_ADDRESS, TARGET_USER)
+        .arg(cmd)
+        .output()
+        .expect("ssh");
+    String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
 /// Whether a path exists on the target.

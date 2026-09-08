@@ -201,6 +201,11 @@ is no, anything else is unknown) and its stdout is the fact's value; a
 `run` in an op binds a declared output with a line `rue-output NAME=VALUE`
 on its stdout, which the executor removes from the run's text.
 
+A site takes one line per slot, and a second line for the same slot
+replaces the first rather than adding to it: every executor a site has
+goes on one `execute via:` line, every acceptor on one `secrets
+deliver_to:` line.
+
 `approval via:` names the binding that publishes the authenticators a
 gate may name, renders a challenge over a request digest, and verifies the
 proofs that come back. `always()` opens every gate without a proof and

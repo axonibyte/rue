@@ -21,6 +21,14 @@ echo "== provision"
 sh tenants/e2e/provision.sh apply || exit 1
 sh tenants/e2e/provision.sh check || exit 1
 
+# reaper syncs the tree with the workstation's modification times, and the
+# guest keeps its cargo cache between runs. A source whose mtime is older
+# than the cached artifact is not rebuilt, so a change can be invisible
+# here run after run. Touching the tree with the guest's own clock -- the
+# one cargo compares against -- is what makes a sync mean something.
+find . -name '*.rs' -not -path './target/*' -exec touch {} + 2> /dev/null
+find . -name '*.toml' -not -path './target/*' -exec touch {} + 2> /dev/null
+
 # The harness drives the real binaries; the Ubuntu guest's run phase has a
 # cache of its own where the gate never built them.
 echo "== binaries"

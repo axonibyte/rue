@@ -212,6 +212,14 @@ enum Verb {
     /// Admin: bindings, executors, schedulers, bootstrap, sinks and modes,
     /// as the daemon sees them.
     Doctor {
+        /// Also prove a real backstop fires: a throwaway artifact on every
+        /// host with a scheduler, armed with a deadline already past, and
+        /// removed whatever happens.
+        #[arg(long)]
+        canary: bool,
+        /// How long to wait for a canary, in seconds.
+        #[arg(long, default_value_t = 180)]
+        canary_wait: u64,
         #[command(flatten)]
         channel: Channel,
     },
@@ -644,7 +652,16 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             }),
             out,
         ),
-        Verb::Doctor { channel } => over_channel(&channel, "doctor", serde_json::json!({}), out),
+        Verb::Doctor {
+            canary,
+            canary_wait,
+            channel,
+        } => over_channel(
+            &channel,
+            "doctor",
+            serde_json::json!({ "canary": canary, "canary_wait_s": canary_wait }),
+            out,
+        ),
         Verb::States => {
             out.write_all(render_table().as_bytes())?;
             Ok(ExitCode::SUCCESS)
@@ -848,6 +865,28 @@ fn over_channel(
                         ""
                     }
                 )?;
+                // A canary is the one line that says a real backstop
+                // fired on a real host, and how long it took.
+                for c in result
+                    .get("canaries")
+                    .and_then(|c| c.as_array())
+                    .into_iter()
+                    .flatten()
+                {
+                    let host = c.get("host").and_then(|v| v.as_str()).unwrap_or("");
+                    let sched = c.get("scheduler").and_then(|v| v.as_str()).unwrap_or("");
+                    let fired = c.get("fired").and_then(|v| v.as_bool()) == Some(true);
+                    let note = c.get("note").and_then(|v| v.as_str()).unwrap_or("");
+                    if fired {
+                        writeln!(
+                            out,
+                            "canary {host}: {sched} fired it after {}s",
+                            c.get("after_s").and_then(|v| v.as_u64()).unwrap_or(0)
+                        )?;
+                    } else {
+                        writeln!(out, "canary {host}: {sched} fired nothing ({note})")?;
+                    }
+                }
                 writeln!(
                     out,
                     "{}",
@@ -858,6 +897,21 @@ fn over_channel(
                     }
                 )?;
                 return Ok(ExitCode::from(if healthy { 0 } else { 1 }));
+            }
+            // A challenge is the one reply that is a message for a
+            // person: what the approval binding wants signed.
+            if let Some(c) = result.get("challenge").and_then(|c| c.as_str()) {
+                writeln!(out, "{c}")?;
+                return Ok(ExitCode::SUCCESS);
+            }
+            // A revealed secret is the other: its value, once, and only to
+            // the client that asked (5.13).
+            if let (Some(label), Some(value)) = (
+                result.get("label").and_then(|l| l.as_str()),
+                result.get("value").and_then(|v| v.as_str()),
+            ) {
+                writeln!(out, "{label}={value}")?;
+                return Ok(ExitCode::SUCCESS);
             }
             if result.get("line").is_some() {
                 let line = result.get("line").and_then(|l| l.as_str()).unwrap_or("");

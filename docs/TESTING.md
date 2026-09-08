@@ -501,8 +501,13 @@ driving it with the real `rue`:
   backstop armed by a daemon that then dies still fires from the target's
   own cron, with no engine anywhere, and undoes the step; a recant that
   races a fired artifact leaves the fact restored once rather than twice,
-  because both take the same host lock and restore the same snapshot; and
-  `rue doctor` names the host, its transport and its scheduler.
+  because both take the same host lock and restore the same snapshot;
+  `rue doctor` names the host, its transport and its scheduler; and `rue
+  doctor --canary` installs a throwaway artifact of the engine's own on
+  every host with a scheduler, arms it with a deadline already past, waits
+  for the marker it leaves, and removes it whatever happened. That last is
+  the one proof no unit test can give: that this host's cron runs what rue
+  installs.
 
 ### Tier 5 and 6: the harness on a disposable guest
 
