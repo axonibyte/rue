@@ -8,7 +8,7 @@
   "diagnostics": [
     {
       "code": "E0209",
-      "message": "op a: secret db_pw interpolated into a run string (do, prim 1)",
+      "message": "op posture: secret db_pw interpolated into a run string (do, prim 1)",
       "step": 1
     }
   ],
@@ -50,7 +50,7 @@
       "knell": null,
       "locus": "target",
       "n": 1,
-      "op": "a",
+      "op": "posture",
       "refusal": "revert",
       "undo": "remove file:/etc/a",
       "undo_locus": "controller"

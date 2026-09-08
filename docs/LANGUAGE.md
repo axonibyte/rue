@@ -161,9 +161,63 @@ end
 
 A file's site is its own block when it has one, else the site of the one
 file it imports; a path in a site resolves relative to the file that
-declares it. What each binding means, and how the site's hosts, transports
-and acceptors are derived from it and the inventory, is the resolver's
-(unit B of Phase 2) and will be stated here when it lands.
+declares it. The checker's site is derived from the block and the
+inventory it names (a TOML file of `[[host]]` records and an
+`[authenticators]` table, Appendix C):
+
+| Site field | From |
+|---|---|
+| each host's name, os, reach, filesystem, artifact | the inventory record; `artifact` absent is the host's native shell (`sh`; `powershell` on Windows) |
+| a host's stdin preamble | the record's `stdin_preamble`, else its `filesystem` |
+| transports | the `execute via:` bindings: `ssh()` is `ssh`, `local()` is `local`, `hook(:x, transport: :t)` is `t`; with no line, `ssh` alone |
+| authenticators | the inventory's `[authenticators]` table, in its order |
+| max_wait | the `max_wait` line |
+| scheduler presence | every host whose record has `scheduler` |
+| secret acceptors | `secrets deliver_to:` in order: `requester()` is `requester`, `hook(:x)` is `hook:x`, `hold(...)` is `hold` |
+| the requester | `--as`, else the first `identity` of `operators` |
+
+## Resolution
+
+`rue check file.rue --host H [--plan-name P] [--as ID]` (and `explain`,
+`artifact`) resolves the file for one host into the same plan IR `rue
+check` reads from a `plan.json`. `--host` names an inventory host; it may
+be omitted when the plan has one clause whose pattern names the host
+(`%{name: "db-01"}`). `--plan-name` names the plan when the file defines
+more than one. The clauses of that name are tried in file order against
+the host's contract facts and the first match is the plan (E0112 when none
+matches; E0111 when a pattern names a fact that is not `name`, `os`,
+`address`, `roles` or `reach`; E0103 when two clauses carry the same
+pattern).
+
+Each step's call expands the op's clauses the same way, against the plan's
+host first and then against the host an `locus: host("...")` line names.
+The call's keyword arguments bind the op's parameters: declared ones
+(`ack: ack`, `drift: :defer`) and the free names its body uses. In the
+body, a name's origin is what the classifier records: `host.<field>` is a
+host field; `secret(:x)` is a secret; a name bound at the call to a
+`repeat` variable or to a controller probe's fact is a controller value;
+one bound to an earlier step's `alias.output` is that output; a fact a
+`:target` probe produces is a fact; everything else is a parameter the
+request binds. An output read before its step (or across a `par`
+sibling) is E0110.
+
+Fact shapes follow one rule: `file("/p")` is `file:/p`; `a.b` is `a:b`;
+`a.b(x)` is `a:b:<x>` with a literal verbatim and a runtime value as
+`{name}`; names are never rewritten; a probe under `derived:` is
+`probe:<name>`; an anchor is the entry's, not part of the shape.
+
+An op with no `undo:` line has no undo (E0201 unless it is a knell);
+`undo: :restore` must be written. An undo is provably idempotent when it
+is `:restore` or `compensate:`, or a computed body whose every `run` and
+`hook` carries `idempotent: true` (E0208 otherwise). A step's arguments
+are printed by `explain` as written, strings unquoted.
+
+`repeat over: list, as x, max: N` needs its literal cap (E0106 without
+it) and a set-valued list (a literal list with a repeated member is
+E0113). A comparison against `:unknown` is E0108; ask `defined?()` or
+`unknown?()`. An unknown op, probe or primitive is E0102 with the
+nearest name suggested; an import that cannot be read or that cycles is
+E0104.
 
 ## `rue fmt`
 
@@ -179,6 +233,9 @@ file with parse errors rather than rewrite it.
 ## Diagnostics
 
 A diagnostic names the file, line and column, its code (section 6.7), a
-message, and what was expected and found. The front end raises E0101 (a
+message, and what was expected and found. The parser raises E0101 (a
 parse error; at most one per line, so a recovered line cannot cascade)
-and E0105 (the version marker) in this unit; the resolver's codes follow.
+and E0105 (the version marker); the resolver raises E0102, E0103, E0104,
+E0106, E0108, E0110, E0111, E0112 and E0113 as the sections above say,
+and E0204 for a knell without a cost. Every other code is the checker's
+and reaches the verdict.

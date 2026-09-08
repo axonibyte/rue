@@ -12,7 +12,9 @@
     "body": [
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "port: 8443"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
@@ -20,26 +22,6 @@
         "on_lapse": "revert",
         "op": {
           "do": [
-            {
-              "region_set": {
-                "content": {
-                  "template": [
-                    {
-                      "lit": "pass in proto tcp to port "
-                    },
-                    {
-                      "ref": {
-                        "param": "port"
-                      }
-                    }
-                  ]
-                },
-                "fact": {
-                  "anchor": "rue-mgmt",
-                  "shape": "file:/etc/pf.conf"
-                }
-              }
-            },
             {
               "run": {
                 "cmd": [

@@ -26,7 +26,7 @@ pub fn site() -> Site {
     }
 }
 
-fn fence(ack: Ack) -> Op {
+pub fn fence(ack: Ack) -> Op {
     Op {
         undo: Undo::NoUndo,
         undo_locus: UndoLocus::NoLocus,

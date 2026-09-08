@@ -22,8 +22,8 @@
   "hosts_touched": {
     "1": [
       {
-        "directory": "target",
-        "host": "node-b"
+        "directory": "controller",
+        "host": "controller"
       }
     ]
   },
@@ -36,7 +36,7 @@
     "ack": "humans()",
     "cost": "fence_verdict",
     "gate": null,
-    "guard": "verified_off",
+    "guard": "fence_verified_off",
     "step": 1
   },
   "rehearsal": false,
@@ -55,11 +55,11 @@
       "knell": {
         "ack": "humans()",
         "cost": "fence_verdict",
-        "guard": "verified_off"
+        "guard": "fence_verified_off"
       },
-      "locus": "target",
+      "locus": "controller",
       "n": 1,
-      "op": "fence",
+      "op": "fence_corpse",
       "refusal": "knell",
       "undo": null,
       "undo_locus": "none"

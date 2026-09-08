@@ -27,3 +27,5 @@ sha2 = "0.10"
 # rowan tree under a hand-written parser.
 logos = "0.16"
 rowan = "0.17"
+# The inventory is TOML (Appendix C).
+toml = { version = "1", features = ["preserve_order"] }

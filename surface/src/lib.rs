@@ -3,9 +3,11 @@
 //! tree, and the formatter. The resolver to `rue_core::ir::PlanIr` is unit
 //! B. Depends on core only; no I/O.
 
+pub mod ast;
 pub mod fmt;
 pub mod lexer;
 pub mod parser;
+pub mod resolve;
 pub mod syntax;
 
 use rue_core::diagnostics::Diagnostic;

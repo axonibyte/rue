@@ -60,12 +60,17 @@ fn temp(name: &str, items: Vec<Item>) -> Plan {
     }
 }
 
+/// The lab's `posture` op over `file:/etc/<f>`, as the texts write it.
 fn owned(f: &str) -> Op {
     let shape = format!("file:/etc/{f}");
     Op {
         do_: vec![write(fact_ref(&shape), lit("x"))],
-        ..Op::new(f, vec![FootprintEntry::entry(Kind::Owned, &shape)])
+        ..Op::new("posture", vec![FootprintEntry::entry(Kind::Owned, &shape)])
     }
+}
+
+fn named(id: &str, o: Op) -> Op {
+    Op { id: id.into(), ..o }
 }
 
 fn target_undo(o: Op) -> Op {
@@ -81,6 +86,7 @@ fn after_1h() -> Backstop {
 
 fn fence_knell(ack: Ack) -> Op {
     Op {
+        do_: vec![hook("fence", vec![])],
         undo: Undo::NoUndo,
         undo_locus: UndoLocus::NoLocus,
         refusal: Refusal::Knell {
@@ -130,10 +136,7 @@ pub fn cases() -> Vec<Negative> {
                 gate: None,
                 body: vec![Item::Step(StepI {
                     force: vec![ForceName::Unknown],
-                    ..StepI::new(Op::new(
-                        "posture",
-                        vec![FootprintEntry::entry(Kind::Owned, "file:/etc/x")],
-                    ))
+                    ..StepI::new(owned("x"))
                 })],
                 ..t1::breakglass()
             },
@@ -146,6 +149,7 @@ pub fn cases() -> Vec<Negative> {
             Plan {
                 body: t3::body_with(Op {
                     footprint: vec![FootprintEntry::entry(Kind::Modified, "file:/etc/pf.conf")],
+                    do_: vec![run_lit("pfctl -f /etc/pf.conf")],
                     ..t3::pf_allow()
                 }),
                 ..t3::open_mgmt_port()
@@ -168,6 +172,7 @@ pub fn cases() -> Vec<Negative> {
             t1_site.clone(),
             Plan {
                 wane: None,
+                renew_within: None,
                 backstop: None,
                 gate: None,
                 ..t1::breakglass()
@@ -180,7 +185,7 @@ pub fn cases() -> Vec<Negative> {
             t3_site.clone(),
             Plan {
                 body: vec![
-                    s(t3::pf_allow()),
+                    with_args(t3::pf_allow(), &["port: 8443"]),
                     Item::Commit,
                     Item::Observe {
                         probe: "verify_reach".into(),
@@ -198,7 +203,7 @@ pub fn cases() -> Vec<Negative> {
             t3_site.clone(),
             Plan {
                 body: vec![
-                    s(t3::pf_allow()),
+                    with_args(t3::pf_allow(), &["port: 8443"]),
                     Item::Observe {
                         probe: "verify_reach".into(),
                         alias: "reach".into(),
@@ -224,6 +229,7 @@ pub fn cases() -> Vec<Negative> {
                 body: vec![
                     Item::Step(StepI {
                         gate: Some(auth("netops")),
+                        args: strings(&["port: 8443"]),
                         ..StepI::new(t3::pf_allow())
                     }),
                     Item::Observe {
@@ -247,7 +253,13 @@ pub fn cases() -> Vec<Negative> {
                 ..Plan::new(
                     "promote",
                     "node-b",
-                    vec![knell(fence_knell(Ack::Gate(humans()))), Item::Commit],
+                    vec![
+                        Item::Knell(StepI {
+                            args: strings(&["ack: humans()"]),
+                            ..StepI::new(t2::fence(Ack::Gate(humans())))
+                        }),
+                        Item::Commit,
+                    ],
                 )
             },
         ),
@@ -371,6 +383,7 @@ pub fn cases() -> Vec<Negative> {
                 "bmc",
                 vec![s(Op {
                     locus: Locus::Host(HostRef::Static("api-01".into())),
+                    do_: vec![hook("api", vec![("set", lit("a"))])],
                     ..target_undo(owned("a"))
                 })],
             ),
@@ -390,10 +403,22 @@ pub fn cases() -> Vec<Negative> {
                 "any",
                 vec![
                     s(owned("x")),
-                    s(Op::new(
-                        "any",
-                        vec![FootprintEntry::entry(Kind::Owned, "file:/etc/{name}")],
-                    )),
+                    with_args(
+                        Op {
+                            do_: vec![write(
+                                FactRef {
+                                    shape: "file:/etc/{name}".into(),
+                                    anchor: None,
+                                },
+                                lit("y"),
+                            )],
+                            ..Op::new(
+                                "any",
+                                vec![FootprintEntry::entry(Kind::Owned, "file:/etc/{name}")],
+                            )
+                        },
+                        &["name: chosen"],
+                    ),
                 ],
             ),
         ),
@@ -407,11 +432,17 @@ pub fn cases() -> Vec<Negative> {
                 "any",
                 vec![
                     s(owned("a")),
-                    s(Op {
-                        locus: Locus::Host(HostRef::Bound("pick".into())),
-                        undo_locus: UndoLocus::Controller,
-                        ..owned("a")
-                    }),
+                    with_args(
+                        named(
+                            "posture_elsewhere",
+                            Op {
+                                locus: Locus::Host(HostRef::Bound("pick".into())),
+                                undo_locus: UndoLocus::Controller,
+                                ..owned("a")
+                            },
+                        ),
+                        &["pick: chosen_host"],
+                    ),
                 ],
             ),
         ),
@@ -436,11 +467,14 @@ pub fn cases() -> Vec<Negative> {
                     "par",
                     vec![Item::Par {
                         children: vec![
-                            s(Op {
-                                reach: strings(&["ssh"]),
-                                ..target_undo(owned("pf"))
-                            }),
-                            s(owned("b")),
+                            s(named(
+                                "pf",
+                                Op {
+                                    reach: strings(&["ssh"]),
+                                    ..target_undo(owned("pf"))
+                                },
+                            )),
+                            s(named("other", owned("b"))),
                         ],
                     }],
                 )
@@ -453,14 +487,20 @@ pub fn cases() -> Vec<Negative> {
             temp(
                 "regions",
                 vec![
-                    s(Op::new(
-                        "r1",
-                        vec![FootprintEntry::anchored("file:/etc/keys", "rue")],
-                    )),
-                    s(Op::new(
-                        "r2",
-                        vec![FootprintEntry::anchored("file:/etc/keys", "rue")],
-                    )),
+                    s(Op {
+                        do_: vec![region_set(anchored_ref("file:/etc/keys", "rue"), lit("a"))],
+                        ..Op::new(
+                            "r1",
+                            vec![FootprintEntry::anchored("file:/etc/keys", "rue")],
+                        )
+                    }),
+                    s(Op {
+                        do_: vec![region_set(anchored_ref("file:/etc/keys", "rue"), lit("b"))],
+                        ..Op::new(
+                            "r2",
+                            vec![FootprintEntry::anchored("file:/etc/keys", "rue")],
+                        )
+                    }),
                 ],
             ),
         ),

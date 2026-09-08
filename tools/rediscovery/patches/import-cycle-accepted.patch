@@ -1,0 +1,13 @@
+# Reverts: an import cycle is E0104 (section 6.9) -- two files including each other would resolve to whichever was loaded first and the other's definitions would silently vanish.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/mod.rs
++++ b/surface/src/resolve/mod.rs
+@@ -97,7 +97,7 @@
+     ) -> Option<usize> {
+         let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+         // A file still being loaded is a cycle; one loaded before is shared.
+-        if stack.contains(&canonical) {
++        if false && stack.contains(&canonical) {
+             let cycle: Vec<String> = stack
+                 .iter()
+                 .skip_while(|p| **p != canonical)

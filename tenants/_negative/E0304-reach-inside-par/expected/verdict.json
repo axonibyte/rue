@@ -94,7 +94,7 @@
       "knell": null,
       "locus": "target",
       "n": 2,
-      "op": "b",
+      "op": "other",
       "refusal": "revert",
       "undo": "remove file:/etc/b",
       "undo_locus": "controller"

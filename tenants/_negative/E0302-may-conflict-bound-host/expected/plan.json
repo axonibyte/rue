@@ -36,7 +36,7 @@
             }
           ],
           "handoff_done": null,
-          "id": "a",
+          "id": "posture",
           "locus": "target",
           "outputs": [],
           "post": [],
@@ -53,7 +53,9 @@
       },
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "pick: chosen_host"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
@@ -84,7 +86,7 @@
             }
           ],
           "handoff_done": null,
-          "id": "a",
+          "id": "posture_elsewhere",
           "locus": {
             "host": {
               "bound": "pick"

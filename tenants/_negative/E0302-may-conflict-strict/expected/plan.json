@@ -36,7 +36,7 @@
             }
           ],
           "handoff_done": null,
-          "id": "x",
+          "id": "posture",
           "locus": "target",
           "outputs": [],
           "post": [],
@@ -53,14 +53,28 @@
       },
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "name: chosen"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
         "item": "step",
         "on_lapse": "revert",
         "op": {
-          "do": [],
+          "do": [
+            {
+              "write": {
+                "content": {
+                  "lit": "y"
+                },
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/etc/{name}"
+                }
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [

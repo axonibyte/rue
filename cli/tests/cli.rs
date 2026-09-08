@@ -271,3 +271,102 @@ fn fmt_prints_the_canonical_text_checks_it_and_refuses_a_file_with_errors() {
     assert!(String::from_utf8_lossy(&out.stderr)
         .contains(&rue_core::diagnostics::Code::E0101.to_string()));
 }
+
+#[test]
+fn check_explain_and_artifact_read_a_rue_file_for_one_host() {
+    let root = repo_root().unwrap();
+    let t1 = root.join("tenants/t1/plan.rue");
+    let out = rue(&["check", t1.to_str().unwrap(), "--json", "--host", "db-01"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        out.stdout,
+        fs::read(root.join("tenants/t1/expected/db-01/verdict.json")).unwrap()
+    );
+    // The plan's pattern names its host, so --host may be omitted; the
+    // requester is the first declared operator.
+    let out = rue(&["check", t1.to_str().unwrap()]);
+    assert!(out.status.success());
+    assert_eq!(
+        out.stdout,
+        fs::read(root.join("tenants/t1/expected/db-01/verdict.txt")).unwrap()
+    );
+    let out = rue(&["explain", t1.to_str().unwrap()]);
+    assert_eq!(
+        out.stdout,
+        fs::read(root.join("tenants/t1/expected/db-01/explain.txt")).unwrap()
+    );
+    let out = rue(&["artifact", t1.to_str().unwrap(), "--instance", "golden"]);
+    assert_eq!(
+        out.stdout,
+        fs::read(root.join("tenants/t1/expected/db-01/artifact.sh")).unwrap()
+    );
+
+    // A file with two plans needs --plan-name; a clause-dispatched plan
+    // needs --host.
+    let t2 = root.join("tenants/t2/plan.rue");
+    let out = rue(&["check", t2.to_str().unwrap(), "--host", "node-b"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--plan"));
+    let out = rue(&[
+        "check",
+        t2.to_str().unwrap(),
+        "--json",
+        "--host",
+        "node-b",
+        "--plan-name",
+        "promote_auto",
+    ]);
+    assert!(out.status.success());
+    assert_eq!(
+        out.stdout,
+        fs::read(root.join("tenants/t2/expected/node-b-auto/verdict.json")).unwrap()
+    );
+    let t3 = root.join("tenants/t3/plan.rue");
+    let out = rue(&["check", t3.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--host"));
+    let out = rue(&[
+        "check",
+        t3.to_str().unwrap(),
+        "--json",
+        "--host",
+        "fw-mac-01",
+    ]);
+    assert_eq!(
+        out.stdout,
+        fs::read(root.join("tenants/t3/expected/fw-mac-01/verdict.json")).unwrap()
+    );
+
+    // A negative refuses with exit 1 and its verdict; an unknown host is a
+    // diagnostic with a suggestion.
+    let neg = root.join("tenants/_negative/E0301-umbra-conflict/plan.rue");
+    let out = rue(&["check", neg.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        out.stdout,
+        fs::read(root.join("tenants/_negative/E0301-umbra-conflict/expected/verdict.txt")).unwrap()
+    );
+    let out = rue(&["check", t1.to_str().unwrap(), "--host", "db-1"]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains(&rue_core::diagnostics::Code::E0102.to_string())
+            && err.contains("did you mean db-01"),
+        "{err}"
+    );
+
+    // Selectors on a plan IR are a usage error.
+    let out = rue(&[
+        "check",
+        root.join("tenants/t1/expected/db-01/plan.json")
+            .to_str()
+            .unwrap(),
+        "--host",
+        "db-01",
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+}

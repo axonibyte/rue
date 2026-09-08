@@ -8,7 +8,7 @@
   "diagnostics": [
     {
       "code": "E0407",
-      "message": "op a: :target undo on a host with no run-capable executor",
+      "message": "op posture: :target undo on a host with no run-capable executor",
       "step": 1
     }
   ],
@@ -50,7 +50,7 @@
       "knell": null,
       "locus": "host(api-01)",
       "n": 1,
-      "op": "a",
+      "op": "posture",
       "refusal": "revert",
       "undo": "remove file:/etc/a",
       "undo_locus": "target"

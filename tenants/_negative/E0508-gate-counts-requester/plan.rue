@@ -5,7 +5,23 @@ rue 0
 
 import "../../t1/plan.rue" as t1
 
-# The site additionally declares the requester as a human authenticator.
+# T1's site with one more authenticator: the requester, declared human in
+# this directory's inventory.toml; the plan's gate then names it.
+site do
+  inventory from: file("inventory.toml")
+  journal to: local()
+  approval via: hook(:authority)
+  secrets deliver_to: [requester(), hook(:escrow)]
+  execute via: [ssh(), hook(:bmc_api, transport: :api)]
+  backstop scheduler: cron()
+  operators do
+    identity :ops_requester, user: "ops", operator_for: :all, admin: true
+  end
+  hooks do
+    registrar :authority, user: "approvald", may_register: [:authority, :escrow]
+  end
+end
+
 defplan :breakglass, %{name: "db-01"} do
   gate auth(:requester), window: 30m
   wane 4h, renew_within: 30m

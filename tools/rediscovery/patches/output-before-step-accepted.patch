@@ -1,0 +1,18 @@
+# Reverts: an output read before its step is E0110 (section 6.7) -- the value does not exist when the reading step runs.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -800,12 +800,7 @@
+                     Bound::Name
+                 }
+                 [alias, name] if alias != "host" => {
+-                    diags.push(self.err(
+-                        module,
+-                        *range,
+-                        Code::E0110,
+-                        format!("{alias}.{name} is read before a step named {alias} ran"),
+-                    ));
++                    let _ = (alias, name, range);
+                     Bound::Name
+                 }
+                 _ => Bound::Name,

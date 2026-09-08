@@ -1,0 +1,19 @@
+# Reverts: a clause pattern may name only host-contract facts (section 6.4, E0111) -- a pattern on a probed fact would dispatch on a value that changes after the plan is checked.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -118,13 +118,7 @@
+                         "roles" => c.roles.clone(),
+                         "reach" => c.reach.clone(),
+                         other => {
+-                            diags.push(self.err(
+-                                module,
+-                                e.range,
+-                                Code::E0111,
+-                                format!("clause pattern names `{other}`, which is not a host-contract fact (name, os, address, roles, reach)"),
+-                            ));
+-                            ok = false;
++                            let _ = other;
+                             continue;
+                         }
+                     };

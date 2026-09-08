@@ -1,0 +1,23 @@
+# T1's inventory with one more authenticator: the requester, declared human,
+# so that a gate naming it counts the requester (E0508).
+[[host]]
+name = "db-01"
+address = "10.0.4.11"
+os = "freebsd"
+roles = ["db", "primary"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "cron"
+
+[[host]]
+name = "bmc-01"
+address = "10.0.4.111"
+os = "appliance"
+roles = ["bmc"]
+reach = ["api"]
+filesystem = false
+
+[authenticators]
+oncall = { human = true }
+platform_a = { human = true }
+requester = { human = true }

@@ -8,7 +8,7 @@
   "diagnostics": [
     {
       "code": "E0208",
-      "message": "op a: undo not provably idempotent",
+      "message": "op posture: undo not provably idempotent",
       "step": 1
     }
   ],
@@ -50,7 +50,7 @@
       "knell": null,
       "locus": "target",
       "n": 1,
-      "op": "a",
+      "op": "posture",
       "refusal": "revert",
       "undo": "counter-decrement /etc/a",
       "undo_locus": "controller"

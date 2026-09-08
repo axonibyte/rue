@@ -64,7 +64,7 @@
       "knell": null,
       "locus": "target",
       "n": 1,
-      "op": "x",
+      "op": "posture",
       "refusal": "revert",
       "undo": "remove file:/etc/x",
       "undo_locus": "controller"

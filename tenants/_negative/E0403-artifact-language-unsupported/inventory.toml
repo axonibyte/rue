@@ -19,5 +19,34 @@ filesystem = true
 scheduler = "task-scheduler"
 artifact = "sh"
 
+[[host]]
+name = "fw-02"
+address = "10.0.1.3"
+os = "freebsd"
+roles = ["fw"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "cron"
+artifact = "python"
+
+[[host]]
+name = "fw-win-02"
+address = "10.0.1.4"
+os = "windows"
+roles = ["fw"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "task-scheduler"
+artifact = "python"
+
+[[host]]
+name = "fw-mac-01"
+address = "10.0.1.5"
+os = "macos"
+roles = ["fw"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "launchd"
+
 [authenticators]
 netops = { human = true }

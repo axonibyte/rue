@@ -36,10 +36,11 @@ the injected `now`, the backstop artifact in `sh`, PowerShell and Python
 (`rue-render`, `rue artifact`, the `sh` and Python artifacts executed in
 tests) and the seeded fuzz properties are in; the Phase 1 acceptance is
 met as far as a workstation and a pipeline can prove it, and
-[`docs/DESIGN.md`](docs/DESIGN.md) says how the crates fit. Phase 2 has
-begun: `rue-surface` parses every `.rue` text under `tenants/` into a
-lossless tree and `rue fmt` is the identity on each; the resolver that
-turns a text into the checker's input is next, and
+[`docs/DESIGN.md`](docs/DESIGN.md) says how the crates fit. Phase 2 is
+under way: `rue-surface` parses every `.rue` text under `tenants/` into a
+lossless tree, `rue fmt` is the identity on each, and the resolver turns
+a text into the checker's input for one host (`rue check file.rue --host
+H`), held structurally equal to the terms for every case;
 [`docs/LANGUAGE.md`](docs/LANGUAGE.md) is the reader's guide as far as
 the front end goes. The Phase 0 prototype under `proto/` is the record of what the
 tenants taught ([`proto/README.md`](proto/README.md)); its own tests still
@@ -89,7 +90,7 @@ for the owner to reconcile.
 | Claim | Status |
 |---|---|
 | Verdicts on plans the tenants do not exercise | The checker is exercised by four tenants (seven host cases) and thirty-five negatives; nothing is proven about a construct none of them uses |
-| The `.rue` text | Parsed and formatted, not yet resolved: the checked form of each tenant is still its Rust term under `tenants/harness/src/tenants/`, transcribed from the text body by body; Phase 2's resolver must derive the same plan IR from the text, and a test will hold the two equal |
+| The `.rue` text | Parsed, formatted and resolved: `rue check tenants/t1/plan.rue` derives the plan IR from the text, and a test holds it structurally equal to the Rust term's for every case; the terms stay the writer's source until Phase 2's exit, when the texts take over |
 | 32 of the 56 diagnostic codes | Emitted, each with a negative golden: E0201-E0203, E0205-E0211, E0301-E0305, E0401, E0403-E0405, E0407, E0410, E0501-E0509, E0606; E0109 by the renderer on a value it cannot quote, unit-tested |
 | The other 24 codes | Not modeled: the surface's E01xx but E0109 (parsing, names, kinds, totality), E0411 (sinks are not declared in the site model), the engine-shaped E0204, E0402, E0406, E0408, E0409, and the binding rules E0601-E0605. E0406 cannot arise in this model at all: installation precedes the first covered step by construction |
 | The backstop artifact | Rendered in `sh`, PowerShell and Python, and the `sh` and Python ones executed against a temporary instance directory in every scenario the tests name; that Phase 3's engine writes that directory as `docs/DESIGN.md` states, and that a real scheduler runs the script, are Phase 3's to prove. PowerShell is executed nowhere: no gate host runs it. A non-file fact under a computed undo is undone as if intact; a fact read in a covered undo is not bakeable this unit |
@@ -117,6 +118,7 @@ RUE_FUZZ_STEPS=5000 cargo test --workspace --locked --test fuzz   # the seeded p
 cargo run -q -- check tenants/t1/expected/db-01/plan.json     # the prose verdict; --json, or `explain`, or `states`
 cargo run -q -- artifact tenants/t3/expected/fw-01/plan.json --instance i-1   # the backstop artifact for the owner
 cargo run -q -- fmt tenants/t1/plan.rue                       # the canonical layout of a .rue file; --check to only compare
+cargo run -q -- check tenants/t3/plan.rue --host fw-01 --json # a .rue text resolved for one host; --plan-name when the file defines several
 cd proto && cabal build all && cabal test all --test-show-details=direct   # the Phase 0 record's own tests
 ```
 

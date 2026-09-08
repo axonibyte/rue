@@ -318,7 +318,7 @@
     "id": "breakglass",
     "mode": "manual",
     "owner": "db-01",
-    "renew_within_s": 1800,
+    "renew_within_s": null,
     "require_journal": null,
     "strictness": "strict",
     "wane_s": null

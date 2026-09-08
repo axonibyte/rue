@@ -14,14 +14,16 @@
         "op": {
           "do": [
             {
-              "write": {
-                "content": {
-                  "lit": "x"
-                },
-                "fact": {
-                  "anchor": null,
-                  "shape": "file:/etc/a"
-                }
+              "hook": {
+                "args": [
+                  {
+                    "name": "set",
+                    "value": {
+                      "lit": "a"
+                    }
+                  }
+                ],
+                "name": "api"
               }
             }
           ],
@@ -36,7 +38,7 @@
             }
           ],
           "handoff_done": null,
-          "id": "a",
+          "id": "posture",
           "locus": {
             "host": {
               "static": "api-01"

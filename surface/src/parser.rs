@@ -51,6 +51,38 @@ pub struct Parsed {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Parse one expression standing alone (a string interpolation's `#{...}`).
+/// `None` when the text is not exactly one expression.
+pub fn parse_expr(src: &str) -> Option<crate::ast::Expr> {
+    let tokens = lex(src);
+    let mut offsets = Vec::with_capacity(tokens.len());
+    let mut o = 0;
+    for t in &tokens {
+        offsets.push(o);
+        o += t.text.len();
+    }
+    let mut p = Parser {
+        tokens,
+        offsets,
+        pos: 0,
+        builder: GreenNodeBuilder::new(),
+        diagnostics: Vec::new(),
+        file: String::new(),
+        src,
+        suppress: false,
+    };
+    p.builder.start_node(ARGS.into());
+    p.expr();
+    p.eat_trivia();
+    let complete = p.at_eof();
+    p.builder.finish_node();
+    if !p.diagnostics.is_empty() || !complete {
+        return None;
+    }
+    let root = crate::syntax::SyntaxNode::new_root(p.builder.finish());
+    root.children().next().map(|c| crate::ast::lower_expr(&c))
+}
+
 pub fn parse(src: &str, file: &str) -> Parsed {
     let tokens = lex(src);
     let mut offsets = Vec::with_capacity(tokens.len());

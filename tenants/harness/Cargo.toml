@@ -19,4 +19,6 @@ path = "src/bin/rue-goldens.rs"
 [dependencies]
 rue-core = { path = "../../core" }
 rue-render = { path = "../../render" }
+rue-surface = { path = "../../surface" }
+serde.workspace = true
 serde_json.workspace = true

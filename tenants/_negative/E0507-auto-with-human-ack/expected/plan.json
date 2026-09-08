@@ -5,20 +5,38 @@
     "body": [
       {
         "alias": null,
-        "args": [],
+        "args": [
+          "ack: humans()"
+        ],
         "direction": "forward",
         "force": [],
         "gate": null,
         "item": "knell",
         "on_lapse": "revert",
         "op": {
-          "do": [],
+          "do": [
+            {
+              "hook": {
+                "args": [
+                  {
+                    "name": "node",
+                    "value": {
+                      "ref": {
+                        "param": "corpse"
+                      }
+                    }
+                  }
+                ],
+                "name": "fence"
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [],
           "handoff_done": null,
-          "id": "fence",
-          "locus": "target",
+          "id": "fence_corpse",
+          "locus": "controller",
           "outputs": [],
           "post": [],
           "pre": [],
@@ -40,7 +58,7 @@
               },
               "guard": {
                 "force_never": false,
-                "name": "verified_off",
+                "name": "fence_verified_off",
                 "value": "yes"
               }
             }

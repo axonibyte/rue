@@ -12,3 +12,5 @@ repository.workspace = true
 rue-core = { path = "../core" }
 logos.workspace = true
 rowan.workspace = true
+serde.workspace = true
+toml.workspace = true

@@ -71,7 +71,7 @@
       "knell": null,
       "locus": "target",
       "n": 1,
-      "op": "a",
+      "op": "posture",
       "refusal": "revert",
       "undo": "remove file:/etc/a",
       "undo_locus": "target"

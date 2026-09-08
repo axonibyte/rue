@@ -12,6 +12,13 @@ site do
   end
 end
 
+# The value the undo needs lives on the controller: a controller probe's fact.
+defprobe :controller_backup do
+  hook :backup_store
+  locus :controller
+  produces controller_backup
+end
+
 defop :posture, _ do
   footprint owned: file("/etc/a")
   do: write(file("/etc/a"), content: "x")

@@ -12,7 +12,19 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
-          "do": [],
+          "do": [
+            {
+              "region_set": {
+                "content": {
+                  "lit": "a"
+                },
+                "fact": {
+                  "anchor": "rue",
+                  "shape": "file:/etc/keys"
+                }
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [
@@ -48,7 +60,19 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
-          "do": [],
+          "do": [
+            {
+              "region_set": {
+                "content": {
+                  "lit": "b"
+                },
+                "fact": {
+                  "anchor": "rue",
+                  "shape": "file:/etc/keys"
+                }
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [

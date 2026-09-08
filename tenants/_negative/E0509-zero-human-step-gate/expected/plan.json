@@ -19,7 +19,14 @@
         "item": "knell",
         "on_lapse": "revert",
         "op": {
-          "do": [],
+          "do": [
+            {
+              "hook": {
+                "args": [],
+                "name": "fence"
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [],

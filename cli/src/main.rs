@@ -1,6 +1,7 @@
 //! `rue`, the operator CLI (docs/ROADMAP.md section 6.8), as far as Phase 1
-//! takes it: `check`, `explain` and `artifact` over a plan IR document,
-//! `states`, and `fmt` over a `.rue` file (Phase 2). The surface verbs (`.rue` input, `--host`, `--as`) arrive with
+//! takes it: `check`, `explain` and `artifact` over a plan IR document or,
+//! from Phase 2, a `.rue` file resolved for one host (`--host`,
+//! `--plan-name`, `--as`); `states`; and `fmt` over a `.rue` file. The surface verbs (`.rue` input, `--host`, `--as`) arrive with
 //! Phase 2; the IR is already one host's plan and carries the requester.
 //!
 //! Exit codes are the roadmap's: 0 ok; 1 refused; 2 usage, an unreadable or
@@ -39,18 +40,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Verb {
-    /// Check a plan IR document and print its verdict.
+    /// Check a plan and print its verdict.
     Check {
-        /// The plan IR (docs/TESTING.md, "The plan IR").
+        /// A .rue file, or a plan IR document (docs/TESTING.md, "The plan IR").
         plan: PathBuf,
         /// Print the structured verdict in canonical JSON instead of the prose.
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        select: Select,
     },
     /// List a plan's numbered steps with their undo lines, loci and policies.
     Explain {
-        /// The plan IR.
+        /// A .rue file, or a plan IR document.
         plan: PathBuf,
+        #[command(flatten)]
+        select: Select,
     },
     /// Print the runtime state machine's transition table.
     States,
@@ -67,12 +72,12 @@ enum Verb {
     /// (section 7.7): the scheduler-run script that undoes the covered
     /// steps when its trigger is due.
     Artifact {
-        /// The plan IR.
+        /// A .rue file, or a plan IR document. `--host` names the record the
+        /// artifact is rendered for (the plan's owner when absent) and, for a
+        /// .rue file, the plan's host.
         plan: PathBuf,
-        /// The host whose record selects the shell family and artifact
-        /// language; the plan's owner when absent.
-        #[arg(long)]
-        host: Option<String>,
+        #[command(flatten)]
+        select: Select,
         /// The instance id the artifact is rendered for.
         #[arg(long)]
         instance: String,
@@ -83,6 +88,52 @@ enum Verb {
         #[arg(long = "set", value_name = "NAME=VALUE")]
         set: Vec<String>,
     },
+}
+
+/// What selects one host's plan from a `.rue` file (section 6.8).
+#[derive(clap::Args, Default)]
+struct Select {
+    /// The inventory host the plan runs on (a .rue input).
+    #[arg(long)]
+    host: Option<String>,
+    /// The plan, when the file defines more than one (a .rue input).
+    #[arg(long)]
+    plan_name: Option<String>,
+    /// The requester's identity; the first declared operator when absent.
+    #[arg(long = "as")]
+    requester: Option<String>,
+}
+
+/// A plan IR document, or a `.rue` file resolved for one host. A resolver
+/// diagnostic is a refusal (exit 1) with the diagnostics on stderr.
+fn load_input(
+    path: &PathBuf,
+    select: &Select,
+    host_on_ir: bool,
+) -> Result<Result<PlanIr, ExitCode>> {
+    if path.extension().is_some_and(|e| e == "rue") {
+        let opts = rue_surface::resolve::Options {
+            host: select.host.clone(),
+            plan: select.plan_name.clone(),
+            requester: select.requester.clone(),
+        };
+        return Ok(match rue_surface::resolve::resolve(path, &opts) {
+            Ok(ir) => Ok(ir),
+            Err(diags) => {
+                for d in &diags {
+                    eprintln!("{}", d.render());
+                }
+                Err(ExitCode::from(1))
+            }
+        });
+    }
+    if (select.host.is_some() && !host_on_ir)
+        || select.plan_name.is_some()
+        || select.requester.is_some()
+    {
+        anyhow::bail!("--host, --plan-name and --as select from a .rue file; a plan IR is already one host's plan");
+    }
+    Ok(Ok(load(path)?))
 }
 
 fn load(path: &PathBuf) -> Result<PlanIr> {
@@ -103,8 +154,11 @@ fn status_code(v: &Verdict) -> ExitCode {
 
 fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
     match cli.verb {
-        Verb::Check { plan, json } => {
-            let ir = load(&plan)?;
+        Verb::Check { plan, json, select } => {
+            let ir = match load_input(&plan, &select, false)? {
+                Ok(ir) => ir,
+                Err(code) => return Ok(code),
+            };
             let v = verdict_of(&ir);
             if json {
                 out.write_all(&canonical::encode(&to_json(&v))?)?;
@@ -113,8 +167,11 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             }
             Ok(status_code(&v))
         }
-        Verb::Explain { plan } => {
-            let ir = load(&plan)?;
+        Verb::Explain { plan, select } => {
+            let ir = match load_input(&plan, &select, false)? {
+                Ok(ir) => ir,
+                Err(code) => return Ok(code),
+            };
             let v = verdict_of(&ir);
             out.write_all(explain(&ir.plan, &deferred_steps(&ir.site, &ir.plan)).as_bytes())?;
             if v.status == Status::Refused {
@@ -155,12 +212,16 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
         }
         Verb::Artifact {
             plan,
-            host,
+            select,
             instance,
             rue_root,
             set,
         } => {
-            let ir = load(&plan)?;
+            let ir = match load_input(&plan, &select, true)? {
+                Ok(ir) => ir,
+                Err(code) => return Ok(code),
+            };
+            let host = select.host.clone();
             let mut bindings = Bindings::default();
             for kv in &set {
                 let (k, v) = kv

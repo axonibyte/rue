@@ -69,3 +69,9 @@ fuzz-check-panics-core.patch	4	-	cargo	check_never_panics	RUE_FUZZ_STEPS=5000
 fuzz-render-panics-core.patch	4	-	cargo	render_never_panics	RUE_FUZZ_STEPS=5000
 fmt-loses-comment.patch	1	-	cargo	fmt_is_the_identity	-
 parse-error-not-recovered.patch	2	-	cargo	every_snippet_matches	-
+clause-on-runtime-fact.patch	1	-	cargo	a_clause_on_a_non_contract_fact	-
+unknown-compare-allowed.patch	1	-	cargo	a_comparison_against_unknown	-
+closure-accepted.patch	1	-	cargo	an_unbounded_repeat	-
+output-before-step-accepted.patch	1	-	cargo	an_output_read_before	-
+secret-call-not-secret.patch	2	-	cargo	every_text_resolves	-
+import-cycle-accepted.patch	1	-	cargo	an_import_cycle	-

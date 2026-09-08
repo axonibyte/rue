@@ -1,1 +1,1 @@
-posture on db-01: refused; E0201 at step 1: op a: undo and knell disagree.
+posture on db-01: refused; E0201 at step 1: op posture: undo and knell disagree.

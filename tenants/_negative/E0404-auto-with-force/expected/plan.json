@@ -27,7 +27,19 @@
         "item": "step",
         "on_lapse": "revert",
         "op": {
-          "do": [],
+          "do": [
+            {
+              "write": {
+                "content": {
+                  "lit": "x"
+                },
+                "fact": {
+                  "anchor": null,
+                  "shape": "file:/etc/x"
+                }
+              }
+            }
+          ],
           "drift": null,
           "exclusivity": null,
           "footprint": [

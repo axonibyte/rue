@@ -1,0 +1,13 @@
+# Reverts: an unbounded construct is E0106 (section 6.1) -- a repeat over: with no literal cap is the non-total form the diagnostic exists to teach against.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -506,7 +506,7 @@
+                                 lit: Lit::Int(n), ..
+                             })) => *n as u32,
+                             _ => {
+-                                diags.push(self.err(module, *range, Code::E0106, "repeat over: without max: is unbounded; give the literal cap the bounded form needs".into()));
++                                let _ = range;
+                                 0
+                             }
+                         };

@@ -101,7 +101,7 @@ pub fn open_mgmt_port_windows() -> Plan {
 /// T3's body with the change step swapped, for the negatives derived from it.
 pub fn body_with(change: Op) -> Vec<Item> {
     vec![
-        Item::Step(StepI::new(change)),
+        with_args(change, &["port: 8443"]),
         Item::Observe {
             probe: "verify_reach".into(),
             alias: "reach".into(),

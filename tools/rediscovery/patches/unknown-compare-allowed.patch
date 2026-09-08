@@ -1,0 +1,18 @@
+# Reverts: a comparison against :unknown is E0108 (section 5.1) -- Unknown propagates through every operator, so the comparison can never be Yes and the guard silently never fires.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -650,12 +650,7 @@
+                 let is_unknown =
+                     |x: &Expr| matches!(x, Expr::Lit { lit: Lit::Atom(a), .. } if a == "unknown");
+                 if (op == "==" || op == "!=") && (is_unknown(lhs) || is_unknown(rhs)) {
+-                    diags.push(self.err(
+-                        module,
+-                        *range,
+-                        Code::E0108,
+-                        "comparison against :unknown; ask defined?() or unknown?() instead".into(),
+-                    ));
++                    let _ = range;
+                 }
+                 self.check_unknown_compare(module, lhs, diags);
+                 self.check_unknown_compare(module, rhs, diags);
