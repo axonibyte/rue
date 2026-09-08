@@ -279,3 +279,82 @@ fn a_journal_a_hand_has_edited_fails_to_verify() {
         "the failure names where: {said}"
     );
 }
+
+#[test]
+fn drift_under_clobber_ends_the_same_whether_the_engine_or_the_artifact_undid_it() {
+    require_provisioned_host();
+    // The same step, the same hand edit, the same policy: once undone by
+    // the engine on a recant, once by the artifact firing on its own. The
+    // end state must be the same file either way, which is the whole
+    // claim behind rendering the artifact from the same footprint the
+    // engine reverts from (5.2, 7.7).
+    let f = "/etc/rue-e2e-clobber";
+    let plans = |wane: &str| {
+        format!(
+            r##"
+defop :own_it, _ do
+  footprint modified: file("{f}")
+  drift :clobber
+  do: write(file("{f}"), content: "after\n")
+  undo: :restore
+  undo_locus: :target
+end
+
+defplan :clobbering, _ do
+  wane {wane}, renew_within: 30s
+  backstop trigger: [after: {wane}], locus: :target, arm_before: 1
+  own_it()
+end
+"##
+        )
+    };
+
+    // The engine's undo, after a stranger's edit.
+    target_write(f, "before\n");
+    let site = Site::new("firewall-clobber-engine", &plans("1h"));
+    let d = Daemon::start(&site);
+    let out = rue(
+        &d.socket,
+        &["apply", site.file.to_str().unwrap(), "--host", "fw-01"],
+    );
+    let id = instance_of(&must("apply", &out));
+    assert_eq!(target_read(f), "after\n");
+    target_write(f, "a stranger was here\n");
+    must("recant", &rue(&d.socket, &["recant", &id]));
+    let by_engine = target_read(f);
+    d.stop();
+
+    // The artifact's undo, after the same edit: a wane a minute out, the
+    // daemon gone, and cron the only thing left.
+    target_write(f, "before\n");
+    let site = Site::new("firewall-clobber-artifact", &plans("1m"));
+    let d = Daemon::start(&site);
+    let out = rue(
+        &d.socket,
+        &["apply", site.file.to_str().unwrap(), "--host", "fw-01"],
+    );
+    let id = instance_of(&must("apply", &out));
+    assert_eq!(target_read(f), "after\n");
+    target_write(f, "a stranger was here\n");
+    let pid = d.pid();
+    let _ = std::process::Command::new("kill")
+        .arg("-KILL")
+        .arg(pid.to_string())
+        .status();
+    let dir = rue_e2e::rue_root().join("instances").join(&id);
+    let start = std::time::Instant::now();
+    while !rue_e2e::target_exists(dir.join("fired").to_str().unwrap()) {
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(200),
+            "the artifact never fired"
+        );
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    let by_artifact = target_read(f);
+
+    assert_eq!(
+        by_engine, by_artifact,
+        "the engine and the artifact restored the same file"
+    );
+    assert_eq!(by_engine, "before\n", "restored from the do-time snapshot");
+}

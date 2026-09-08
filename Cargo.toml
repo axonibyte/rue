@@ -7,7 +7,7 @@ members = ["core", "render", "surface", "engine", "bindings", "cli", "daemon", "
 
 [workspace.package]
 # Read by ci/build-target.sh and the deploy step: the tag must be v<version>.
-version = "0.0.3"
+version = "0.1.0"
 edition = "2021"
 # The pipeline image (rust:1.97-trixie), the workstation's pkg rust and the
 # gate's toolchain check all say 1.97; bump the four together.

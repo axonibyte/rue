@@ -58,6 +58,8 @@ prototype's under one tasty suite, and both inside the gate:
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
+| 5 | Rust `tenants/e2e/tests/{smoke,firewall,recovery,breakglass}.rs` | rue against real hosts on a disposable guest: a plan applied and reverted over a real sshd, a real packet filter, a real cron and real hooks (below, "The scenarios") |
+| 6 | Rust `tenants/e2e/tests/recovery.rs` | The same, with something killed: a daemon inside a step's `do`, a daemon before its backstop fires, an operator racing the target |
 | 7 | Rust `sim/tests/sim.rs` | The shadow world: seeded event lists against a real engine, the twenty invariants of the roadmap's 10.3 after every event, and a shrinker over the events that broke one (below) |
 
 `tenants/harness` (`rue-tenants`) holds the tenants and the negatives as
@@ -495,6 +497,21 @@ driving it with the real `rue`:
   `--force=drift` restores what the step found; a `do` that writes outside
   its step's footprint is R0201 and the plan reverts; and a journal one
   entry has been deleted from fails to verify and says where.
+- **Break-glass** (`breakglass.rs`): T1's shape whole. A plan gate two
+  humans must open through an approval hook, a management-controller
+  account enabled through a second hook on a host with no filesystem, the
+  secret it produces escrowed through a third, and a fenced block in a
+  real authorized-keys file over a real sshd. The hooks are
+  `tenants/t1/fixtures/hooks.py`, spawned by the daemon as stdio
+  children. One proof leaves the instance pending; the second opens it;
+  the escrow has the label and no journal has the value; a recant puts
+  both hosts back.
+- **Drift by either hand** (`firewall.rs`): the same step, the same edit
+  behind the engine's back, the same `:clobber` policy, undone once by
+  the engine on a recant and once by the artifact firing on its own with
+  no engine anywhere. The file ends the same either way, which is the
+  claim behind rendering the artifact from the footprint the engine
+  reverts from.
 - **Recovery** (`recovery.rs`): a daemon killed with SIGKILL inside a
   step's `do` comes back, demotes what it was applying, and undoes both
   the steps it had marked applied and the one it was in the middle of; a

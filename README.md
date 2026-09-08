@@ -19,7 +19,42 @@ reviewable surface.
 The plan of record is [`docs/ROADMAP.md`](docs/ROADMAP.md). Every rule is
 stated once, in the section that governs it.
 
-## Status: Phase 1 in progress; v0.0.1 tagged
+## Status: Phase 3 complete; v0.1.0 tagged
+
+Rue applies and reverts plans against real hosts. `rued` is a daemon over
+a locked instance store with a chained, optionally signed journal; `rue`
+is the whole verb list of the roadmap's 6.8 over a control channel whose
+identity comes from the operating system and never from the client. Steps
+run through `local()` and `ssh()` (or a hook), a step's footprint is
+snapshotted before it runs and checked after, drift at undo time is
+decided by the same rule the target-side artifact applies, and a
+`:target` backstop is rendered, installed, armed through `cron()` and
+fired by the target's own scheduler when the engine is not there. Gates
+hold a plan at the door until enough proofs arrive; secrets are delivered
+once, to the first acceptor that takes them, and never reach the store or
+a journal entry.
+
+What that is worth is what the end-to-end harness shows on a disposable
+guest, both FreeBSD and Linux: a plan opens a port by a fenced region in
+the host's packet filter and commits when confirmed; a hand edit behind
+the engine's back holds the instance until it is forced; a write outside
+a step's footprint is refused; a daemon killed inside a step's `do` comes
+back and undoes it; a backstop armed by a daemon that then dies still
+fires from the target's own cron; a recant racing a fired artifact
+restores the file once, not twice; and `rue doctor --canary` proves a
+real backstop fires by installing one and waiting for it. T1's
+break-glass plan runs whole: two humans open the gate, an appliance
+account is enabled through a hook, its credential is escrowed, and a
+recant puts both hosts back.
+
+Windows is built for `x86_64-pc-windows-gnu` and tested under wine, which
+carries the named pipe end to end and names its client from that client's
+own SID. What only a real Windows machine can show -- the service-control
+manager, the kernel enforcing the pipe's list against a stranger, the
+Task Scheduler, PowerShell as `local()`'s shell -- is Phase 3W's, named in
+the roadmap.
+
+## Status of the earlier phases
 
 The Rust workspace checks plans: `rue-core` is the checker, `rue` the
 command line (`check`, `explain`, `states`) over a plan IR, `rue-tenants`
@@ -102,7 +137,10 @@ for the owner to reconcile.
 | E0206 | Decided only as a structural re-run: a `reestablish` primitive equal to one of the op's `do` primitives. The full rule ("reachable from") needs an op reference bodies do not carry |
 | E0211 | Decided for static hosts only; a `:controller` step and a host bound at runtime are not judged at check |
 | Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md`: thirteen items, from the requester as an input to `check` to the verdict's `mode` field; the Rust crates reproduce each. The roadmap carries the owner's answers where given |
-| Windows beyond wine | The whole suite is built for `x86_64-pc-windows-gnu` and run under wine, on the Ubuntu reaper guest and in the pipeline; that proves the logic and the bytes and nothing about services, named pipes or the Task Scheduler, which Phase 3 tests on a real machine |
+| Windows beyond wine | The whole suite is built for `x86_64-pc-windows-gnu` and run under wine, which does carry the named pipe end to end and name its client from that client's own SID; the service-control manager, the list as the kernel enforces it against a stranger, the Task Scheduler and PowerShell as `local()`'s shell are Phase 3W's, on a real machine |
+| The simulation's reach | Tier 7 drives a real engine over seeded event lists and checks the twenty invariants of the roadmap's 10.3 after every event, but it applies the artifact's rule to its shadow rather than executing the rendered script, and four of the twenty are out of that world's reach; the test that says so names each and where it is proven instead |
+| `unless_heartbeat` under a partition | The beat is written and read on one machine's clocks; a severed link is Phase 5's vnet stage |
+| Schedulers other than cron | `task_scheduler()` and `launchd()` are written and unit-tested against a fake transport, and have installed nothing anywhere |
 | The seven build targets | Built, clippy-clean per target, and packaged in the pipeline (`ci/build-target.sh`); only the Linux x86-64 and wine-run Windows binaries execute the suite there, the others are cross-built and unexecuted until Phase 3's real machines |
 | Deploy | Uploads the packaged artifacts on a tag equal to the workspace version, and refuses otherwise; nothing about the artifacts beyond the suite that produced them |
 
@@ -112,6 +150,7 @@ for the owner to reconcile.
 sh tools/check.sh                 # the gate: every phase runs, every failure is reported
 sh tools/lint-seam.sh             # the seam guard alone
 sh tools/lint-ecodes.sh           # the E-code guard alone
+sh tools/lint-rcodes.sh           # every runtime code raised and tested
 sh tests/tier3/t_seam.sh          # a guard's self-test
 sh tools/lint-darwin-deps.sh      # the darwin dependency guard alone
 sh tools/rediscovery/run.sh --tier 1   # revert each tier-1 protection in a scratch copy; the suite must fail
@@ -156,10 +195,19 @@ on both registered guests. Validate the manifest with
 | `tools/check.sh` | The gate |
 | `tools/lint-seam.sh`, `tools/seam-denylist.txt` | The seam guard and its denylist |
 | `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |
+| `tools/lint-rcodes.sh` | The R-code guard: every runtime code Appendix D documents is raised in the engine and asserted by a test |
 | `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
 | `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
 | `Cargo.toml`, `core/` | The Rust workspace and `rue-core` (Phase 1): the model and its plan-IR shape, the checker, the verdict and its prose, `explain`, the state machine, the ledger; pure, no I/O |
-| `cli/` | `rue`, the operator CLI: `check`, `explain` and `states` over a plan IR document, exit codes per the roadmap's section 6.8 |
+| `cli/` | `rue`, the operator CLI: the whole verb list of section 6.8, over a `.rue` file for the offline verbs and over the control channel for the rest; exit codes per that section |
+| `surface/` | `rue-surface` (Phase 2): the lexer, the lossless tree, the parser, `rue fmt`, and the resolver that turns a `.rue` text into the checker's input for one host |
+| `render/` | `rue-render` (Phase 1): the target-side backstop artifact in POSIX `sh`, PowerShell and Python, every value baked in and quoted for its family |
+| `engine/` | `rue-engine` (Phase 3): the clock, the store, the journal and its sinks, the executor seam, the lifecycle, footprints and drift, backstops and schedulers, gates and proofs, secrets, the control channel and the hook protocol |
+| `bindings/` | `rue-bindings`: the generic built-ins and no more -- `local()`, `ssh()`, `cron()`, `task_scheduler()`, `launchd()`, `file()`/`stdout()` journals, `key()`, `always()`, `requester()`, `hold()`, `stdout()` notify |
+| `daemon/` | `rued`: the daemon over a site block, its rc.d, systemd and `sc.exe` installation files |
+| `sim/` | `rue-sim` (tier 7): seeded event lists against a real engine, the twenty invariants of 10.3 after every event, and a shrinker over the events that broke one |
+| `tenants/e2e/` | The tier 5 and 6 harness: provisioning for a disposable guest, and the scenarios of the roadmap's task 14 against real hosts |
+| `tenants/t1/fixtures/` | T1's hooks as a daemon-spawned child: the authority, the escrow and the management-controller simulator, standard library Python |
 | `tenants/harness/` | `rue-tenants`: the tenants and negatives as Rust terms, the case table as code, the tests that hold `rue-core` to every golden byte for byte, and `rue-goldens`, the only writer |
 | `proto/` | The Phase 0 prototype (Haskell), kept as the record of what Phase 0 proved: its library, its state-table printer and its tier-1 and tier-4 tests still build and run in the gate; the goldens are the Rust crates' now. `proto/README.md` has the layout and the findings |
 | `tenants/` | The acceptance tenants' `.rue` text, inventories and expected verdicts (Phase 0) |

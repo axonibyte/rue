@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "rue"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "rue-bindings"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "libc",
  "rue-core",
@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "rue-core"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -826,14 +826,14 @@ dependencies = [
 
 [[package]]
 name = "rue-e2e"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "rue-engine"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "libc",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "rue-render"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "rue-core",
  "sha2",
@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "rue-sim"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "rue-core",
  "rue-engine",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "rue-surface"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "logos",
  "rowan",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "rue-tenants"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "rue-core",
  "rue-render",
@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "rued"
-version = "0.0.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",

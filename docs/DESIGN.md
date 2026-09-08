@@ -293,6 +293,18 @@ unit. What is in place:
   mode; `--spawn NAME=COMMAND` for a hook child over stdio; rc.d and
   systemd files under `daemon/dist/`.
 
+**There is no separate per-instance lock**, and 7.7's "host and instance
+locks" is met by the host lock alone. What a second lock would guard is
+covered three ways: one daemon per store, because the store's own lock is
+held exclusively for the daemon's life; an artifact and the engine on one
+host, because the artifact takes the host lock for its whole run and the
+engine takes it across any region undo, which is the only case where two
+writers can corrupt one file; and two controllers acting on one host,
+which the roadmap defers to Phase 5. The engine does not take the host
+lock for *every* undo because `host_lock` opens a file bootstrap creates,
+and a `:controller` step on a machine with no `rue_root` would then fail
+to revert. A lock nothing takes would be worse than none.
+
 The end-to-end work settled two things. **A step whose `do` the engine
 died inside is undone on the way back.** The write-ahead entry exists so
 the engine says what it is about to do, and how it would undo it, before
