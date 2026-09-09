@@ -859,6 +859,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-hook-sdk"
+version = "0.1.0"
+dependencies = [
+ "rue-hook-proto",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rue-render"
 version = "0.1.0"
 dependencies = [

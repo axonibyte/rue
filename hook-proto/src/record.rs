@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use rue_core::model::Tri;
+use rue_core::model::{ArtifactLanguage, Tri};
 use serde::{Deserialize, Serialize};
 
 /// The frame a hook opens with, over the socket after `hello` or as the
@@ -102,6 +102,14 @@ pub struct InstanceDirState {
 }
 
 /// A host as a hook lists it: the roadmap's Appendix C record.
+///
+/// Every field a `rue_toml()` inventory declares has a place here, so a
+/// hook-listed host is the equal of a file-listed one. The three that are
+/// not in Appendix C's first column -- `rue_root`, `stdin_preamble` and
+/// `artifact` -- decide where the instance directory lives, whether `env:`
+/// and `stdin:` may carry a secret, and what language a `:target` backstop
+/// is rendered in; a hook that omits them gets the defaults below, and a
+/// host without a `rue_root` cannot hold an instance directory at all.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InventoryHost {
     pub name: String,
@@ -114,8 +122,20 @@ pub struct InventoryHost {
     pub reach: Vec<String>,
     #[serde(default)]
     pub filesystem: bool,
+    /// Absent means "as `filesystem`": a host that can hold an instance
+    /// directory can also be handed a preamble on stdin.
+    #[serde(default)]
+    pub stdin_preamble: Option<bool>,
     #[serde(default)]
     pub scheduler: Option<String>,
+    /// Where the instance directory lives on the host (7.7). A hook that
+    /// lists a run-capable host without one leaves it unable to hold one.
+    #[serde(default)]
+    pub rue_root: Option<String>,
+    /// The language a `:target` backstop is rendered in; absent is the
+    /// host's native shell.
+    #[serde(default)]
+    pub artifact: Option<ArtifactLanguage>,
     #[serde(default)]
     pub facts: BTreeMap<String, String>,
 }

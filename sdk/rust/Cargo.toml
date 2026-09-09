@@ -1,0 +1,13 @@
+[package]
+name = "rue-hook-sdk"
+description = "The reference embedding SDK (docs/ROADMAP.md 7.11): register as a hook, serve the ops of 7.5 over a socket or stdio, and receive an execute.run's secrets without placing one on a command line"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rue-hook-proto = { path = "../../hook-proto" }
+serde.workspace = true
+serde_json.workspace = true

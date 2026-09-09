@@ -1,0 +1,18 @@
+# Reverts: a host a hook lists carries everything a file-declared one does (Appendix C, 7.5); here the inventory record drops rue_root and the artifact language, so an embedded site's hosts are quietly less capable.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/hook.rs
++++ b/engine/src/hook.rs
+@@ -722,9 +722,9 @@
+             reach: h.reach,
+             filesystem: h.filesystem,
+             stdin_preamble: h.stdin_preamble.unwrap_or(h.filesystem),
+-            artifact: h.artifact,
++            artifact: None,
+         },
+         address: h.address,
+         scheduler: h.scheduler,
+-        rue_root: h.rue_root,
++        rue_root: None,
+         facts,
+     }
+ }

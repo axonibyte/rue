@@ -699,6 +699,101 @@ fn a_secret_is_dropped_from_every_hook_message_but_the_two_that_may_carry_one() 
 }
 
 #[test]
+fn a_host_a_hook_lists_is_the_equal_of_one_a_file_declares() {
+    // T4's inventory comes from a hook (7.5, Appendix C). A host it lists
+    // must be able to say everything a `rue_toml()` host says: where its
+    // instance directory lives, whether it honors the stdin preamble, and
+    // what language its backstop is rendered in. A record that loses one
+    // of those makes the host quietly less capable than the same host
+    // read from a file, and nothing in the plan says why.
+    use rue_core::model::ArtifactLanguage;
+    use rue_engine::hook::{hook_inventory, HookError, HookLink, Registered, Registration};
+
+    struct Listing(Value);
+    impl HookLink for Listing {
+        fn name(&self) -> String {
+            "world".into()
+        }
+        fn call(&self, request: Value, _d: Duration) -> Result<Value, HookError> {
+            assert_eq!(request["kind"], json!("inventory"));
+            assert_eq!(request["op"], json!("list"));
+            Ok(self.0.clone())
+        }
+    }
+
+    let listing = json!({
+        "ok": true,
+        "hosts": [
+            { "name": "full", "address": "10.0.0.1", "os": "freebsd",
+              "roles": ["hv", "fw"], "reach": ["ssh"], "filesystem": true,
+              "stdin_preamble": false, "scheduler": "cron",
+              "rue_root": "/var/db/rue", "artifact": "python",
+              "facts": { "site": "west" } },
+            { "name": "bare", "os": "linux" }
+        ]
+    });
+    let registry = HookRegistry::new();
+    registry.register(Registered {
+        registration: Registration {
+            name: "world".into(),
+            kinds: vec!["inventory".into()],
+            protocol: HOOK_PROTOCOL,
+            filesystem: false,
+            stdin_preamble: false,
+        },
+        registrar: "owner".into(),
+        connection: "test".into(),
+        link: Arc::new(Listing(listing)),
+    });
+
+    let hosts = hook_inventory(&registry, "world", Duration::from_millis(500)).unwrap();
+    assert_eq!(hosts.len(), 2);
+
+    let full = &hosts[0];
+    assert_eq!(full.rue_root.as_deref(), Some("/var/db/rue"));
+    assert_eq!(full.record.artifact, Some(ArtifactLanguage::Python));
+    assert!(
+        !full.record.stdin_preamble,
+        "an appliance that declares no preamble does not acquire one"
+    );
+    assert_eq!(full.scheduler.as_deref(), Some("cron"));
+    assert_eq!(full.address, "10.0.0.1");
+    assert_eq!(full.facts.get("roles").map(String::as_str), Some("hv,fw"));
+    assert_eq!(full.facts.get("site").map(String::as_str), Some("west"));
+
+    // What a hook may leave out, and what it then gets.
+    let bare = &hosts[1];
+    assert_eq!(bare.rue_root, None, "no instance directory anywhere");
+    assert_eq!(bare.record.artifact, None, "the host's native shell");
+    assert!(!bare.record.filesystem && !bare.record.stdin_preamble);
+    assert!(bare.facts.is_empty(), "no roles is no roles fact");
+
+    // An unregistered inventory hook is not an empty inventory.
+    assert!(matches!(
+        hook_inventory(&registry, "elsewhere", Duration::from_millis(500)),
+        Err(HookError::Unregistered(_))
+    ));
+    // Nor is a reply without the field the op requires (R0303).
+    let registry2 = HookRegistry::new();
+    registry2.register(Registered {
+        registration: Registration {
+            name: "world".into(),
+            kinds: vec!["inventory".into()],
+            protocol: HOOK_PROTOCOL,
+            filesystem: false,
+            stdin_preamble: false,
+        },
+        registrar: "owner".into(),
+        connection: "test".into(),
+        link: Arc::new(Listing(json!({ "ok": true }))),
+    });
+    assert!(matches!(
+        hook_inventory(&registry2, "world", Duration::from_millis(500)),
+        Err(HookError::Contract(_))
+    ));
+}
+
+#[test]
 fn a_hook_reply_missing_a_field_the_op_requires_is_r0303() {
     // R0303: a hook that answers `ok: true` without what the op promised
     // has violated the contract, and the step is refused with the code

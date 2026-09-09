@@ -607,12 +607,12 @@ fn into_host(h: InventoryHost) -> Host {
             os: h.os,
             reach: h.reach,
             filesystem: h.filesystem,
-            stdin_preamble: h.filesystem,
-            artifact: None,
+            stdin_preamble: h.stdin_preamble.unwrap_or(h.filesystem),
+            artifact: h.artifact,
         },
         address: h.address,
         scheduler: h.scheduler,
-        rue_root: None,
+        rue_root: h.rue_root,
         facts,
     }
 }

@@ -122,3 +122,5 @@ secret-journaled.patch	1	-	cargo	a_secret_goes_to_the_first_acceptor_that_takes_
 ledger-holds-past-close.patch	7	-	cargo	a_sweep_of_seeds_breaks_no_invariant	-
 fired-steps-stay-applied.patch	7	-	cargo	a_sweep_of_seeds_breaks_no_invariant	-
 interrupted-step-never-undone.patch	1	-	cargo	a_step_whose_do_the_engine_died_inside_is_undone_on_the_way_back	-
+hook-host-loses-its-rue-root.patch	1	-	cargo	a_host_a_hook_lists_is_the_equal_of_one_a_file_declares	-
+secret-printed-by-debug.patch	1	-	cargo	a_secret_does_not_survive_being_formatted	-

@@ -23,7 +23,7 @@ boolean `ok` is R0303.
 | kind | op | request fields | reply fields |
 |---|---|---|---|
 | `journal` | `append` | `entry` (a journal entry) | |
-| `inventory` | `list` | | `hosts`: `[{name, address, os, roles, reach, filesystem, scheduler, facts}]` (Appendix C) |
+| `inventory` | `list` | | `hosts`: `[{name, address, os, roles, reach, filesystem, stdin_preamble, scheduler, rue_root, artifact, facts}]` (Appendix C) |
 | `execute` | `run` | `host`, `instance`, `body` (resolved primitives), `env`, `secrets` | `output: {stdout, outputs: {name: value}}`, `facts` |
 | `execute` | `read_fact` | `host`, `shape` | `content` (the file's text, or absent) |
 | `execute` | `bootstrap_state` | `host` | `state: {rue_root, group, instances_dir, lock, modes_ok}` |
@@ -50,6 +50,14 @@ filesystem is never asked them, and a `:target` undo on its host is refused
 before `do` (R0408). `armed` is the artifact's presence in the directory
 and `modes_ok` whether it carries the modes 7.7 requires: the engine reads
 the first at reconciliation and the second when it arms (R0406).
+
+A host a hook lists carries everything a `rue_toml()` inventory declares,
+so an embedded site is not quietly less capable than a file-backed one.
+`name` and `os` are required; the rest default. `rue_root` is where the
+instance directory lives (7.7) and a run-capable host without one can hold
+none; `stdin_preamble` defaults to `filesystem`; `artifact` is the language
+a `:target` backstop is rendered in and defaults to the host's native
+shell.
 
 `execute.clock` is the one optional op: a hook that does not serve it
 answers `ok: false`, and the engine records that no skew probe is possible
