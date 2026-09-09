@@ -95,7 +95,48 @@ else
     bad "empty denylist refuses with exit 2 (got $st)"; cat "$tmp/out" >&2
 fi
 
-# 6. The real tree is clean right now.
+# 6. Every non-tenant workspace member is a directory the guard reads. A
+#    crate added in a later phase and not added to SCAN would otherwise sit
+#    outside the seam guard with nothing saying so.
+scan=$(sed -n 's/^SCAN="\(.*\)"$/\1/p' "$guard")
+if [ -z "$scan" ]; then
+    bad "lint-seam.sh declares its directories in SCAN"
+else
+    missing=''
+    for m in $(sed -n 's/^members = \[\(.*\)\]$/\1/p' "$root/Cargo.toml" \
+               | tr -d '" ' | tr ',' ' '); do
+        top=${m%%/*}
+        [ "$top" = tenants ] && continue
+        found=no
+        for d in $scan; do
+            [ "$d" = "$top" ] && found=yes
+        done
+        [ "$found" = no ] && missing="$missing $top"
+    done
+    if [ -z "$missing" ]; then
+        ok "every non-tenant workspace member is scanned"
+    else
+        bad "every non-tenant workspace member is scanned (outside SCAN:$missing)"
+    fi
+fi
+
+# 7. A planted word in each scanned directory fails, so no entry of SCAN is
+#    a name the guard never actually reaches.
+for d in $scan; do
+    [ -d "$root/$d" ] || continue
+    mkdir -p "$tmp/tree/$d" || exit 2
+    printf '# planted: %s\n' "$word" > "$tmp/tree/$d/planted.txt"
+    sh "$guard" --root "$tmp/tree" --denylist "$list" > "$tmp/out" 2>&1
+    st=$?
+    rm -f "$tmp/tree/$d/planted.txt"
+    if [ "$st" -eq 1 ]; then
+        ok "planted word in $d/ fails"
+    else
+        bad "planted word in $d/ fails (got $st)"; cat "$tmp/out" >&2
+    fi
+done
+
+# 8. The real tree is clean right now.
 if sh "$guard" > "$tmp/out" 2>&1; then
     ok "the repository is clean"
 else

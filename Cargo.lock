@@ -839,6 +839,7 @@ dependencies = [
  "libc",
  "rand_core",
  "rue-core",
+ "rue-hook-proto",
  "rue-render",
  "serde",
  "serde_json",
@@ -846,6 +847,15 @@ dependencies = [
  "ssh-encoding",
  "ssh-key",
  "windows-sys",
+]
+
+[[package]]
+name = "rue-hook-proto"
+version = "0.1.0"
+dependencies = [
+ "rue-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,9 +1,10 @@
 #!/bin/sh
 # The seam guard (ROADMAP.md section 4.4).
 #
-# Greps framework code -- the Rust crates of ROADMAP.md section 4.2 (core/,
-# render/, surface/, engine/, bindings/, cli/, daemon/), proto/ (minus its
-# tenants/ sublibrary), tools/, ci/ and tests/ -- for the words in
+# Greps framework code -- every Rust crate of ROADMAP.md section 4.2 that is
+# not a tenant (SCAN below, which tests/tier3/t_seam.sh binds to the
+# workspace's member list), proto/ (minus its tenants/ sublibrary), tools/,
+# ci/ and tests/ -- for the words in
 # tools/seam-denylist.txt and fails on any hit. tenants/ and docs/ are not
 # scanned: that is where tenant vocabulary belongs. Directories that do not
 # exist yet are skipped; the crates arrive by phase.
@@ -46,8 +47,13 @@ if [ ! -s "$tmp/words" ]; then
     exit 2
 fi
 
+# The directories the guard reads. Every non-tenant workspace member's
+# top directory belongs here; tests/tier3/t_seam.sh fails when one does
+# not, so a crate added in a later phase cannot quietly fall outside.
+SCAN="core render surface hook-proto engine bindings cli daemon sim sdk proto tools ci tests"
+
 dirs=''
-for d in core render surface engine bindings cli daemon proto tools ci tests; do
+for d in $SCAN; do
     [ -d "$root/$d" ] && dirs="$dirs $d"
 done
 if [ -z "$dirs" ]; then

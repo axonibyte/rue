@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use rue_core::model::{Instant, Tri};
+use rue_core::model::Instant;
 use serde::{Deserialize, Serialize};
 
 use crate::host::Host;
@@ -50,174 +50,14 @@ pub struct ExecCaps {
     pub stdin_preamble: bool,
 }
 
-/// A value after resolution: its text and whether it is a secret, which an
-/// executor must keep off every argv, log and journal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Resolved {
-    pub text: String,
-    pub secret: bool,
-}
-
-impl Resolved {
-    pub fn plain(text: &str) -> Resolved {
-        Resolved {
-            text: text.to_string(),
-            secret: false,
-        }
-    }
-}
-
-/// A resolved primitive: `rue_core::body::Prim` with every value a
-/// [`Resolved`]. Paths and anchors come from the primitive's fact reference.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RPrim {
-    Run {
-        cmd: Resolved,
-        env: Vec<(String, Resolved)>,
-        stdin: Option<Resolved>,
-    },
-    Write {
-        shape: String,
-        content: Resolved,
-    },
-    Remove {
-        shape: String,
-    },
-    Append {
-        shape: String,
-        line: Resolved,
-    },
-    RegionSet {
-        shape: String,
-        anchor: Option<String>,
-        content: Resolved,
-    },
-    RegionClear {
-        shape: String,
-        anchor: Option<String>,
-    },
-    Stage {
-        name: String,
-        content: Resolved,
-        mode: u32,
-    },
-    Hook {
-        name: String,
-        args: Vec<(String, Resolved)>,
-    },
-    Install {
-        name: String,
-    },
-    Release {
-        name: String,
-    },
-    /// A defprim call, already expanded to its run template.
-    Call {
-        prim: String,
-        cmd: Resolved,
-    },
-}
-
-impl RPrim {
-    /// True when any value of the primitive is a secret.
-    pub fn carries_secret(&self) -> bool {
-        match self {
-            RPrim::Run { cmd, env, stdin } => {
-                cmd.secret
-                    || env.iter().any(|(_, v)| v.secret)
-                    || stdin.as_ref().is_some_and(|v| v.secret)
-            }
-            RPrim::Write { content, .. }
-            | RPrim::RegionSet { content, .. }
-            | RPrim::Stage { content, .. } => content.secret,
-            RPrim::Append { line, .. } => line.secret,
-            RPrim::Hook { args, .. } => args.iter().any(|(_, v)| v.secret),
-            RPrim::Call { cmd, .. } => cmd.secret,
-            RPrim::Remove { .. }
-            | RPrim::RegionClear { .. }
-            | RPrim::Install { .. }
-            | RPrim::Release { .. } => false,
-        }
-    }
-}
-
-/// What a body produced: the text on stdout (never journaled) and the named
-/// outputs the op declared, as the executor read them back.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Output {
-    pub stdout: String,
-    pub outputs: BTreeMap<String, String>,
-}
-
-/// A probe as the engine asks an executor to run it: its name (what a hook
-/// knows it by) and its resolved body (what `local()` and `ssh()` run).
-/// A probe's command answers a guard by its exit status: 0 yes, 1 no,
-/// anything else unknown; its stdout is the fact's value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProbeRun {
-    pub name: String,
-    pub body: Vec<RPrim>,
-}
-
-/// A probe's answer: its text, and the three-valued reading a guard takes
-/// (`None` reads as `Unknown`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Observation {
-    pub text: String,
-    pub tri: Option<Tri>,
-}
-
-impl Observation {
-    pub fn yes(text: &str) -> Observation {
-        Observation {
-            text: text.to_string(),
-            tri: Some(Tri::Yes),
-        }
-    }
-    pub fn no(text: &str) -> Observation {
-        Observation {
-            text: text.to_string(),
-            tri: Some(Tri::No),
-        }
-    }
-    pub fn unknown(text: &str) -> Observation {
-        Observation {
-            text: text.to_string(),
-            tri: Some(Tri::Unknown),
-        }
-    }
-    pub fn as_tri(&self) -> Tri {
-        self.tri.unwrap_or(Tri::Unknown)
-    }
-}
-
-/// What `rue bootstrap` verifies (section 7.7).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BootstrapState {
-    pub rue_root: bool,
-    pub group: bool,
-    pub instances_dir: bool,
-    pub lock: bool,
-    pub modes_ok: bool,
-}
-
-impl BootstrapState {
-    pub fn ready(&self) -> bool {
-        self.rue_root && self.group && self.instances_dir && self.lock && self.modes_ok
-    }
-}
-
-/// One instance directory as a target reports it at reconciliation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InstanceDirState {
-    pub instance: String,
-    pub armed: bool,
-    pub fired: bool,
-    /// The directory carries the modes 7.7 requires (`2770`, group `rue`).
-    /// Arming a backstop into a directory with wrong modes is R0406.
-    pub modes_ok: bool,
-}
+/// The wire's own types (`rue-hook-proto`): a resolved body, what a run
+/// produced, what a probe saw, and what a target reports about its own
+/// filesystem. They are the protocol's because a hook executor exchanges
+/// them verbatim; every driver here uses the same definitions, so `local()`
+/// and a hook cannot drift apart in what they mean by a primitive.
+pub use rue_hook_proto::{
+    BootstrapState, InstanceDirState, Observation, Output, ProbeRun, RPrim, Resolved,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecError {

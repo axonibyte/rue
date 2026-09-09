@@ -310,11 +310,14 @@ rue/
   core/          rue-core     pure: model, checker, verdict, journal model, state machine
   render/        rue-render   pure: artifact rendering per OS family, quoting; depends only on core
   surface/       rue-surface  lexer, parser, tree, resolver, diagnostics
+  hook-proto/    rue-hook-proto  pure: the hook protocol's wire as data -- the ops of 7.5,
+                              the registration frame, the resolved body, the reply records
   engine/        rue-engine   lifecycle, bindings API, control channel, hook protocol, arming
   bindings/      rue-bindings generic built-ins only
   cli/           rue          the operator CLI (FreeBSD, Linux, Windows)
   daemon/        rued         the standalone engine daemon (FreeBSD, Linux, Windows)
-  sdk/           hook-protocol clients: rust/ (reference), elixir/, python/, java/, shim/ (rue-hook)
+  sdk/           hook-protocol clients over rue-hook-proto: rust/ (reference), elixir/,
+                 python/, java/, dotnet/, shim/ (rue-hook)
   tenants/       acceptance tenants: .rue files + hook stubs + expected verdicts
   sim/           the tier-7 shadow world
   proto/         Phase 0 prototype (Haskell or OCaml), kept as a record
@@ -336,7 +339,7 @@ Dependency direction is downward only. `rue-core` depends on nothing in the work
 
 ### 4.4 The seam (tenant guard)
 
-`tools/lint-seam.sh` greps `core/`, `render/`, `surface/`, `engine/`, `bindings/`, `cli/`, `daemon/` for a denylist in `tools/seam-denylist.txt` and fails on any hit. The denylist starts with the four tenants' names and platform vocabulary and grows by one line every time a tenant is onboarded. It runs in `tools/check.sh` and in CI. `tests/tier3/t_seam.sh` asserts the guard itself fails when a denylisted word is planted.
+`tools/lint-seam.sh` greps every non-tenant crate of the workspace -- the directories its `SCAN` line names -- for a denylist in `tools/seam-denylist.txt` and fails on any hit; `tests/tier3/t_seam.sh` binds that line to the workspace's member list, so a crate added in a later phase cannot fall outside the guard silently. The denylist starts with the four tenants' names and platform vocabulary and grows by one line every time a tenant is onboarded. It runs in `tools/check.sh` and in CI. `tests/tier3/t_seam.sh` asserts the guard itself fails when a denylisted word is planted.
 
 ### 4.5 Platforms
 

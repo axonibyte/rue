@@ -30,7 +30,7 @@ use std::time::Duration;
 use rue_core::journal::Entry;
 use rue_core::journal::Scope;
 use rue_core::model::{Authenticator, HostRecord, Instant, Tri};
-use serde::{Deserialize, Serialize};
+use rue_hook_proto::{Direction, InventoryHost, Op};
 use serde_json::{json, Value};
 
 use crate::executor::{
@@ -44,7 +44,7 @@ use crate::notify::{Level, Notify};
 use crate::scheduler::{Job, Presence, Scheduler};
 use crate::secrets::Acceptor;
 
-pub const HOOK_PROTOCOL: u32 = 1;
+pub use rue_hook_proto::{Registration, HOOK_PROTOCOL};
 
 /// The default deadline a hook has to answer a request.
 pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(30);
@@ -156,13 +156,14 @@ impl LineLink {
     }
 }
 
-/// The two messages that may carry a secret toward a hook: the body of
-/// `execute.run` and the value of `secrets.deliver` (7.5). The other two
-/// of the four travel toward the engine, in replies.
+/// Whether a secret may travel toward the hook in this request: the body of
+/// `execute.run` and the value of `secrets.deliver` (7.5). The other two of
+/// the four travel toward the engine, in replies. The rule is the wire's,
+/// so it is read from the table and not repeated here.
 fn permitted(request: &Value) -> bool {
     let kind = request.get("kind").and_then(Value::as_str).unwrap_or("");
     let op = request.get("op").and_then(Value::as_str).unwrap_or("");
-    matches!((kind, op), ("execute", "run") | ("secrets", "deliver"))
+    Op::find(kind, op).is_some_and(|o| o.secret == Some(Direction::ToHook))
 }
 
 /// What a secret looks like once resolved: an object with a `text` and
@@ -297,19 +298,6 @@ pub fn field<'a>(reply: &'a Value, name: &str) -> Result<&'a Value, HookError> {
 // ---------------------------------------------------------------------------
 // Registration
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Registration {
-    pub name: String,
-    pub kinds: Vec<String>,
-    pub protocol: u32,
-    /// The hook serves the instance-directory ops (a run-capable host).
-    #[serde(default)]
-    pub filesystem: bool,
-    #[serde(default)]
-    pub stdin_preamble: bool,
-}
-
 pub struct Registered {
     pub registration: Registration,
     pub registrar: String,
@@ -379,116 +367,12 @@ impl HookRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// Requests, one constructor per op of 7.5
+// Requests
 
-pub fn req(kind: &str, op: &str) -> Value {
-    json!({ "kind": kind, "op": op })
-}
-
-pub fn journal_append(e: &Entry) -> Value {
-    let mut v = req("journal", "append");
-    v["entry"] = serde_json::to_value(e).unwrap_or(Value::Null);
-    v
-}
-
-pub fn inventory_list() -> Value {
-    req("inventory", "list")
-}
-
-/// `execute.run`: one of the four messages that may carry a secret.
-pub fn execute_run(host: &str, instance: &str, body: &[RPrim]) -> Value {
-    let mut secrets = serde_json::Map::new();
-    let mut plain = Vec::new();
-    for (i, p) in body.iter().enumerate() {
-        if p.carries_secret() {
-            secrets.insert(format!("prim{i}"), json!(true));
-        }
-        plain.push(serde_json::to_value(p).unwrap_or(Value::Null));
-    }
-    let mut v = req("execute", "run");
-    v["host"] = json!(host);
-    v["instance"] = json!(instance);
-    v["body"] = Value::Array(plain);
-    v["env"] = json!({});
-    v["secrets"] = Value::Object(secrets);
-    v
-}
-
-pub fn execute_op(op: &str, host: &str, instance: Option<&str>) -> Value {
-    let mut v = req("execute", op);
-    v["host"] = json!(host);
-    if let Some(i) = instance {
-        v["instance"] = json!(i);
-    }
-    v
-}
-
-pub fn probe_observe(host: &str, probe: &str) -> Value {
-    let mut v = req("probe", "observe");
-    v["host"] = json!(host);
-    v["probe"] = json!(probe);
-    v
-}
-
-pub fn approval_authenticators() -> Value {
-    req("approval", "authenticators")
-}
-
-pub fn approval_challenge(instance: &str, digest: &str, scope: Value, context: Value) -> Value {
-    let mut v = req("approval", "challenge");
-    v["instance"] = json!(instance);
-    v["digest"] = json!(digest);
-    v["scope"] = scope;
-    v["context"] = context;
-    v
-}
-
-pub fn approval_verify(
-    instance: &str,
-    digest: &str,
-    scope: Value,
-    authenticator: &str,
-    proof: &str,
-) -> Value {
-    let mut v = req("approval", "verify");
-    v["instance"] = json!(instance);
-    v["digest"] = json!(digest);
-    v["scope"] = scope;
-    v["authenticator"] = json!(authenticator);
-    v["proof"] = json!(proof);
-    v
-}
-
-pub fn secrets_resolve(reference: &str) -> Value {
-    let mut v = req("secrets", "resolve");
-    v["ref"] = json!(reference);
-    v
-}
-
-/// `secrets.deliver`: one of the four messages that may carry a secret.
-pub fn secrets_deliver(instance: &str, label: &str, value: &str) -> Value {
-    let mut v = req("secrets", "deliver");
-    v["instance"] = json!(instance);
-    v["label"] = json!(label);
-    v["value"] = json!(value);
-    v
-}
-
-pub fn notify_deliver(level: &str, subject: &str, body: &str) -> Value {
-    let mut v = req("notify", "deliver");
-    v["level"] = json!(level);
-    v["subject"] = json!(subject);
-    v["body"] = json!(body);
-    v
-}
-
-pub fn scheduler_op(op: &str, host: &str, artifact: &str, deadline: Option<u64>) -> Value {
-    let mut v = req("scheduler", op);
-    v["host"] = json!(host);
-    v["artifact"] = json!(artifact);
-    v["deadline"] = json!(deadline);
-    v
-}
+// One constructor per op of 7.5, in `rue-hook-proto` so the engine, the
+// SDKs and the conformance runner build the same frames from the same
+// table.
+pub use rue_hook_proto::request::*;
 
 // ---------------------------------------------------------------------------
 // Adapters
@@ -575,9 +459,7 @@ impl Executor for HookExecutor {
     }
 
     fn read_fact(&mut self, host: &Host, shape: &str) -> Result<Option<Vec<u8>>, ExecError> {
-        let mut r = execute_op("read_fact", host.name(), None);
-        r["shape"] = json!(shape);
-        let reply = self.call(r)?;
+        let reply = self.call(execute_read_fact(host.name(), shape))?;
         Ok(reply
             .get("content")
             .and_then(Value::as_str)
@@ -638,11 +520,9 @@ impl Executor for HookExecutor {
         bytes: &[u8],
         mode: u32,
     ) -> Result<(), ExecError> {
-        let mut r = execute_op("put_file", host.name(), Some(instance));
-        r["rel"] = json!(rel);
-        r["content"] = json!(String::from_utf8_lossy(bytes));
-        r["mode"] = json!(mode);
-        self.call(r).map(|_| ())
+        let content = String::from_utf8_lossy(bytes);
+        self.call(execute_put_file(host.name(), instance, rel, &content, mode))
+            .map(|_| ())
     }
 
     fn replace_file(
@@ -652,24 +532,20 @@ impl Executor for HookExecutor {
         rel: &str,
         bytes: &[u8],
     ) -> Result<(), ExecError> {
-        let mut r = execute_op("replace_file", host.name(), Some(instance));
-        r["rel"] = json!(rel);
-        r["content"] = json!(String::from_utf8_lossy(bytes));
-        self.call(r).map(|_| ())
+        let content = String::from_utf8_lossy(bytes);
+        self.call(execute_replace_file(host.name(), instance, rel, &content))
+            .map(|_| ())
     }
 
     fn get_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<Vec<u8>, ExecError> {
-        let mut r = execute_op("get_file", host.name(), Some(instance));
-        r["rel"] = json!(rel);
-        let reply = self.call(r)?;
+        let reply = self.call(execute_get_file(host.name(), instance, rel))?;
         let c = field(&reply, "content").map_err(|e| ExecError::Failed(e.to_string()))?;
         Ok(c.as_str().unwrap_or("").as_bytes().to_vec())
     }
 
     fn remove_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<(), ExecError> {
-        let mut r = execute_op("remove_file", host.name(), Some(instance));
-        r["rel"] = json!(rel);
-        self.call(r).map(|_| ())
+        self.call(execute_remove_file(host.name(), instance, rel))
+            .map(|_| ())
     }
 
     fn host_lock(&mut self, host: &Host) -> Result<Box<dyn HostLockGuard>, ExecError> {
@@ -713,48 +589,31 @@ pub fn hook_inventory(
     let hosts = field(&reply, "hosts")?;
     let records: Vec<InventoryHost> = serde_json::from_value(hosts.clone())
         .map_err(|e| HookError::Contract(format!("hosts: {e}")))?;
-    Ok(records.into_iter().map(InventoryHost::into_host).collect())
+    Ok(records.into_iter().map(into_host).collect())
 }
 
-/// A host as a hook lists it: the roadmap's Appendix C record.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InventoryHost {
-    pub name: String,
-    #[serde(default)]
-    pub address: String,
-    pub os: String,
-    #[serde(default)]
-    pub roles: Vec<String>,
-    #[serde(default)]
-    pub reach: Vec<String>,
-    #[serde(default)]
-    pub filesystem: bool,
-    #[serde(default)]
-    pub scheduler: Option<String>,
-    #[serde(default)]
-    pub facts: BTreeMap<String, String>,
-}
-
-impl InventoryHost {
-    pub fn into_host(self) -> Host {
-        let mut facts = self.facts;
-        if !self.roles.is_empty() {
-            facts.insert("roles".into(), self.roles.join(","));
-        }
-        Host {
-            record: HostRecord {
-                name: self.name,
-                os: self.os,
-                reach: self.reach,
-                filesystem: self.filesystem,
-                stdin_preamble: self.filesystem,
-                artifact: None,
-            },
-            address: self.address,
-            scheduler: self.scheduler,
-            rue_root: None,
-            facts,
-        }
+/// A host as a hook lists it (`rue_hook_proto::InventoryHost`, the
+/// roadmap's Appendix C record) as the engine's own [`Host`]. The roles go
+/// in as a fact so a clause dispatches on them exactly as it does for a
+/// file inventory.
+fn into_host(h: InventoryHost) -> Host {
+    let mut facts = h.facts;
+    if !h.roles.is_empty() {
+        facts.insert("roles".into(), h.roles.join(","));
+    }
+    Host {
+        record: HostRecord {
+            name: h.name,
+            os: h.os,
+            reach: h.reach,
+            filesystem: h.filesystem,
+            stdin_preamble: h.filesystem,
+            artifact: None,
+        },
+        address: h.address,
+        scheduler: h.scheduler,
+        rue_root: None,
+        facts,
     }
 }
 
