@@ -86,6 +86,17 @@ awk -v l=" $above" '/^@@ -66,7 \+66,7 @@$/ { print "@@ -65,8 +65,8 @@"; print l;
 grep -q '^@@ -65,8' "$patch" || { bad "sample hunk rewritten"; }
 expect 1 "unbalanced hunk context is refused"
 
+# 6b. A hunk header whose counts do not match what the hunk carries:
+# FreeBSD's patch recounts and says nothing, GNU patch reads the header and
+# refuses. The guard does the arithmetic itself, so a hand-edited header is
+# caught wherever the guard runs and not only on a GNU host. The sample's
+# header is shrunk by one while its body is left alone.
+reset_tree
+patch=$tmp/tree/tools/rediscovery/patches/reach-late-arm.patch
+sed 's/^@@ -66,7 +66,7 @@$/@@ -66,6 +66,6 @@/' "$patch" > "$tmp/hunk" && mv "$tmp/hunk" "$patch"
+grep -q '^@@ -66,6' "$patch" || bad "sample header rewritten"
+expect 1 "a hunk header that miscounts its lines is refused"
+
 # 7. The real tree passes.
 if sh "$guard" > "$tmp/out" 2>&1; then
     ok "the repository's patches all apply"

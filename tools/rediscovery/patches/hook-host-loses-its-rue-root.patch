@@ -2,7 +2,7 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/hook.rs
 +++ b/engine/src/hook.rs
-@@ -722,9 +722,9 @@
+@@ -608,11 +608,11 @@
              reach: h.reach,
              filesystem: h.filesystem,
              stdin_preamble: h.stdin_preamble.unwrap_or(h.filesystem),
