@@ -851,6 +851,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rue-hook"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "rue-engine",
+ "rue-hook-proto",
+ "rue-hook-sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "rue-hook-proto"
 version = "0.1.0"
 dependencies = [

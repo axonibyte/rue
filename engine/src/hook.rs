@@ -44,7 +44,7 @@ use crate::notify::{Level, Notify};
 use crate::scheduler::{Job, Presence, Scheduler};
 use crate::secrets::Acceptor;
 
-pub use rue_hook_proto::{Registration, HOOK_PROTOCOL};
+pub use rue_hook_proto::{host_shell, Registration, HOOK_PROTOCOL};
 
 /// The default deadline a hook has to answer a request.
 pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(30);
@@ -448,19 +448,6 @@ impl StdioHook {
     /// Reap the child once its stdout has ended.
     pub fn wait(&mut self) -> std::io::Result<()> {
         self.child.wait().map(|_| ())
-    }
-}
-
-/// The shell a hook's command is run through, and the flag that hands it
-/// one command: the host's own, since `--spawn NAME=COMMAND` is written in
-/// whatever the operator's machine speaks. `rued` runs on all three
-/// families (7.4), so hard-coding `sh` made a spawned hook a thing only
-/// two of them could have.
-pub fn host_shell() -> (&'static str, &'static str) {
-    if cfg!(windows) {
-        ("cmd", "/C")
-    } else {
-        ("sh", "-c")
     }
 }
 
@@ -1069,24 +1056,5 @@ impl Notify for HookNotify {
                 }
                 HookError::Io(m) => ExecError::Io(m),
             })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::host_shell;
-
-    /// `rued --spawn` and `rue sdk-conform` hand one string to a shell, and
-    /// which shell that is follows the host. A hook spawned on Windows was
-    /// unreachable while this said `sh` everywhere, and nothing said so:
-    /// the failure is a hook that will not start, blamed on the hook.
-    #[test]
-    fn the_shell_a_hook_is_spawned_through_is_the_host_s_own() {
-        let (shell, flag) = host_shell();
-        if cfg!(windows) {
-            assert_eq!((shell, flag), ("cmd", "/C"));
-        } else {
-            assert_eq!((shell, flag), ("sh", "-c"));
-        }
     }
 }

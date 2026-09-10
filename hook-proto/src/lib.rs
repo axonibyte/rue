@@ -32,7 +32,7 @@ pub mod record;
 pub mod request;
 
 pub use body::{RPrim, Resolved};
-pub use op::{Direction, Op, HOOK_PROTOCOL, KINDS, OPS};
+pub use op::{host_shell, Direction, Op, HOOK_PROTOCOL, KINDS, OPS};
 pub use record::{
     BootstrapState, InstanceDirState, InventoryHost, Observation, Output, ProbeRun, Registration,
 };

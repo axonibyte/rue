@@ -302,6 +302,34 @@ Silent), and they cannot be written through the SDK -- `Hooks::answer`
 cannot express them -- which is why `sdk/rust/src/bin/conform_hook.rs`
 drops to the wire for exactly those four and for nothing else.
 
+Every SDK keeps its own transcription of the ops table, because none of
+them can share the Rust one. `tools/lint-hook-ops.sh` reads each and
+requires it to agree with `OPS` in both directions, and an SDK directory
+that exists with no table refuses with exit 2 rather than passing on a leg
+it skipped. That is the leg that would otherwise rot in silence: an SDK's
+own tests pass against its own idea of the protocol, so nothing but this
+would notice.
+
+The non-Rust SDKs run through `sh sdk/conform-all.sh`, on the Ubuntu reaper
+guest and in the pipeline, never in the local gate: the workstation carries
+none of their toolchains, and the alternative -- a gate phase per SDK, each
+declared skippable -- was the thing this phase's decision ruled out. A
+missing interpreter there is a failure, not a skip, because the script runs
+only where the toolchains are provisioned. The Rust SDK and the `rue-hook`
+shim are workspace crates, so their conformance runs are ordinary
+`cargo test` targets and the gate covers them everywhere.
+
+`rue-hook` is the shim of 7.11: it registers as a hook and hands each
+request to a configured command on that command's stdin. It owns the
+handshake and the `id`, and it turns a command that fails -- a non-zero
+exit, output that is not one JSON object -- into `ok: false` with the
+reason. It deliberately does **not** repair a reply: it passes the
+command's own object through, which is what keeps the conformance
+provocations expressible and what keeps a command's mistakes visible
+rather than papered over. A command that exits 0 having written nothing
+has chosen to say nothing, and the shim says so on its own stderr, so a
+command that merely forgot to print is still visible.
+
 Three enumerations are bound together so none can drift: `tools/lint-hook-ops.sh`
 (the `hook-ops` phase) ties the document to `OPS`, and
 `sdk/rust/tests/conform.rs` ties `OPS` to the cases the suite actually

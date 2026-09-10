@@ -15,6 +15,13 @@ rue sdk-conform --name conform 'python3 sdk/python/examples/conformance_hook.py'
 rue sdk-conform --json --deadline-ms 2000 './my-hook serve'
 ```
 
+Each SDK ships one, and two live in this repository as worked examples:
+`sdk/rust/src/bin/conform_hook.rs` and
+`sdk/python/examples/conformance_hook.py`. The `rue-hook` shim's is a
+POSIX shell script, `sdk/shim/tests/fixtures/conformance-command.sh`, which
+is the sharpest version of the claim: forty cases, eight kinds, no JSON
+library.
+
 ## What a conformance hook is
 
 A small program each SDK ships as an example, implementing the kinds that

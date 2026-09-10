@@ -131,3 +131,4 @@ subscriber-loses-events-mid-verb.patch	1	-	cargo	an_event_arriving_while_a_verb_
 secret-unresolved-runs-blank.patch	1	-	cargo	a_step_naming_a_secret_with_no_source_declared_is_refused_and_never_runs	-
 secrets-file-world-readable.patch	1	-	cargo	a_secrets_file_others_can_read_is_refused_rather_than_read	-
 hook-inventory-read-from-file.patch	2	-	cargo	the_codes_partition_and_every_surface_negative_refuses_with_exactly_its_code	-
+shim-repairs-a-reply.patch	1	-	cargo	a_shell_script_behind_the_shim_passes_every_case	-

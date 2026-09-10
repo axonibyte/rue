@@ -1,0 +1,15 @@
+# Reverts: the shim passes a command reply through as written and never repairs it (7.11); here it completes a missing `ok`, which hides the command mistake the engine would refuse for and makes the conformance provocations inexpressible.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/shim/src/main.rs
++++ b/sdk/shim/src/main.rs
+@@ -124,6 +124,10 @@
+                 );
+             }
+             Answer::Reply(mut reply) => {
++                // Helpfully complete what the command left out.
++                if reply.get("ok").is_none() {
++                    reply["ok"] = json!(true);
++                }
+                 // The id is the shim's to set: a command never has to
+                 // parse one out, and one that echoes the wrong id would
+                 // be answering somebody else's question.

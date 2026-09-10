@@ -1,11 +1,16 @@
 #!/bin/sh
 # The hook-protocol guard (ROADMAP.md section 10, tier 3).
 #
-# The protocol's ops exist in two places that must never drift: the table in
-# docs/hook-protocol.md, which is what an SDK author reads, and `OPS` in
-# hook-proto/src/op.rs, which is what the engine, the SDKs and
-# `rue sdk-conform` execute. This guard reads both as data and requires them
-# to agree in both directions.
+# The protocol's ops exist in several places that must never drift: the
+# table in docs/hook-protocol.md, which is what an SDK author reads; `OPS`
+# in hook-proto/src/op.rs, which is what the engine and `rue sdk-conform`
+# execute; and one transcription per SDK that cannot share the Rust table,
+# starting with sdk/python. This guard reads them all as data and requires
+# them to agree in every direction.
+#
+# An SDK's table is a transcription and not a copy of record: the Rust one
+# is the source, and this is what stops a transcription rotting quietly
+# while its own tests keep passing against its own idea of the protocol.
 #
 # The third enumeration -- the cases of docs/sdk-conformance.md, as the
 # runner actually drives them -- is bound to `OPS` by a test rather than by
@@ -62,6 +67,41 @@ awk '
 [ -s "$tmp/code" ] || { echo "lint-hook-ops: no ops read from $code; the guard checked nothing" >&2; exit 2; }
 
 rc=0
+
+# Each SDK that keeps its own table: the file, and how a row spells a pair.
+# A python row is `Op("kind", "op", ...)`.
+# An SDK directory that exists must have a readable table: a leg that is
+# quietly skipped is a guard reporting success for work it did not do.
+py=$root/sdk/python/rue_hook/proto.py
+if [ -d "$root/sdk/python" ] && [ ! -r "$py" ]; then
+    echo "lint-hook-ops: sdk/python exists but $py does not; the guard checked nothing" >&2
+    exit 2
+fi
+if [ -r "$py" ]; then
+    # Newlines folded away first: a row may be written on one line or
+    # spread over several, and which one is a formatting choice the guard
+    # has no business having an opinion about.
+    tr '\n' ' ' < "$py" \
+        | grep -oE 'Op\( *"[a-z_]+", *"[a-z_]+"' \
+        | sed -E 's/Op\( *"([a-z_]+)", *"([a-z_]+)"/\1.\2/' \
+        | sort -u > "$tmp/python"
+    if [ ! -s "$tmp/python" ]; then
+        echo "lint-hook-ops: no ops read from $py; the guard checked nothing" >&2
+        exit 2
+    fi
+    while read -r op; do
+        grep -qx "$op" "$tmp/code" || {
+            echo "lint-hook-ops: $op is in the python SDK's table and absent from OPS" >&2
+            rc=1
+        }
+    done < "$tmp/python"
+    while read -r op; do
+        grep -qx "$op" "$tmp/python" || {
+            echo "lint-hook-ops: $op is in OPS and absent from the python SDK's table" >&2
+            rc=1
+        }
+    done < "$tmp/code"
+fi
 while read -r op; do
     grep -qx "$op" "$tmp/code" || {
         echo "lint-hook-ops: $op is documented in hook-protocol.md and absent from OPS" >&2
@@ -76,6 +116,6 @@ while read -r op; do
 done < "$tmp/code"
 
 if [ "$rc" -eq 0 ]; then
-    echo "lint-hook-ops: $(wc -l < "$tmp/code" | tr -d ' ') ops, documented and implemented"
+    echo "lint-hook-ops: $(wc -l < "$tmp/code" | tr -d ' ') ops, documented and implemented in every table"
 fi
 exit "$rc"
