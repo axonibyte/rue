@@ -214,6 +214,102 @@ fn serve_hook(socket: &Path, name: &str) -> thread::JoinHandle<Vec<Value>> {
     })
 }
 
+/// A site whose hosts come from a hook, not a file.
+fn hook_inventory_site(me: &str) -> String {
+    let mut t = String::from("rue 0\nsite do\n");
+    t.push_str("  inventory from: hook(:world)\n");
+    t.push_str("  journal to: file(\"journal.ndjson\")\n");
+    t.push_str("  execute via: hook(:world, transport: :api)\n");
+    t.push_str("  operators do\n");
+    t.push_str(&format!(
+        "    identity :ops, user: \"{me}\", operator_for: :all, admin: true\n"
+    ));
+    t.push_str("  end\n  hooks do\n");
+    t.push_str("    registrar :ops, user: :socket_owner, may_register: [:world]\n");
+    t.push_str("  end\nend\n");
+    t
+}
+
+#[test]
+fn a_daemon_takes_its_hosts_from_the_inventory_hook_and_says_so() {
+    // The hook is asked once, after its child has registered and before
+    // boot recovery, because reconciliation needs the hosts to reconcile
+    // against. Nothing here reads a file for them: the record beside the
+    // text exists only so the text can be *checked*, which is a separate
+    // question from what the daemon believes at run time.
+    let d = TempDir::new("hook-inv");
+    let me = user_name(my_uid()).unwrap();
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", hook_inventory_site(&me))).unwrap();
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/inventory-hook.sh"
+    );
+    let daemon = Daemon::start(
+        &d.0,
+        &site_file,
+        &["--spawn", &format!("world=sh {fixture} world")],
+    );
+
+    // The plan applies on a host only the hook named. `--inventory` is the
+    // record the *check* is made against (E0607 without one).
+    let out = rue(
+        &daemon.socket,
+        &[
+            "apply",
+            site_file.to_str().unwrap(),
+            "--host",
+            "h",
+            "--identity",
+            "ops",
+            "--inventory",
+            d.0.join("inventory.toml").to_str().unwrap(),
+        ],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let err = daemon.stop();
+    assert!(
+        err.contains("inventory from hook world: 1 hosts"),
+        "the daemon does not say where its hosts came from:\n{err}"
+    );
+}
+
+#[test]
+fn a_daemon_whose_inventory_hook_never_registers_refuses_to_start() {
+    // The failure to avoid is a daemon that boots with no hosts and
+    // reports every plan unreachable, which looks like the site is broken
+    // rather than like the hook is missing.
+    let d = TempDir::new("hook-inv-absent");
+    let me = user_name(my_uid()).unwrap();
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", hook_inventory_site(&me))).unwrap();
+    let out = Command::new(rued_bin())
+        .arg("run")
+        .arg("--site")
+        .arg(&site_file)
+        .arg("--store")
+        .arg(d.0.join("store"))
+        .arg("--socket")
+        .arg(d.0.join("rued.sock"))
+        .arg("--group")
+        .arg(my_gid().to_string())
+        .output()
+        .expect("rued");
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("hook world") && err.contains("--inventory"),
+        "the refusal must name the hook and the way out:\n{err}"
+    );
+}
+
 #[test]
 fn an_event_arriving_while_a_verb_is_in_flight_is_kept_and_not_discarded() {
     // `:ops` subscribes to `:p`, so applying p sends this connection the

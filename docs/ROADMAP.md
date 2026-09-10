@@ -908,6 +908,7 @@ Golden-tested text with `file:line:col`, expected/found, nearest-name suggestion
 | E0604 | No `operators` block; refusing to start outside daemon dry-run mode |
 | E0605 | A `hook()` binding is declared but no `hooks` registrar block names who may register it |
 | E0606 | Plan has a `secret` output and the site declares no `secrets deliver_to` |
+| E0607 | `inventory from: hook()` is checked with no record to check against; name one with `rue check --inventory` |
 
 ### 6.8 CLI and exit codes
 

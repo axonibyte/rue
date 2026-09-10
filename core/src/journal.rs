@@ -181,6 +181,7 @@ events! {
     InstanceDirOrphaned { host: String, instance: String, armed: bool } => "instance_dir_orphaned",
     Reclaimed { host: String, instance: String, forced: bool, reason: String } => "reclaimed",
     Abandoned { steps_not_reverted: Vec<u32>, artifacts_left_armed: Vec<String>, by: String, reason: String } => "abandoned",
+    InventoryListed { hook: String, hosts: Vec<String> } => "inventory_listed",
     HookRegistered { name: String, registrar: String, connection: String } => "hook_registered",
     HookDeregistered { name: String, registrar: String, reason: String } => "hook_deregistered",
     OperatorConnected { identity: String, admin: bool } => "operator_connected",

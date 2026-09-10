@@ -53,6 +53,7 @@ fn a_200_step_plan_over_1000_hosts_checks_within_the_acceptance_bound() {
         host: Some("h999".into()),
         plan: None,
         requester: None,
+        inventory: None,
     };
     let start = Instant::now();
     let ir = resolve(&plan, &opts).unwrap_or_else(|d| {

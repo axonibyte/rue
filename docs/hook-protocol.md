@@ -51,6 +51,17 @@ before `do` (R0408). `armed` is the artifact's presence in the directory
 and `modes_ok` whether it carries the modes 7.7 requires: the engine reads
 the first at reconciliation and the second when it arms (R0406).
 
+The engine asks `inventory.list` **once**, as it starts: after the hook has
+registered and before boot recovery, which needs the hosts to reconcile
+against. So a hook that lists a site's hosts must be a spawned child
+(`rued run --spawn`), since nothing has registered over the socket before
+the daemon serves it, and a host added later needs a restart. A daemon
+whose inventory hook does not answer refuses to start and says which hook:
+booting with no hosts would report every plan unreachable, which reads as a
+broken site rather than a missing hook. `rued run --inventory FILE` takes
+the hosts from a record instead, which is how dry-run mode rehearses a
+hook-inventoried site with no hook to ask.
+
 A host a hook lists carries everything a `rue_toml()` inventory declares,
 so an embedded site is not quietly less capable than a file-backed one.
 `name` and `os` are required; the rest default. `rue_root` is where the

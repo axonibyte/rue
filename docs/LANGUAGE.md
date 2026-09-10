@@ -211,6 +211,14 @@ relative to the file that declares them), a journal is declared (E0603), an
 operators block declares an identity (E0604), and every `hook(:x)` has a
 registrar whose `may_register` names it (E0605).
 
+`inventory from: hook(:name)` has no hosts until the hook is asked, which
+happens when a daemon starts, and checking needs them now. So a text with a
+hook inventory is checked against a record the operator names
+(`rue check --inventory FILE`) and refused with E0607 when they name none;
+a verdict is then a statement about the record you named, which is the
+point of naming it. `--inventory` overrides a `file()` inventory too, so one
+text can be checked against the site it is going to.
+
 At runtime a probe's `run` answers a guard by its exit status (0 is yes, 1
 is no, anything else is unknown) and its stdout is the fact's value; a
 `run` in an op binds a declared output with a line `rue-output NAME=VALUE`
@@ -344,8 +352,8 @@ and E0105 (the version marker); the resolver raises E0102, E0103, E0104,
 E0106, E0107 (a call binding a declared parameter to a value of another
 kind, or a plan option of the wrong kind), E0108, E0110, E0111, E0112,
 E0113, E0114 (the arms of a `when` binding one alias to outputs of
-different kinds), E0204 for a knell without a cost, and E0601 to E0605
-for the site. Every one of them has a golden under `tenants/_negative/`
+different kinds), E0204 for a knell without a cost, and E0601 to E0605 and
+E0607 for the site. Every one of them has a golden under `tenants/_negative/`
 with its text and its rendered diagnostics. Every other code is the
 checker's and reaches the verdict; E0109 is the renderer's.
 

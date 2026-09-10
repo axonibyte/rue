@@ -65,6 +65,11 @@ enum Verb {
         /// registrar's hook.
         #[arg(long = "spawn", value_name = "NAME=COMMAND")]
         spawn: Vec<String>,
+        /// A record to take hosts from instead of asking an `inventory
+        /// from: hook()`. Dry-run mode rehearses against one; a live
+        /// daemon asks the hook.
+        #[arg(long)]
+        inventory: Option<PathBuf>,
     },
     /// Windows only: hand this process to the service-control manager.
     /// The flags after it are the ones `run` takes; the manager passes
@@ -141,6 +146,7 @@ fn main() -> ExitCode {
             reap_every,
             hook_deadline,
             spawn,
+            inventory,
         } => match run::run(run::Config {
             site,
             store,
@@ -150,6 +156,7 @@ fn main() -> ExitCode {
             reap_every,
             hook_deadline,
             spawn,
+            inventory,
         }) {
             Ok(()) => ExitCode::SUCCESS,
             Err(run::Refusal::Usage(m)) => {

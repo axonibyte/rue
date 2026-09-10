@@ -30,8 +30,8 @@ use rue_engine::control::{
 use rue_engine::executor::Executor;
 use rue_engine::gates::Approval;
 use rue_engine::hook::{
-    spawn_stdio_hook, HookAcceptor, HookApproval, HookExecutor, HookNotify, HookRegistry,
-    HookScheduler, HookSink, HookSource, Registered,
+    hook_inventory, spawn_stdio_hook, HookAcceptor, HookApproval, HookExecutor, HookNotify,
+    HookRegistry, HookScheduler, HookSink, HookSource, Registered,
 };
 use rue_engine::host::Host;
 use rue_engine::journal::{Journal, Sink};
@@ -65,6 +65,10 @@ pub struct Config {
     pub reap_every: u64,
     pub hook_deadline: u64,
     pub spawn: Vec<String>,
+    /// `--inventory`: a record to hold hosts from instead of asking an
+    /// `inventory from: hook()`. Daemon dry-run mode rehearses against one;
+    /// a live daemon asks the hook.
+    pub inventory: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -229,6 +233,17 @@ fn acceptors_of(
         }
     }
     Ok(v)
+}
+
+/// The hook an `inventory from: hook()` names, when the daemon must ask
+/// it: `--inventory` names a record instead and takes precedence, which is
+/// how dry-run mode rehearses a hook-inventoried site with no hook.
+fn hook_inventory_name(decl: &SiteDecl, named_a_record: bool) -> Option<String> {
+    if named_a_record {
+        return None;
+    }
+    let b = decl.inventory.as_ref()?;
+    (b.kind == "hook").then(|| b.arg.clone().unwrap_or_default())
 }
 
 /// The `secrets from:` binding of the site block: where a `secret(:ref)`
@@ -480,7 +495,7 @@ pub fn run(cfg: Config) -> Result<(), Refusal> {
 /// The daemon, stopping when `stop` is set. `rued run` never sets it; a
 /// Windows service sets it from its control handler.
 pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
-    let sb = match site_bindings_opts(&cfg.site, cfg.dry_run) {
+    let sb = match site_bindings_opts(&cfg.site, cfg.dry_run, cfg.inventory.as_deref()) {
         Ok(sb) => sb,
         Err(diags) => {
             for d in &diags {
@@ -538,7 +553,43 @@ pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
     if let Some(d) = sb.decl.skew_tolerance {
         engine.set_skew_tolerance(d);
     }
-    let boot = engine.boot().map_err(|e| refused(e.to_string()))?;
+    let daemon = Arc::new(Daemon {
+        engine: Mutex::new(engine),
+        operators: operators_of(&sb.decl, cfg.dry_run),
+        hooks: hooks.clone(),
+        subscribers,
+        hook_deadline: deadline,
+        dry_run: cfg.dry_run,
+        mailbox,
+    });
+    // The children first: an `inventory from: hook()` has no hosts until
+    // its hook has registered and been asked, and boot recovery needs the
+    // hosts to reconcile against.
+    for spec in &cfg.spawn {
+        spawn_child(spec, &daemon)?;
+    }
+    if let Some(name) = hook_inventory_name(&sb.decl, cfg.inventory.is_some()) {
+        let hosts = hook_inventory(&hooks, &name, deadline).map_err(|e| {
+            refused(format!(
+                "the site takes its inventory from hook {name}, and asking it failed: {e}. A \
+                 hook that lists the site's hosts must be a `--spawn` child, since nothing has \
+                 registered over the socket before the daemon serves it; or name a record with \
+                 --inventory"
+            ))
+        })?;
+        eprintln!("rued: inventory from hook {name}: {} hosts", hosts.len());
+        let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+        e.journal_site_event(rue_core::journal::Event::InventoryListed {
+            hook: name.clone(),
+            hosts: hosts.iter().map(|h| h.name().to_string()).collect(),
+        })
+        .map_err(|e| refused(e.to_string()))?;
+        e.set_hosts(hosts);
+    }
+    let boot = {
+        let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+        e.boot().map_err(|e| refused(e.to_string()))?
+    };
     eprintln!(
         "rued: booted: {} demoted, {} reestablished, {} lost{}",
         boot.demoted.len(),
@@ -554,18 +605,6 @@ pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
             boot.orphaned.len(),
             boot.reclaimed.len()
         );
-    }
-    let daemon = Arc::new(Daemon {
-        engine: Mutex::new(engine),
-        operators: operators_of(&sb.decl, cfg.dry_run),
-        hooks: hooks.clone(),
-        subscribers,
-        hook_deadline: deadline,
-        dry_run: cfg.dry_run,
-        mailbox,
-    });
-    for spec in &cfg.spawn {
-        spawn_child(spec, &daemon)?;
     }
     // The reap thread.
     {

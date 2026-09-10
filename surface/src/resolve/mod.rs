@@ -29,6 +29,10 @@ pub struct Options {
     pub plan: Option<String>,
     /// The requester (`--as`); the first declared identity when absent.
     pub requester: Option<String>,
+    /// `--inventory`: the record to check against, overriding the file the
+    /// text names and *required* for an `inventory from: hook()`, whose
+    /// hosts do not exist until the hook is asked (E0607).
+    pub inventory: Option<PathBuf>,
 }
 
 /// One loaded file.
@@ -324,7 +328,7 @@ pub struct SiteBindings {
 }
 
 pub fn site_bindings(path: &Path) -> Result<SiteBindings, Vec<Diagnostic>> {
-    site_bindings_opts(path, false)
+    site_bindings_opts(path, false, None)
 }
 
 /// As `site_bindings`; with `suspend_e0604`, a site with no operators block
@@ -332,6 +336,7 @@ pub fn site_bindings(path: &Path) -> Result<SiteBindings, Vec<Diagnostic>> {
 pub fn site_bindings_opts(
     path: &Path,
     suspend_e0604: bool,
+    inventory: Option<&Path>,
 ) -> Result<SiteBindings, Vec<Diagnostic>> {
     let program = Program::load(path)?;
     let (site_module, site_block) = program.site_of(0).map_err(|d| vec![*d])?;
@@ -355,19 +360,19 @@ pub fn site_bindings_opts(
         .map(Path::to_path_buf)
         .unwrap_or_default();
     let inventory = match &decl.inventory {
-        Some(b) => site::read_inventory(&dir, b).map_err(|m| {
+        // A daemon with a hook inventory holds no hosts until it has asked
+        // the hook (7.5), so no record is needed here and E0607 is a
+        // check-time refusal only. `--inventory` still overrides, which is
+        // what daemon dry-run mode uses to rehearse against a record.
+        Some(b) if b.kind == "hook" && inventory.is_none() => site::Inventory::empty(),
+        Some(b) => site::read_inventory(&dir, b, inventory).map_err(|r| {
             vec![diag(
-                Code::E0602,
+                r.0,
                 Some(span_of(&program.modules[site_module], b.range)),
-                m,
+                r.1,
             )]
         })?,
-        None => site::Inventory {
-            hosts: Vec::new(),
-            contracts: Vec::new(),
-            authenticators: Vec::new(),
-            scheduled: Vec::new(),
-        },
+        None => site::Inventory::empty(),
     };
     Ok(SiteBindings {
         dir,
@@ -405,16 +410,19 @@ pub fn resolve(path: &Path, opts: &Options) -> Result<PlanIr, Vec<Diagnostic>> {
         .map(Path::to_path_buf)
         .unwrap_or_default();
     let inventory = match &decl.inventory {
-        Some(b) => site::read_inventory(&site_dir, b),
-        None => Err("no inventory declared".to_string()),
+        Some(b) => site::read_inventory(&site_dir, b, opts.inventory.as_deref()),
+        None => Err(site::InventoryRefusal(
+            Code::E0601,
+            "no inventory declared".to_string(),
+        )),
     };
     let inventory = match inventory {
         Ok(x) => x,
-        Err(e) => {
+        Err(r) => {
             return Err(vec![diag(
-                Code::E0601,
+                r.0,
                 Some(span_of(&program.modules[site_module], site_block.range)),
-                e,
+                r.1,
             )])
         }
     };

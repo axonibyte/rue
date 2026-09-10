@@ -506,17 +506,64 @@ fn kw_list(args: &[Arg], name: &str) -> Vec<String> {
     }
 }
 
-/// The inventory file, read relative to the declaring file's directory.
-pub fn read_inventory(dir: &Path, b: &Binding) -> Result<Inventory, String> {
-    if b.kind != "file" {
-        // A hook inventory (T4) has no file: the hosts come from the hook at
-        // run time. Phase 2 reads a sibling inventory.toml as the record the
-        // hook would return, which every hook-inventoried tenant keeps.
-        let p = dir.join("inventory.toml");
-        return read_toml(&p);
+impl Inventory {
+    /// No hosts at all: what a daemon holds for an `inventory from:
+    /// hook()` until it has asked the hook.
+    pub fn empty() -> Inventory {
+        Inventory {
+            hosts: Vec::new(),
+            contracts: Vec::new(),
+            authenticators: Vec::new(),
+            scheduled: Vec::new(),
+        }
     }
-    let rel = b.arg.clone().ok_or("inventory from: file() needs a path")?;
-    read_toml(&dir.join(rel))
+}
+
+/// Why an inventory could not be read: the code the caller reports it
+/// under, and what to say.
+pub struct InventoryRefusal(pub Code, pub String);
+
+/// The inventory at check time.
+///
+/// `rue_toml()` and `file()` name a file, read relative to the declaring
+/// file's directory. `hook()` names no file at all: its hosts come from the
+/// hook, at run time, and there is no hook when a text is checked. So a
+/// hook inventory is checked against a record the operator names
+/// (`rue check --inventory`), and refused with E0607 when they name none.
+///
+/// It used to read a sibling `inventory.toml` and say nothing. That made a
+/// verdict a statement about a file the text never mentions, which is the
+/// kind of quiet assumption a checker exists to prevent.
+pub fn read_inventory(
+    dir: &Path,
+    b: &Binding,
+    named: Option<&Path>,
+) -> Result<Inventory, InventoryRefusal> {
+    if b.kind == "hook" {
+        let Some(p) = named else {
+            return Err(InventoryRefusal(
+                Code::E0607,
+                format!(
+                    "`inventory from: hook({})` has no hosts until the hook is asked, and \
+                     checking needs a record now: name one with `rue check --inventory FILE`",
+                    b.arg.clone().unwrap_or_default()
+                ),
+            ));
+        };
+        return read_toml(p).map_err(|m| InventoryRefusal(Code::E0602, m));
+    }
+    // A named record overrides a file the text points at, so one text can
+    // be checked against the inventory of the site it is going to.
+    if let Some(p) = named {
+        return read_toml(p).map_err(|m| InventoryRefusal(Code::E0602, m));
+    }
+    let rel = b.arg.clone().ok_or_else(|| {
+        InventoryRefusal(
+            Code::E0602,
+            "inventory from: file() needs a path".to_string(),
+        )
+    })?;
+    read_toml(&dir.join(rel)).map_err(|m| InventoryRefusal(Code::E0602, m))
 }
 
 fn read_toml(p: &Path) -> Result<Inventory, String> {

@@ -307,6 +307,12 @@ struct Select {
     /// The requester's identity; the first declared operator when absent.
     #[arg(long = "as")]
     requester: Option<String>,
+    /// The inventory to check against, overriding the file the site names.
+    /// Required for a site whose `inventory from:` is a hook: its hosts do
+    /// not exist until the hook is asked, and checking needs them now
+    /// (E0607).
+    #[arg(long)]
+    inventory: Option<PathBuf>,
 }
 
 /// A diagnostic on stderr: miette's report with the source line and a
@@ -378,6 +384,7 @@ fn load_input_opts(
             host: select.host.clone(),
             plan: select.plan_name.clone(),
             requester: select.requester.clone(),
+            inventory: select.inventory.clone(),
         };
         return Ok(match rue_surface::resolve::resolve(path, &opts) {
             Ok(ir) => Ok(ir),

@@ -72,6 +72,7 @@ fn codes(path: &std::path::Path, host: &str) -> Vec<(Code, String)> {
         host: Some(host.into()),
         plan: None,
         requester: None,
+        inventory: None,
     };
     match resolve(path, &opts) {
         Ok(_) => Vec::new(),
@@ -238,6 +239,7 @@ fn ir(path: &std::path::Path, host: &str) -> rue_core::ir::PlanIr {
         host: Some(host.into()),
         plan: None,
         requester: None,
+        inventory: None,
     };
     resolve(path, &opts).unwrap_or_else(|ds| {
         panic!(

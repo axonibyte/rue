@@ -16,7 +16,7 @@
 pub mod golden;
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rue_core::check::{check, deferred_steps};
 use rue_core::diagnostics::Code;
@@ -111,6 +111,7 @@ surface_negatives! {
     E0603 => "no-journal",
     E0604 => "no-operators",
     E0605 => "hook-without-registrar",
+    E0607 => "hook-inventory-unchecked",
 }
 
 /// The codes the front end raises, each with a surface negative.
@@ -134,6 +135,7 @@ pub const SURFACE_CODES: &[Code] = &[
     Code::E0603,
     Code::E0604,
     Code::E0605,
+    Code::E0607,
 ];
 
 /// The codes the renderer raises, unit-tested in `render/tests`.
@@ -160,16 +162,28 @@ pub const UNMODELED_CODES: &[(Code, &str)] = &[
     (Code::E0411, "the site does not declare sinks"),
 ];
 
+/// The record a text is checked against: the tenant's own
+/// `inventory.toml`, named rather than assumed. A text whose site says
+/// `inventory from: hook()` has no hosts until the hook is asked, so the
+/// harness stands where an operator would and names the record it means
+/// (E0607 otherwise).
+fn record_beside(text: &Path) -> Option<PathBuf> {
+    let p = text.parent()?.join("inventory.toml");
+    p.is_file().then_some(p)
+}
+
 /// The diagnostics a surface negative's text raises, rendered with paths
 /// relative to the repository root so the golden is location-free.
 pub fn surface_diagnostics(root: &Path, n: &SurfaceNegative) -> Result<String, String> {
+    let text = root.join(n.text());
     let opts = rue_surface::resolve::Options {
         suspend_e0604: false,
         host: Some(n.host.to_string()),
         plan: None,
         requester: None,
+        inventory: record_beside(&text),
     };
-    match rue_surface::resolve::resolve(&root.join(n.text()), &opts) {
+    match rue_surface::resolve::resolve(&text, &opts) {
         Ok(_) => Err(format!(
             "{}: the front end accepted a text that must refuse",
             n.name()
@@ -589,13 +603,15 @@ pub fn text_of(root: &Path, dir: &str) -> std::path::PathBuf {
 }
 
 fn resolve_case(root: &Path, dir: &str, owner: &str, plan: &str, requester: &str) -> PlanIr {
+    let text = text_of(root, dir);
     let opts = rue_surface::resolve::Options {
         suspend_e0604: false,
         host: Some(owner.to_string()),
         plan: Some(plan.to_string()),
         requester: Some(requester.to_string()),
+        inventory: record_beside(&text),
     };
-    rue_surface::resolve::resolve(&text_of(root, dir), &opts).unwrap_or_else(|diags| {
+    rue_surface::resolve::resolve(&text, &opts).unwrap_or_else(|diags| {
         panic!(
             "{dir}: the text does not resolve:\n{}",
             diags

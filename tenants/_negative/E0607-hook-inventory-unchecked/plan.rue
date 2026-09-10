@@ -1,0 +1,27 @@
+rue 0
+# Negative case E0607: the site takes its inventory from a hook, so it has
+# no hosts until that hook is asked -- and checking needs them now. The
+# front end must refuse with exactly E0607 unless a record is named
+# (`rue check --inventory FILE`).
+
+site do
+  inventory from: hook(:host_world)
+  journal to: local()
+  hooks do
+    registrar :requester, user: "ops", may_register: [:host_world]
+  end
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: :restore
+end
+
+defplan :posture, %{name: "db-01"} do
+  wane 1h
+  posture()
+end

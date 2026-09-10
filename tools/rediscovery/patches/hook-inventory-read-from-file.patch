@@ -1,0 +1,25 @@
+# Reverts: a text whose `inventory from:` is a hook is checked against a record the operator names, and refused with E0607 when they name none (7.5); here it silently reads a sibling inventory.toml, so a verdict is a statement about a file the text never mentions.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/site.rs
++++ b/surface/src/resolve/site.rs
+@@ -540,17 +540,9 @@
+     named: Option<&Path>,
+ ) -> Result<Inventory, InventoryRefusal> {
+     if b.kind == "hook" {
+-        let Some(p) = named else {
+-            return Err(InventoryRefusal(
+-                Code::E0607,
+-                format!(
+-                    "`inventory from: hook({})` has no hosts until the hook is asked, and \
+-                     checking needs a record now: name one with `rue check --inventory FILE`",
+-                    b.arg.clone().unwrap_or_default()
+-                ),
+-            ));
+-        };
+-        return read_toml(p).map_err(|m| InventoryRefusal(Code::E0602, m));
++        // The sibling file, silently, as Phase 2 did.
++        let p = named.map(Path::to_path_buf).unwrap_or_else(|| dir.join("inventory.toml"));
++        return read_toml(&p).map_err(|m| InventoryRefusal(Code::E0602, m));
+     }
+     // A named record overrides a file the text points at, so one text can
+     // be checked against the inventory of the site it is going to.
