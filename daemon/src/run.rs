@@ -16,9 +16,8 @@
 //! a declared registrar's hook, which they say with a `register` frame on
 //! their stdout like any other hook.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -31,8 +30,8 @@ use rue_engine::control::{
 use rue_engine::executor::Executor;
 use rue_engine::gates::Approval;
 use rue_engine::hook::{
-    HookAcceptor, HookApproval, HookExecutor, HookNotify, HookRegistry, HookScheduler, HookSink,
-    LineLink, Registered, Registration, HOOK_PROTOCOL,
+    spawn_stdio_hook, HookAcceptor, HookApproval, HookExecutor, HookNotify, HookRegistry,
+    HookScheduler, HookSink, Registered,
 };
 use rue_engine::host::Host;
 use rue_engine::journal::{Journal, Sink};
@@ -388,41 +387,12 @@ fn spawn_child(spec: &str, daemon: &Arc<Daemon>) -> Result<(), Refusal> {
     let (name, command) = spec
         .split_once('=')
         .ok_or_else(|| Refusal::Usage(format!("--spawn takes NAME=COMMAND, not {spec}")))?;
-    let mut child = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| refused(format!("spawning {name}: {e}")))?;
-    let stdin = child.stdin.take().ok_or_else(|| refused("child stdin"))?;
-    let stdout = child.stdout.take().ok_or_else(|| refused("child stdout"))?;
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
-        .map_err(|e| refused(format!("{name}: reading its register frame: {e}")))?;
-    let frame: serde_json::Value = serde_json::from_str(line.trim_end()).map_err(|e| {
-        refused(format!(
-            "{name}: its first line is not a register frame: {e}"
-        ))
-    })?;
-    let reg: Registration = serde_json::from_value(
-        frame
-            .get("register")
-            .cloned()
-            .ok_or_else(|| refused(format!("{name}: its first frame must be a register")))?,
-    )
-    .map_err(|e| refused(format!("{name}: register: {e}")))?;
-    if reg.protocol != HOOK_PROTOCOL {
-        return Err(refused(format!(
-            "{name}: hook protocol {} is not {HOOK_PROTOCOL}",
-            reg.protocol
-        )));
-    }
-    if reg.name != name {
-        return Err(refused(format!("{name}: registers as {}", reg.name)));
-    }
+    // The spawn and the registration frame are the protocol's, and
+    // `rue sdk-conform` performs the identical handshake; what is the
+    // daemon's alone is who may register (R0505) and the journal.
+    let mut hook = spawn_stdio_hook(name, command).map_err(|e| refused(e.to_string()))?;
+    let reg = hook.registration.clone();
+    let pid = hook.pid();
     // The child is the socket owner by construction; it must still be a
     // declared registrar's hook (R0505).
     let peer = control::Peer {
@@ -434,41 +404,39 @@ fn spawn_child(spec: &str, daemon: &Arc<Daemon>) -> Result<(), Refusal> {
         .operators
         .registrar_for(&peer, &reg.name)
         .map_err(|e| refused(format!("{name}: {e}")))?;
-    let link = Arc::new(LineLink::new(&reg.name, Box::new(stdin)));
+    let link = hook.link.clone();
     daemon.hooks.register(Registered {
         registration: reg.clone(),
         registrar: registrar.name.clone(),
-        connection: format!("child pid {}", child.id()),
+        connection: format!("child pid {pid}"),
         link: link.clone(),
     });
     daemon
         .journal_site(rue_core::journal::Event::HookRegistered {
             name: reg.name.clone(),
             registrar: registrar.name.clone(),
-            connection: format!("child pid {} (stdio, socket owner)", child.id()),
+            connection: format!("child pid {pid} (stdio, socket owner)"),
         })
         .map_err(|e| refused(e.to_string()))?;
-    // Acknowledge the registration on its stdin, as the socket does.
-    {
-        let mut ack = serde_json::to_vec(
-            &serde_json::json!({ "register": { "ok": true, "name": reg.name } }),
-        )
-        .unwrap_or_default();
-        ack.push(b'\n');
-        let _ = link.call_raw_write(&ack);
-    }
+    // Acknowledge the registration on its stdin, as the socket does. Until
+    // this arrives the child is waiting and has served nothing.
+    hook.acknowledge().map_err(|e| refused(e.to_string()))?;
+    let reader = hook
+        .take_stdout()
+        .ok_or_else(|| refused(format!("{name}: no stdout")))?;
     let d = daemon.clone();
     let hook_name = reg.name.clone();
     let registrar_name = registrar.name;
     std::thread::spawn(move || {
-        link.pump(Box::new(reader));
+        link.pump(reader);
         d.hooks.deregister(&hook_name);
         let _ = d.journal_site(rue_core::journal::Event::HookDeregistered {
             name: hook_name,
             registrar: registrar_name,
             reason: "child exited".into(),
         });
-        let _ = child.wait();
+        let mut hook = hook;
+        let _ = hook.wait();
     });
     Ok(())
 }

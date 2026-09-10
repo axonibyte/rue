@@ -261,6 +261,7 @@ phase shellcheck       p_shellcheck
 phase seam             sh tools/lint-seam.sh
 phase ecodes           sh tools/lint-ecodes.sh
 phase rcodes           sh tools/lint-rcodes.sh
+phase hook-ops         sh tools/lint-hook-ops.sh
 phase golden-hygiene   sh tools/lint-goldens.sh
 phase rediscovery-patches sh tools/rediscovery/check-patches.sh
 phase darwin-deps      sh tools/lint-darwin-deps.sh

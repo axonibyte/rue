@@ -20,6 +20,8 @@ failure, and exits 0 only if every phase ran and passed:
 | `shellcheck` | Every shell file is clean under shellcheck at its shebang's dialect |
 | `seam` | No tenant or platform word (`tools/seam-denylist.txt`) appears outside `tenants/` |
 | `ecodes` | `Rue.Proto.Diagnostics` and the roadmap's section 6.7 table name the same codes, and no `"E0xxx"` literal exists elsewhere |
+| `rcodes` | Every R-code of Appendix D is raised somewhere and asserted by a test, and no `"R0xxx"` literal exists outside the enumerations |
+| `hook-ops` | The ops table of `docs/hook-protocol.md` and `OPS` in `rue-hook-proto` name the same 26 ops, in both directions |
 | `golden-hygiene` | Every expected file has no CR, no trailing whitespace, exactly one trailing LF; JSON begins with `{` |
 | `rediscovery-patches` | Every row of the rediscovery table names a patch that still applies to the tree, and every patch is listed |
 | `darwin-deps` | No crate in the darwin dependency graph (`cargo tree --target *-apple-darwin`) is in `tools/darwin-denylist.txt`: the darwin binaries cross-link with zig and no macOS SDK, which a framework-linking crate would break |
@@ -254,6 +256,45 @@ a probe's exit status three-valued; `task_scheduler()`'s one task per
 instance and its refusal of an argument it cannot quote; `launchd()`'s
 property list beside the artifact. `cron()` is executed for real on the
 guests by the e2e harness; the other two are executed nowhere.
+
+## The hook protocol and its SDKs
+
+`docs/hook-protocol.md` is the wire and `hook-proto/src/op.rs` is that wire
+as data: 26 ops across 8 kinds, each with the fields its request carries,
+the fields an `ok: true` reply must carry (R0303 otherwise), and whether it
+is one of the four messages a secret may travel in. Everything that speaks
+the protocol -- the engine's adapters, `rue-hook-sdk`, the shim, and the
+conformance runner -- builds its frames from that one table, so freezing
+the protocol at v1 is freezing one array.
+
+`rue sdk-conform <command>` judges one hook against it. It spawns the
+command with the same handshake `rued` performs for a `--spawn` child
+(`rue_engine::hook::spawn_stdio_hook`, which both callers share), then
+drives every op of every kind the hook registered for, against the fixed
+world of `docs/sdk-conformance.md`. Exit 0 when every case passed, 1 when
+any failed, 2 when the hook never registered -- a hook that ran and failed
+has been judged, and one that never started has not.
+
+Every reply is checked twice: against the case's own expected answer, and
+against its op's row -- the id comes back, `ok` is a boolean, an `ok: true`
+carries every required field, and it arrives inside the deadline. The
+second check is most of what an SDK is for: a hook written on one cannot
+answer `ok: true` without a required field, because the SDK builds the
+reply from the row.
+
+The suite also drives four **provocations**, which a conformance hook must
+implement by deliberately violating the protocol: a refusal, an `ok: true`
+missing a required field, a reply with no boolean `ok`, and no reply at
+all. They prove the runner detects what the engine would (R0303, R0303 and
+Silent), and they cannot be written through the SDK -- `Hooks::answer`
+cannot express them -- which is why `sdk/rust/src/bin/conform_hook.rs`
+drops to the wire for exactly those four and for nothing else.
+
+Three enumerations are bound together so none can drift: `tools/lint-hook-ops.sh`
+(the `hook-ops` phase) ties the document to `OPS`, and
+`sdk/rust/tests/conform.rs` ties `OPS` to the cases the suite actually
+drove. An op that gains a row fails the gate until it is documented and
+fails the tests until it is driven.
 
 ## Goldens
 

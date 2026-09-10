@@ -367,6 +367,126 @@ impl HookRegistry {
 }
 
 // ---------------------------------------------------------------------------
+// A hook the caller spawned
+
+/// A hook running as a child process, its registration read and validated.
+///
+/// The caller decides whether to accept it -- `rued` checks that the socket
+/// owner is a declared registrar (R0505), `rue sdk-conform` accepts any
+/// hook it was pointed at -- and only then [`acknowledge`](Self::acknowledge)s
+/// it, because the acknowledgement is what tells the child to start
+/// serving.
+pub struct StdioHook {
+    pub registration: Registration,
+    pub link: Arc<LineLink>,
+    child: std::process::Child,
+    stdout: Option<Box<dyn BufRead + Send>>,
+}
+
+impl StdioHook {
+    /// The child's pid, for the `connection` a registration is journaled
+    /// under.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    /// The reader the caller pumps on a thread; taken once.
+    pub fn take_stdout(&mut self) -> Option<Box<dyn BufRead + Send>> {
+        self.stdout.take()
+    }
+
+    /// Tell the child its registration was accepted. Until this arrives it
+    /// is waiting on its stdin and has served nothing.
+    pub fn acknowledge(&self) -> Result<(), HookError> {
+        let mut ack = serde_json::to_vec(
+            &json!({ "register": { "ok": true, "name": self.registration.name } }),
+        )
+        .unwrap_or_default();
+        ack.push(b'\n');
+        self.link
+            .call_raw_write(&ack)
+            .map_err(|e| HookError::Io(e.to_string()))
+    }
+
+    /// End the child. Used by a caller that owns the whole of its life --
+    /// the conformance runner -- rather than by the daemon, which lets a
+    /// hook live until its connection ends.
+    pub fn kill(&mut self) -> std::io::Result<()> {
+        self.child.kill()?;
+        self.child.wait().map(|_| ())
+    }
+
+    /// Reap the child once its stdout has ended.
+    pub fn wait(&mut self) -> std::io::Result<()> {
+        self.child.wait().map(|_| ())
+    }
+}
+
+/// Spawn `command` under `sh -c` and read the registration frame its first
+/// line of stdout must be (docs/hook-protocol.md, "A hook over stdio").
+///
+/// The protocol version and the name are checked here, because both are the
+/// protocol's business and neither depends on who is spawning: a child that
+/// registers under a name other than the one it was spawned as is refused,
+/// so a `--spawn` key always means what it says.
+pub fn spawn_stdio_hook(name: &str, command: &str) -> Result<StdioHook, HookError> {
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| HookError::Io(format!("spawning {name}: {e}")))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| HookError::Io(format!("{name}: no stdin")))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| HookError::Io(format!("{name}: no stdout")))?;
+    let mut reader = std::io::BufReader::new(stdout);
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .map_err(|e| HookError::Io(format!("{name}: reading its register frame: {e}")))?;
+    if line.trim().is_empty() {
+        return Err(HookError::Contract(format!(
+            "{name}: it wrote nothing before ending; the first line of a hook's stdout is its              register frame"
+        )));
+    }
+    let frame: Value = serde_json::from_str(line.trim_end()).map_err(|e| {
+        HookError::Contract(format!(
+            "{name}: its first line is not a register frame: {e}"
+        ))
+    })?;
+    let reg: Registration =
+        serde_json::from_value(frame.get("register").cloned().ok_or_else(|| {
+            HookError::Contract(format!("{name}: its first frame must be a register"))
+        })?)
+        .map_err(|e| HookError::Contract(format!("{name}: register: {e}")))?;
+    if reg.protocol != HOOK_PROTOCOL {
+        return Err(HookError::Contract(format!(
+            "{name}: hook protocol {} is not {HOOK_PROTOCOL} (R0501)",
+            reg.protocol
+        )));
+    }
+    if reg.name != name {
+        return Err(HookError::Contract(format!(
+            "{name}: registers as {}",
+            reg.name
+        )));
+    }
+    let link = Arc::new(LineLink::new(&reg.name, Box::new(stdin)));
+    Ok(StdioHook {
+        registration: reg,
+        link,
+        child,
+        stdout: Some(Box::new(reader)),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Requests
 
 // One constructor per op of 7.5, in `rue-hook-proto` so the engine, the

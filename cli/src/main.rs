@@ -59,6 +59,21 @@ enum Verb {
     },
     /// Print the runtime state machine's transition table.
     States,
+    /// Judge a hook against the protocol (docs/sdk-conformance.md): an SDK
+    /// passes this before it calls itself an SDK.
+    SdkConform {
+        /// The command that starts the hook, run with `sh -c`.
+        command: String,
+        /// The name it must register as.
+        #[arg(long, default_value = "conform")]
+        name: String,
+        /// How long one reply may take before it counts as Silent.
+        #[arg(long, default_value_t = 2000)]
+        deadline_ms: u64,
+        /// Print the report as JSON instead of a line per case.
+        #[arg(long)]
+        json: bool,
+    },
     /// The journal: verify a chain end to end (section 5.10).
     Journal {
         #[command(subcommand)]
@@ -665,6 +680,51 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
         Verb::States => {
             out.write_all(render_table().as_bytes())?;
             Ok(ExitCode::SUCCESS)
+        }
+        Verb::SdkConform {
+            command,
+            name,
+            deadline_ms,
+            json,
+        } => {
+            let report = match rue_engine::conform::conform(
+                &name,
+                &command,
+                std::time::Duration::from_millis(deadline_ms),
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    // Exit 2: the suite could not be run at all, which is a
+                    // different thing from a hook that ran and failed.
+                    eprintln!("rue sdk-conform: {e}");
+                    return Ok(ExitCode::from(2));
+                }
+            };
+            if json {
+                writeln!(out, "{}", report.to_json())?;
+            } else {
+                for o in &report.outcomes {
+                    writeln!(
+                        out,
+                        "{}  {} :: {}\n        {}",
+                        if o.passed { "ok    " } else { "not ok" },
+                        o.op,
+                        o.case,
+                        o.detail
+                    )?;
+                }
+                writeln!(
+                    out,
+                    "\n{} passed, {} failed, against the protocol of docs/hook-protocol.md v1",
+                    report.passed(),
+                    report.failed()
+                )?;
+            }
+            Ok(if report.failed() == 0 {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            })
         }
         Verb::Fmt { file, check } => {
             let src = fs::read_to_string(&file)

@@ -862,6 +862,7 @@ dependencies = [
 name = "rue-hook-sdk"
 version = "0.1.0"
 dependencies = [
+ "rue-engine",
  "rue-hook-proto",
  "serde",
  "serde_json",

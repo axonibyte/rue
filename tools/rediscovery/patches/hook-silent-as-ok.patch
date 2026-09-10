@@ -1,0 +1,13 @@
+# Reverts: a hook that does not answer within the deadline is Silent (7.5), which the engine treats as a refusal of the step; here a timeout is read as a cheerful ok.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/hook.rs
++++ b/engine/src/hook.rs
+@@ -266,7 +266,7 @@
+                     .lock()
+                     .unwrap_or_else(|e| e.into_inner())
+                     .remove(&id);
+-                Err(HookError::Silent)
++                Ok(json!({ "id": id, "ok": true }))
+             }
+         }
+     }

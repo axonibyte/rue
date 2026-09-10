@@ -1,0 +1,19 @@
+# Reverts: an ok:true reply that lacks a field its op requires is R0303 (7.5), which the conformance suite must catch; here every reply is judged to carry what it promised.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/conform.rs
++++ b/engine/src/conform.rs
+@@ -236,12 +236,8 @@
+     let Some(row) = Op::find(kind, op) else {
+         return Ok(());
+     };
+-    let missing: Vec<&str> = row
+-        .required_reply
+-        .iter()
+-        .filter(|f| reply.get(**f).is_none())
+-        .copied()
+-        .collect();
++    let missing: Vec<&str> = Vec::new();
++    let _ = row;
+     if missing.is_empty() {
+         Ok(())
+     } else {

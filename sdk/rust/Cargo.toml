@@ -11,3 +11,15 @@ repository.workspace = true
 rue-hook-proto = { path = "../../hook-proto" }
 serde.workspace = true
 serde_json.workspace = true
+
+# The reference conformance hook of docs/sdk-conformance.md: what
+# `rue sdk-conform` is pointed at to judge this SDK, and the worked example
+# every other SDK's conformance hook is written to match.
+[[bin]]
+name = "rue-conform-hook"
+path = "src/bin/conform_hook.rs"
+
+[dev-dependencies]
+# The conformance runner plays the daemon. A dev-only edge: the engine
+# depends on the wire, never on an SDK.
+rue-engine = { path = "../../engine" }

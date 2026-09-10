@@ -302,7 +302,7 @@ pub fn expose(v: &Resolved) -> &str {
 }
 
 /// The reply frame for a refusal.
-pub(crate) fn refusal_frame(id: Value, why: &Refusal) -> Value {
+pub fn refusal_frame(id: Value, why: &Refusal) -> Value {
     json!({ "id": id, "ok": false, "error": why.0 })
 }
 
@@ -310,7 +310,7 @@ pub(crate) fn refusal_frame(id: Value, why: &Refusal) -> Value {
 /// is looked up so that a reply this crate builds cannot omit a required
 /// field: an op whose fields are missing here is a bug in this crate, not
 /// an R0303 the user has to debug at the far end.
-pub(crate) fn ok_frame(id: Value, op: &Op, fields: Value) -> Value {
+pub fn ok_frame(id: Value, op: &Op, fields: Value) -> Value {
     let mut v = json!({ "id": id, "ok": true });
     if let Value::Object(m) = fields {
         for (k, val) in m {
@@ -327,7 +327,11 @@ pub(crate) fn ok_frame(id: Value, op: &Op, fields: Value) -> Value {
 }
 
 /// Read one line and parse it as a frame; `None` at end of input.
-pub(crate) fn read_frame<R: BufRead>(r: &mut R) -> std::io::Result<Option<Value>> {
+///
+/// Public because a hook that must answer off the SDK's rails -- the
+/// conformance hook's deliberate provocations are the only honest example
+/// -- needs the same framing as the serve loop rather than a second one.
+pub fn read_frame<R: BufRead>(r: &mut R) -> std::io::Result<Option<Value>> {
     let mut line = String::new();
     if r.read_line(&mut line)? == 0 {
         return Ok(None);
@@ -341,7 +345,7 @@ pub(crate) fn read_frame<R: BufRead>(r: &mut R) -> std::io::Result<Option<Value>
 }
 
 /// Write one frame as a line and flush it: an unflushed reply is a silence.
-pub(crate) fn write_frame<W: Write>(w: &mut W, v: &Value) -> std::io::Result<()> {
+pub fn write_frame<W: Write>(w: &mut W, v: &Value) -> std::io::Result<()> {
     let mut line = serde_json::to_vec(v)?;
     line.push(b'\n');
     w.write_all(&line)?;
