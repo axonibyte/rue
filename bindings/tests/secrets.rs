@@ -8,7 +8,7 @@
 use rue_core::model::Instant;
 use rue_engine::secrets::{Acceptor, Mailbox};
 
-use rue_bindings::secrets::{FileSource, Hold, Requester};
+use rue_bindings::secrets::{Hold, Requester};
 
 #[test]
 fn requester_takes_a_secret_only_while_a_client_is_attached() {
@@ -84,7 +84,11 @@ fn hold_keeps_one_secret_in_memory_gives_it_up_once_and_drops_it_at_its_bound() 
 
 #[cfg(unix)]
 mod file_source {
-    use super::*;
+    // `file()` is unix-only for now: what it refuses is a mode, and the
+    // Windows equivalent is an ACL check that waits for Phase 3W. So the
+    // import lives here rather than at file scope, where it would be
+    // unused on the Windows target and `-D warnings` would say so.
+    use rue_bindings::secrets::FileSource;
     use rue_engine::secrets::Source;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
