@@ -40,6 +40,9 @@ fi
     exit 2
 }
 
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/rue-conform-all.XXXXXX") || exit 2
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
 rc=0
 run() { # run <sdk> <interpreter> <command...>
     sdk=$1; shift
@@ -73,6 +76,27 @@ if [ -d "$root/sdk/elixir" ]; then
     run elixir elixir \
         "elixir -pa $root/sdk/elixir/_build/dev/lib/rue_hook/ebin \
          $root/sdk/elixir/examples/conformance_hook.exs conform"
+fi
+
+# Java is compiled with javac and not with maven: `mvn compile` resolves
+# its plugins from Maven Central, and a conformance run should not need the
+# network. The POM is the artifact's packaging story and the pipeline's
+# maven step is what proves it builds; what is judged here is the code.
+if [ -d "$root/sdk/java" ]; then
+    if command -v javac > /dev/null 2>&1; then
+        rm -rf "$root/sdk/java/build"
+        mkdir -p "$root/sdk/java/build"
+        # The source list goes through javac's @argfile rather than through
+        # the shell, so there is no word splitting to reason about and no
+        # lint to suppress.
+        sources=$tmp/java-sources
+        find "$root/sdk/java/src/main/java" -name '*.java' > "$sources"
+        if ! ( cd "$root/sdk/java" && javac -d build "@$sources" ); then
+            echo "conform-all: sdk/java does not compile" >&2
+            rc=1
+        fi
+    fi
+    run java java "java -cp $root/sdk/java/build dev.rue.hook.example.ConformanceHook conform"
 fi
 
 if [ "$rc" -eq 0 ]; then

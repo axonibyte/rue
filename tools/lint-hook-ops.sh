@@ -113,6 +113,11 @@ sdk_table elixir sdk/elixir sdk/elixir/lib/rue_hook/proto.ex \
     '%Op\{ *kind: *"[a-z_]+", *op: *"[a-z_]+"' \
     's/%Op\{ *kind: *"([a-z_]+)", *op: *"([a-z_]+)"/\1.\2/'
 
+# java: row("kind", "op", ...) and new Op("kind", "op", ...)
+sdk_table java sdk/java sdk/java/src/main/java/dev/rue/hook/Op.java \
+    '(row|new Op)\( *"[a-z_]+", *"[a-z_]+"' \
+    's/(row|new Op)\( *"([a-z_]+)", *"([a-z_]+)"/\2.\3/'
+
 while read -r op; do
     grep -qx "$op" "$tmp/code" || {
         echo "lint-hook-ops: $op is documented in hook-protocol.md and absent from OPS" >&2
