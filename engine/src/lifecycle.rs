@@ -27,7 +27,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use rue_core::algebra::{numbered, op_of};
-use rue_core::body::Body;
+use rue_core::body::{Body, Ref};
 use rue_core::check;
 use rue_core::explain::undo_line;
 use rue_core::intent::{effective_wane, infer_intent, Intent};
@@ -417,6 +417,8 @@ pub struct Engine {
     pub(crate) approval: Option<Box<dyn Approval>>,
     /// `secrets deliver_to:`, in the order the site declares them.
     pub(crate) acceptors: Vec<Box<dyn Acceptor>>,
+    /// `secrets from:`, where a `secret(:ref)` in a body gets its value.
+    pub(crate) source: Option<Box<dyn crate::secrets::Source>>,
     /// `notify via:`, where an unbounded state says so each reap pass.
     pub(crate) notify: Option<Box<dyn Notify>>,
     pub(crate) hosts: BTreeMap<String, Host>,
@@ -571,6 +573,7 @@ impl Engine {
             schedulers: Vec::new(),
             approval: None,
             acceptors: Vec::new(),
+            source: None,
             notify: None,
             skew_tolerance: DEFAULT_SKEW_TOLERANCE,
             settling,
@@ -614,6 +617,11 @@ impl Engine {
     /// The `notify via:` binding.
     pub fn set_notify(&mut self, n: Box<dyn Notify>) {
         self.notify = Some(n);
+    }
+
+    /// The `secrets from:` binding: where a `secret(:ref)` is resolved.
+    pub fn set_secret_source(&mut self, s: Box<dyn crate::secrets::Source>) {
+        self.source = Some(s);
     }
 
     /// A `secrets deliver_to:` acceptor, appended in the site's order.
@@ -1181,6 +1189,43 @@ impl Engine {
         }
     }
 
+    /// Fill `env.secrets` with every `secret(:ref)` this body names, from
+    /// the `secrets from:` binding.
+    ///
+    /// Only what the body asks for, and only as it is about to run: a
+    /// source is never asked to enumerate what it holds, and a plan naming
+    /// no secret never reaches one. A site with no source declared, or a
+    /// source that will not answer, refuses the step -- running it with a
+    /// blank where a credential belongs is the one outcome nobody wants.
+    fn load_secrets(&mut self, env: &mut Env, body: &Body) -> Result<(), String> {
+        let mut wanted: Vec<String> = Vec::new();
+        for prim in body {
+            for r in prim.refs() {
+                if let Ref::Secret(n) = r {
+                    if !wanted.iter().any(|w| w == n) {
+                        wanted.push(n.clone());
+                    }
+                }
+            }
+        }
+        if wanted.is_empty() {
+            return Ok(());
+        }
+        let Some(source) = self.source.as_mut() else {
+            return Err(format!(
+                "the plan names secret({}) and the site declares no `secrets from:` binding",
+                wanted.join("), secret(")
+            ));
+        };
+        for name in wanted {
+            let value = source
+                .resolve(&name)
+                .map_err(|e| format!("secret({name}): {e}"))?;
+            env.secrets.insert(name, value);
+        }
+        Ok(())
+    }
+
     /// Install the backstop before the first covered step and arm it
     /// before the step `arm_before` names (5.6). A refusal here refuses
     /// the step: no step is committed before the backstop covering it is
@@ -1511,7 +1556,12 @@ impl Engine {
         }
         self.snapshot(rec, n, &op, &host)?;
         let before = self.watched(rec, &host, n);
-        let env = self.env_for(rec, vars);
+        let mut env = self.env_for(rec, vars);
+        // A secret the step names is fetched here, once, just before the
+        // body that uses it runs.
+        if let Err(why) = self.load_secrets(&mut env, &op.do_) {
+            return self.refuse(rec, n, &why);
+        }
         let body = match resolve_body(&op.do_, &host, &env) {
             Ok(b) => b,
             Err(u) => return self.refuse(rec, n, &format!("step {n}: {u}")),

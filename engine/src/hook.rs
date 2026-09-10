@@ -999,6 +999,48 @@ impl Acceptor for HookAcceptor {
     }
 }
 
+/// `secrets from: hook(:name)`: the hook as the source of a `secret(:ref)`.
+///
+/// `secrets.resolve` is one of the two messages of 7.5 that carry a secret
+/// toward the engine. The R0305 guard is on the outbound side and is
+/// untouched by this: what comes back is put on a resolved primitive
+/// marked secret and never journaled.
+pub struct HookSource {
+    pub name: String,
+    pub registry: Arc<HookRegistry>,
+    pub deadline: Duration,
+}
+
+impl crate::secrets::Source for HookSource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn resolve(&mut self, reference: &str) -> Result<String, ExecError> {
+        let (link, _) = self
+            .registry
+            .link(&self.name)
+            .map_err(|e| ExecError::Unreachable(e.to_string()))?;
+        let reply = link
+            .call(secrets_resolve(reference), self.deadline)
+            .map_err(|e| match e {
+                HookError::Silent => ExecError::Silent,
+                HookError::Refused(r) => ExecError::Failed(r),
+                HookError::Contract(m) => ExecError::Failed(format!("R0303: {m}")),
+                HookError::Unregistered(n) => {
+                    ExecError::Unreachable(format!("hook {n} not registered"))
+                }
+                HookError::Io(m) => ExecError::Io(m),
+            })?;
+        match reply.get("value").and_then(Value::as_str) {
+            Some(v) => Ok(v.to_string()),
+            None => Err(ExecError::Failed(
+                "R0303: secrets.resolve without a value".into(),
+            )),
+        }
+    }
+}
+
 /// `notify via: hook(:name)`: the hook as the notify binding (7.5).
 pub struct HookNotify {
     pub name: String,

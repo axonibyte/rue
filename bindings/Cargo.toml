@@ -12,6 +12,9 @@ rue-core = { path = "../core" }
 rue-engine = { path = "../engine" }
 rue-render = { path = "../render" }
 serde_json.workspace = true
+# `secrets from: file()` reads a TOML table of reference to value, the
+# same format the inventory uses (Appendix C).
+toml.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 # flock on the host lock; the rue group's existence for bootstrap.

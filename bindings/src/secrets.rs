@@ -1,6 +1,7 @@
-//! The built-in secret acceptors of docs/ROADMAP.md 7.3 and 5.13:
-//! `requester()` and `hold(until: :wane | DURATION)`. Everything else is a
-//! hook.
+//! The built-in secret bindings of docs/ROADMAP.md 7.3 and 5.13: the
+//! acceptors `requester()` and `hold(until: :wane | DURATION)` that a
+//! value is delivered to, and the source `file()` a `secret(:ref)` is
+//! resolved from. Everything else is a hook.
 //!
 //! Neither writes anything to the store or to disk. `requester()` hands
 //! the value to the client attached to the verb that produced it, and
@@ -13,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use rue_core::model::Instant;
 use rue_engine::executor::ExecError;
-use rue_engine::secrets::{Acceptor, Mailbox};
+use rue_engine::secrets::{Acceptor, Mailbox, Source};
 
 /// `requester()`: the client attached to the verb that produced the
 /// secret. It accepts only while one is attached, and what it takes is
@@ -176,6 +177,72 @@ impl Acceptor for Hold {
                 .into_iter()
                 .map(|(i, v)| (i, v.label))
                 .collect()
+        })
+    }
+}
+
+/// `secrets from: file(PATH)`: a TOML file of `reference = "value"`.
+///
+/// The file is read on every resolution rather than held in memory, so a
+/// rotated credential is picked up without a restart and a value lives in
+/// this process only as long as the step that uses it.
+///
+/// It must not be readable by group or other. A credential file anyone on
+/// the host can read is not a secret, and the failure it produces -- a
+/// plan that runs perfectly while the value is public -- is silent, so it
+/// is refused loudly here instead.
+pub struct FileSource {
+    path: std::path::PathBuf,
+}
+
+impl FileSource {
+    pub fn new(path: impl Into<std::path::PathBuf>) -> FileSource {
+        FileSource { path: path.into() }
+    }
+
+    #[cfg(unix)]
+    fn refuse_if_readable_by_others(&self) -> Result<(), ExecError> {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(&self.path)
+            .map_err(|e| ExecError::Failed(format!("{}: {e}", self.path.display())))?;
+        let mode = meta.permissions().mode() & 0o077;
+        if mode != 0 {
+            return Err(ExecError::Failed(format!(
+                "{} is mode {:04o}: a secrets file readable by group or other is not a secret",
+                self.path.display(),
+                meta.permissions().mode() & 0o7777
+            )));
+        }
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    fn refuse_if_readable_by_others(&self) -> Result<(), ExecError> {
+        // The equivalent is an ACL check, which waits for Phase 3W with
+        // the rest of the Windows access-control work.
+        Ok(())
+    }
+}
+
+impl Source for FileSource {
+    fn name(&self) -> &str {
+        "file"
+    }
+
+    fn resolve(&mut self, reference: &str) -> Result<String, ExecError> {
+        self.refuse_if_readable_by_others()?;
+        let text = std::fs::read_to_string(&self.path)
+            .map_err(|e| ExecError::Failed(format!("{}: {e}", self.path.display())))?;
+        let table: BTreeMap<String, String> = toml::from_str(&text)
+            .map_err(|e| ExecError::Failed(format!("{}: {e}", self.path.display())))?;
+        // A reference the file does not hold is a refusal. Answering with
+        // an empty string would run the step with a blank where a
+        // credential belongs, which is the one outcome nobody wants.
+        table.get(reference).cloned().ok_or_else(|| {
+            ExecError::Failed(format!(
+                "{} holds no secret named {reference}",
+                self.path.display()
+            ))
         })
     }
 }

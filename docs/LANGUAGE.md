@@ -66,6 +66,21 @@ There are no user-defined functions. The builtins are `if/3`,
 `secret/1`. `secret(:db_pw)` names a `secrets from:` binding; it is the
 only way a secret enters a body.
 
+The value is fetched once, immediately before the body that names it runs,
+and only the references that body actually names are asked for: a source is
+never asked to enumerate what it holds, and a plan naming no secret never
+reaches one. A step that names a secret the site cannot resolve -- no
+`secrets from:` declared, or a source that will not answer -- is **refused**
+and does not run. A blank where a credential belongs would let the step
+succeed with the wrong effect and say nothing, which is worse than a
+refusal that names the reference.
+
+`file(PATH)` reads a TOML table of `reference = "value"` relative to the
+declaring file, on every resolution, so a rotated credential needs no
+restart. It refuses a file that is readable by group or other: a secret
+anyone on the host can read is not one, and that failure is otherwise
+silent.
+
 ## Keyword lines
 
 Inside a `defop`, a `defplan` or a `site` block, most statements are a

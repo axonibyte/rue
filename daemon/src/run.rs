@@ -22,7 +22,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rue_bindings::secrets::{Hold, Requester};
+use rue_bindings::secrets::{FileSource, Hold, Requester};
 use rue_engine::clock::SystemClock;
 use rue_engine::control::{
     self, Daemon, Operator, Operators, RegistrarDecl, SubscriberSink, Subscribers, UserSpec,
@@ -31,7 +31,7 @@ use rue_engine::executor::Executor;
 use rue_engine::gates::Approval;
 use rue_engine::hook::{
     spawn_stdio_hook, HookAcceptor, HookApproval, HookExecutor, HookNotify, HookRegistry,
-    HookScheduler, HookSink, Registered,
+    HookScheduler, HookSink, HookSource, Registered,
 };
 use rue_engine::host::Host;
 use rue_engine::journal::{Journal, Sink};
@@ -50,7 +50,7 @@ fn my_uid_opt() -> Option<u32> {
 }
 
 use rue_engine::scheduler::Scheduler;
-use rue_engine::secrets::{Acceptor, Mailbox};
+use rue_engine::secrets::{Acceptor, Mailbox, Source};
 use rue_engine::sign::Signer;
 use rue_engine::store::{schema_of, SchemaError, Store};
 use rue_surface::resolve::site::SiteDecl;
@@ -229,6 +229,38 @@ fn acceptors_of(
         }
     }
     Ok(v)
+}
+
+/// The `secrets from:` binding of the site block: where a `secret(:ref)`
+/// in a body is resolved, just before the body that names it runs. A site
+/// with none declared refuses any step that names a secret, and says so.
+fn source_of(
+    decl: &SiteDecl,
+    dir: &Path,
+    hooks: &Arc<HookRegistry>,
+    deadline: Duration,
+) -> Result<Option<Box<dyn Source>>, Refusal> {
+    let Some(b) = &decl.secrets_from else {
+        return Ok(None);
+    };
+    match b.kind.as_str() {
+        // Relative to the declaring file, as `inventory from: file()` is.
+        "file" => {
+            let rel = b
+                .arg
+                .clone()
+                .ok_or_else(|| refused("secrets from: file() needs a path"))?;
+            Ok(Some(Box::new(FileSource::new(dir.join(rel)))))
+        }
+        "hook" => Ok(Some(Box::new(HookSource {
+            name: b.arg.clone().unwrap_or_default(),
+            registry: hooks.clone(),
+            deadline,
+        }))),
+        other => Err(refused(format!(
+            "secrets from: {other}() is not a secret source"
+        ))),
+    }
 }
 
 /// The `notify via:` binding of the site block.
@@ -490,6 +522,14 @@ pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
     }
     if let Some(n) = notify_of(&sb.decl, &hooks, deadline)? {
         engine.set_notify(n);
+    }
+    let site_dir = cfg
+        .site
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    if let Some(src) = source_of(&sb.decl, &site_dir, &hooks, deadline)? {
+        engine.set_secret_source(src);
     }
     let mailbox = Mailbox::new();
     for a in acceptors_of(&sb.decl, &hooks, deadline, &mailbox)? {

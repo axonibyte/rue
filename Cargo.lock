@@ -812,6 +812,7 @@ dependencies = [
  "rue-engine",
  "rue-render",
  "serde_json",
+ "toml",
  "windows-sys",
 ]
 

@@ -242,6 +242,44 @@ pub enum Prim {
 }
 
 impl Prim {
+    /// Every reference the primitive's values carry, in the order they are
+    /// written.
+    ///
+    /// One walk of the shape, so that anything asking "what does this need
+    /// bound?" -- the engine fetching a `secret(:ref)` before it runs a
+    /// body, a checker asking whether a value is secret -- asks the same
+    /// question of the same code, and a primitive that gains a value
+    /// cannot be forgotten by one caller and not another.
+    pub fn refs(&self) -> Vec<&Ref> {
+        match self {
+            Prim::Run(r) => {
+                let mut v = template_refs(&r.cmd);
+                for e in &r.env {
+                    v.extend(e.value.refs());
+                }
+                if let Some(s) = &r.stdin {
+                    v.extend(s.refs());
+                }
+                v
+            }
+            Prim::Write(w) => w.content.refs(),
+            Prim::Append(a) => a.line.refs(),
+            Prim::RegionSet(r) => r.content.refs(),
+            Prim::Stage(s) => s.content.refs(),
+            Prim::Hook(h) => h.args.iter().flat_map(|a| a.value.refs()).collect(),
+            Prim::Call(c) => {
+                let mut v = template_refs(&c.run);
+                for a in &c.args {
+                    v.extend(a.value.refs());
+                }
+                v
+            }
+            Prim::Remove(_) | Prim::RegionClear(_) | Prim::Install(_) | Prim::Release(_) => {
+                Vec::new()
+            }
+        }
+    }
+
     /// The primitive's name as the surface spells it.
     pub fn name(&self) -> &'static str {
         match self {

@@ -247,3 +247,124 @@ fn a_hold_until_wane_on_a_permanent_plan_with_no_max_wait_is_r0104() {
         w.events()
     );
 }
+
+/// A step whose `do` names `secret(:db_pw)` in an env var: the shape a
+/// credential actually reaches a command in (5.13 forbids the command
+/// line, so the preamble carries it).
+fn step_wanting_a_secret(name: &str) -> Item {
+    use rue_core::body::{secret, EnvVar, Part, Prim, Run, Value};
+    let mut op = world::op(name);
+    op.do_ = vec![Prim::Run(Run {
+        cmd: vec![Part::Lit(format!("do {name}"))],
+        env: vec![EnvVar {
+            name: "PW".into(),
+            value: Value::Ref(secret("db_pw")),
+        }],
+        stdin: None,
+    })];
+    world::step(op)
+}
+
+/// A source that answers one reference and refuses everything else, and
+/// records what it was asked.
+#[derive(Clone, Default)]
+struct FakeSource(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+
+impl rue_engine::secrets::Source for FakeSource {
+    fn name(&self) -> &str {
+        "fake"
+    }
+    fn resolve(&mut self, reference: &str) -> Result<String, rue_engine::executor::ExecError> {
+        self.0.lock().unwrap().push(reference.to_string());
+        if reference == "db_pw" {
+            Ok("s3cr3t".into())
+        } else {
+            Err(rue_engine::executor::ExecError::Failed(format!(
+                "no secret named {reference}"
+            )))
+        }
+    }
+}
+
+#[test]
+fn a_secret_in_a_body_is_resolved_from_the_source_just_before_the_step_runs() {
+    let mut w = World::new("sec-source");
+    let source = FakeSource::default();
+    w.engine.set_secret_source(Box::new(source.clone()));
+    let plan = world::temp_plan("p", vec![step_wanting_a_secret("a")]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Applied, "{out:?}");
+
+    // Asked for exactly what the body named, once.
+    assert_eq!(*source.0.lock().unwrap(), vec!["db_pw".to_string()]);
+
+    // The value reached the executor on the primitive, marked secret, so
+    // every downstream rule about where it may go applies to it.
+    let body = w.ssh.with(|f| f.calls[0].body.clone());
+    let rue_engine::executor::RPrim::Run { env, .. } = &body[0] else {
+        panic!("the step's body is not a run: {body:?}")
+    };
+    assert_eq!(env[0].0, "PW");
+    assert_eq!(env[0].1.text, "s3cr3t");
+    assert!(env[0].1.secret, "the value must carry its secrecy");
+
+    // And it is nowhere in the journal.
+    let text = format!("{:?}", w.sink.events());
+    assert!(!text.contains("s3cr3t"), "the journal holds the value");
+}
+
+#[test]
+fn a_step_naming_a_secret_with_no_source_declared_is_refused_and_never_runs() {
+    // The one outcome nobody wants is a step that runs with a blank where
+    // a credential belongs, so a site with no `secrets from:` refuses.
+    let mut w = World::new("sec-none");
+    let plan = world::temp_plan("p", vec![step_wanting_a_secret("a")]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Closed, "{out:?}");
+    assert!(
+        out.line.contains("db_pw") && out.line.contains("secrets from"),
+        "{}",
+        out.line
+    );
+    assert!(
+        w.ssh.with(|f| f.calls.is_empty()),
+        "the step ran without its secret"
+    );
+}
+
+#[test]
+fn a_source_that_refuses_a_reference_refuses_the_step() {
+    let mut w = World::new("sec-refuse");
+    w.engine.set_secret_source(Box::new(FakeSource::default()));
+    let mut item = step_wanting_a_secret("a");
+    // Name a reference the source does not hold.
+    if let Item::Step(s) = &mut item {
+        use rue_core::body::{secret, EnvVar, Part, Prim, Run, Value};
+        s.op.do_ = vec![Prim::Run(Run {
+            cmd: vec![Part::Lit("do a".into())],
+            env: vec![EnvVar {
+                name: "PW".into(),
+                value: Value::Ref(secret("absent")),
+            }],
+            stdin: None,
+        })];
+    }
+    let plan = world::temp_plan("p", vec![item]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Closed, "{out:?}");
+    assert!(
+        out.line.contains("absent"),
+        "the refusal names the reference: {}",
+        out.line
+    );
+    assert!(w.ssh.with(|f| f.calls.is_empty()));
+}

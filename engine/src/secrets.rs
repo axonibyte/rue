@@ -49,6 +49,23 @@ impl Mailbox {
     }
 }
 
+/// `secrets from:` (7.3): where a `secret(:ref)` gets its value.
+///
+/// The engine asks only for the references a body actually names, and only
+/// when it is about to run that body, so a source is never asked to
+/// enumerate what it holds and a plan that names no secret never touches
+/// one. The value comes back toward the engine, which is one of the four
+/// messages of 5.13 a secret may travel in; it is put on the resolved
+/// primitive marked secret, and from there the placement rules keep it off
+/// every argv, log and journal.
+pub trait Source: Send {
+    fn name(&self) -> &str;
+    /// The value behind a reference, or a refusal naming why. A reference
+    /// this source does not hold is a refusal, not an empty string: the
+    /// step must not run with a blank where a credential belongs.
+    fn resolve(&mut self, reference: &str) -> Result<String, ExecError>;
+}
+
 /// `secrets deliver_to:` (7.3): one acceptor. `deliver` answering `true`
 /// ends the delivery; the engine then holds nothing.
 pub trait Acceptor: Send {
