@@ -44,6 +44,7 @@ pub fn parse_args(args: &[OsString]) -> Result<run::Config, String> {
         reap_every: 5,
         hook_deadline: 30,
         spawn: Vec::new(),
+        inventory: None,
     };
     let mut it = args.iter().map(|a| a.to_string_lossy().into_owned());
     // The first argument is the service's own name, as the manager gives
@@ -68,6 +69,7 @@ pub fn parse_args(args: &[OsString]) -> Result<run::Config, String> {
                     .map_err(|_| "--hook-deadline takes seconds".to_string())?
             }
             "--spawn" => cfg.spawn.push(value()?),
+            "--inventory" => cfg.inventory = Some(PathBuf::from(value()?)),
             other => return Err(format!("{other} is not a flag rued takes")),
         }
     }
@@ -165,6 +167,8 @@ mod tests {
             "45",
             "--spawn",
             "act=hook.exe",
+            "--inventory",
+            r"C:\ProgramData\rue\inventory.toml",
         ]))
         .unwrap();
         assert_eq!(cfg.store.to_string_lossy(), r"C:\ProgramData\rue\store");
@@ -172,6 +176,12 @@ mod tests {
         assert_eq!(cfg.group, "rue-operators");
         assert_eq!((cfg.reap_every, cfg.hook_deadline), (9, 45));
         assert_eq!(cfg.spawn, vec!["act=hook.exe".to_string()]);
+        assert_eq!(
+            cfg.inventory
+                .as_deref()
+                .map(|p| p.to_string_lossy().into_owned()),
+            Some(r"C:\ProgramData\rue\inventory.toml".to_string())
+        );
         assert!(!cfg.dry_run);
         // The pipe is the default channel, and the group is `rue`.
         let cfg = parse_args(&args(&["--site", "s.rue", "--store", "st"])).unwrap();
