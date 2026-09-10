@@ -473,9 +473,16 @@ canonical JSON. It is a golden like the others: produced from the case's
 term by `rue-goldens`, read only in tests (which also parse it back and
 require the term), covered by the hygiene guard and the orphan walk.
 
+`rue check --ir` prints the same document for a `.rue` text, and `rue
+check` reads one back, so the artifact has both halves rather than only the
+one the goldens needed. An embedded host uses that: resolving `.rue` needs
+the front end, the front end is Rust, and a host written in another
+language asks the CLI for the IR rather than linking it -- T4's reactive
+host is Elixir and does exactly this.
+
 The shape is `rue_core::model`'s serde form, spelled deliberately field by
 field so no implementation's constructor names leak into it. `ir_version` is
-an integer, currently 3; a reader refuses any version it does not know. While
+an integer; a reader refuses any version it does not know. While
 the terms are the only emitter, any change of shape bumps the version and
 changes emitter and readers in one commit; Phase 2's front end freezes it.
 Durations are whole seconds under names ending in `_s`. A unit constructor is

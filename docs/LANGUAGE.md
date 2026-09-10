@@ -219,6 +219,13 @@ a verdict is then a statement about the record you named, which is the
 point of naming it. `--inventory` overrides a `file()` inventory too, so one
 text can be checked against the site it is going to.
 
+`rue check --ir` prints the plan IR the text resolves to instead of a
+verdict. That is what an embedded host sends over the control channel to
+apply a plan: resolving `.rue` needs the front end, the front end is Rust,
+and a host written in another language asks for the IR here rather than
+linking it. The bytes are the canonical encoding the channel carries, and
+`rue check` reads one back, so the artifact has both halves.
+
 At runtime a probe's `run` answers a guard by its exit status (0 is yes, 1
 is no, anything else is unknown) and its stdout is the fact's value; a
 `run` in an op binds a declared output with a line `rue-output NAME=VALUE`

@@ -47,6 +47,14 @@ enum Verb {
         /// Print the structured verdict in canonical JSON instead of the prose.
         #[arg(long)]
         json: bool,
+        /// Print the plan IR this text resolves to, instead of a verdict.
+        ///
+        /// This is what an embedded host sends over the control channel to
+        /// apply a plan (section 7.11): resolving `.rue` text needs the
+        /// front end, the front end is Rust, and a host in another language
+        /// therefore asks for the IR here rather than linking it.
+        #[arg(long, conflicts_with = "json")]
+        ir: bool,
         #[command(flatten)]
         select: Select,
     },
@@ -423,11 +431,23 @@ fn status_code(v: &Verdict) -> ExitCode {
 
 fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
     match cli.verb {
-        Verb::Check { plan, json, select } => {
+        Verb::Check {
+            plan,
+            json,
+            ir: print_ir,
+            select,
+        } => {
             let ir = match load_input(&plan, &select, false)? {
                 Ok(ir) => ir,
                 Err(code) => return Ok(code),
             };
+            if print_ir {
+                // Canonically encoded, as the channel carries it: an
+                // embedded host sends these bytes and the daemon checks
+                // the same text this command just did.
+                out.write_all(&canonical::encode(&serde_json::to_value(&ir)?)?)?;
+                return Ok(ExitCode::SUCCESS);
+            }
             let v = verdict_of(&ir);
             if json {
                 out.write_all(&canonical::encode(&to_json(&v))?)?;
