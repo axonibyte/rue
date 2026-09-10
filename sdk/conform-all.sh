@@ -60,6 +60,21 @@ run() { # run <sdk> <interpreter> <command...>
 
 run python python3 "python3 $root/sdk/python/examples/conformance_hook.py conform"
 
+# Elixir is compiled first: `mix compile` is idempotent and cheap once the
+# build directory exists, and a hook that has to compile itself on its
+# first request would be Silent while it did.
+if [ -d "$root/sdk/elixir" ]; then
+    if command -v mix > /dev/null 2>&1; then
+        ( cd "$root/sdk/elixir" && MIX_ENV=dev mix compile > /dev/null ) || {
+            echo "conform-all: sdk/elixir does not compile" >&2
+            rc=1
+        }
+    fi
+    run elixir elixir \
+        "elixir -pa $root/sdk/elixir/_build/dev/lib/rue_hook/ebin \
+         $root/sdk/elixir/examples/conformance_hook.exs conform"
+fi
+
 if [ "$rc" -eq 0 ]; then
     echo "conform-all: every SDK conforms"
 fi

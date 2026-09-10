@@ -68,40 +68,51 @@ awk '
 
 rc=0
 
-# Each SDK that keeps its own table: the file, and how a row spells a pair.
-# A python row is `Op("kind", "op", ...)`.
-# An SDK directory that exists must have a readable table: a leg that is
-# quietly skipped is a guard reporting success for work it did not do.
-py=$root/sdk/python/rue_hook/proto.py
-if [ -d "$root/sdk/python" ] && [ ! -r "$py" ]; then
-    echo "lint-hook-ops: sdk/python exists but $py does not; the guard checked nothing" >&2
-    exit 2
-fi
-if [ -r "$py" ]; then
-    # Newlines folded away first: a row may be written on one line or
-    # spread over several, and which one is a formatting choice the guard
-    # has no business having an opinion about.
-    tr '\n' ' ' < "$py" \
-        | grep -oE 'Op\( *"[a-z_]+", *"[a-z_]+"' \
-        | sed -E 's/Op\( *"([a-z_]+)", *"([a-z_]+)"/\1.\2/' \
-        | sort -u > "$tmp/python"
-    if [ ! -s "$tmp/python" ]; then
-        echo "lint-hook-ops: no ops read from $py; the guard checked nothing" >&2
+# Each SDK keeps its own transcription, because none of them can share the
+# Rust table. Declared here as: <name> <directory> <file> <extractor>. The
+# extractor prints one `kind.op` per line, reading a file whose newlines
+# have been folded to spaces first -- a row may be written on one line or
+# spread over several, and which one is a formatting choice the guard has
+# no business having an opinion about.
+#
+# An SDK directory that exists must have a readable table: a leg quietly
+# skipped is a guard reporting success for work it did not do.
+sdk_table() { # sdk_table <name> <dir> <file> <pattern> <sed script>
+    name=$1; dir=$root/$2; file=$root/$3; pattern=$4; script=$5
+    [ -d "$dir" ] || return 0
+    if [ ! -r "$file" ]; then
+        echo "lint-hook-ops: $2 exists but $3 does not; the guard checked nothing" >&2
+        exit 2
+    fi
+    tr '\n' ' ' < "$file" | grep -oE "$pattern" | sed -E "$script" | sort -u > "$tmp/$name"
+    if [ ! -s "$tmp/$name" ]; then
+        echo "lint-hook-ops: no ops read from $3; the guard checked nothing" >&2
         exit 2
     fi
     while read -r op; do
         grep -qx "$op" "$tmp/code" || {
-            echo "lint-hook-ops: $op is in the python SDK's table and absent from OPS" >&2
+            echo "lint-hook-ops: $op is in the $name SDK's table and absent from OPS" >&2
             rc=1
         }
-    done < "$tmp/python"
+    done < "$tmp/$name"
     while read -r op; do
-        grep -qx "$op" "$tmp/python" || {
-            echo "lint-hook-ops: $op is in OPS and absent from the python SDK's table" >&2
+        grep -qx "$op" "$tmp/$name" || {
+            echo "lint-hook-ops: $op is in OPS and absent from the $name SDK's table" >&2
             rc=1
         }
     done < "$tmp/code"
-fi
+}
+
+# python: Op("kind", "op", ...)
+sdk_table python sdk/python sdk/python/rue_hook/proto.py \
+    'Op\( *"[a-z_]+", *"[a-z_]+"' \
+    's/Op\( *"([a-z_]+)", *"([a-z_]+)"/\1.\2/'
+
+# elixir: %Op{kind: "kind", op: "op", ...}
+sdk_table elixir sdk/elixir sdk/elixir/lib/rue_hook/proto.ex \
+    '%Op\{ *kind: *"[a-z_]+", *op: *"[a-z_]+"' \
+    's/%Op\{ *kind: *"([a-z_]+)", *op: *"([a-z_]+)"/\1.\2/'
+
 while read -r op; do
     grep -qx "$op" "$tmp/code" || {
         echo "lint-hook-ops: $op is documented in hook-protocol.md and absent from OPS" >&2

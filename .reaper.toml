@@ -139,7 +139,9 @@ sh tenants/e2e/run.sh"""
 # The non-Rust SDKs are judged here and not on FreeBSD, and not in the
 # local gate: the workstation is a base FreeBSD box with no Elixir, JDK or
 # .NET, and its python is `python3.12` rather than `python3` (a Phase 3
-# discovery). Declaring a skip for each of them in RUE_CHECK_SKIP_OK would
+# discovery). Elixir is apt's (1.18 on OTP 27), which ships `JSON` in the
+# standard library, so the SDK needs no Hex dependency and the guest needs
+# no Hex fetch. Declaring a skip for each of them in RUE_CHECK_SKIP_OK would
 # be the alternative, and the owner's decision for this phase was that the
 # gate gains no SDK phase and therefore no skip. So this is the one reaper
 # guest that runs them, alongside the pipeline.
@@ -147,7 +149,7 @@ sh tenants/e2e/run.sh"""
 exec = "host"
 cmd = """
 apt-get -qq update && \
-apt-get -qq install -y --no-install-recommends cron nftables curl gcc python3 && \
+apt-get -qq install -y --no-install-recommends cron nftables curl gcc python3 elixir && \
 mkdir -p $REAPER_CACHE_RUSTUP_HOST && \
 { test -x $REAPER_CACHE_CARGO_HOST/bin/cargo || { \
     curl -sSf https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init -o $REAPER_CACHE_RUSTUP_HOST/rustup-init && \
