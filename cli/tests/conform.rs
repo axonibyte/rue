@@ -2,7 +2,9 @@
 //! says. The suite's own judgements are tested where the suite lives
 //! (sdk/rust/tests/conform.rs); this is the verb around it.
 
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 fn rue(args: &[&str]) -> (i32, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_rue"))
@@ -70,5 +72,57 @@ fn the_json_report_carries_every_case_and_the_registration() {
             .iter()
             .any(|c| c["op"].as_str().unwrap_or("").starts_with("approval.")),
         "a hook is judged only on what it registered for"
+    );
+}
+
+/// Run `rue` and refuse to wait forever: a hang is reported as a failure
+/// with something to read, not as a wedged suite.
+fn rue_bounded(args: &[&str], bound: Duration) -> Option<i32> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rue"))
+        .args(args)
+        // The report is some four kilobytes, well inside a pipe buffer, so
+        // it is read after the exit rather than concurrently.
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("rue runs");
+    let until = Instant::now() + bound;
+    loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            let mut out = String::new();
+            if let Some(mut o) = child.stdout.take() {
+                let _ = o.read_to_string(&mut out);
+            }
+            return Some(status.code().unwrap_or(-1));
+        }
+        if Instant::now() >= until {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_hook_the_shell_did_not_exec_still_ends_when_the_suite_does() {
+    // `sh -c <command>` need not run the hook in the process it returns:
+    // the trailing no-op here guarantees a fork, and it is what a hook
+    // started through a wrapper looks like in the wild. Signalling the
+    // process we spawned then reaps the shell and leaves the hook an
+    // orphan holding the stdout pipe, and whoever reads that pipe waits
+    // for an end that never comes -- which is a hang, not a failure, and
+    // so the worst way for this to go wrong. Closing the hook's stdin ends
+    // whichever process is really serving.
+    let stub = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/stub-hook.sh");
+    let code = rue_bounded(
+        &["sdk-conform", "--name", "act", &format!("sh {stub} act; :")],
+        Duration::from_secs(30),
+    );
+    assert_eq!(
+        code,
+        Some(1),
+        "the suite did not end within 30s: a hook the shell did not exec was left holding \
+         the pipe"
     );
 }

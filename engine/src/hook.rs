@@ -132,6 +132,16 @@ impl LineLink {
         w.flush()
     }
 
+    /// Close the connection's writing half. A child hook reads EOF on its
+    /// stdin and ends its serve loop, which is how a hook is meant to be
+    /// stopped: the process we spawned is `sh -c <command>`, which need
+    /// not be the process that serves, so signalling it is not reliable
+    /// and closing the pipe every server holds is.
+    pub fn close_writer(&self) {
+        let mut w = self.writer.lock().unwrap_or_else(|e| e.into_inner());
+        *w = Box::new(std::io::sink());
+    }
+
     /// Read lines from `reader` until it ends, delivering each; for a child
     /// hook's stdout, on its own thread.
     pub fn pump(self: &Arc<Self>, mut reader: Box<dyn BufRead + Send>) {
@@ -408,11 +418,30 @@ impl StdioHook {
             .map_err(|e| HookError::Io(e.to_string()))
     }
 
-    /// End the child. Used by a caller that owns the whole of its life --
-    /// the conformance runner -- rather than by the daemon, which lets a
-    /// hook live until its connection ends.
-    pub fn kill(&mut self) -> std::io::Result<()> {
-        self.child.kill()?;
+    /// End the hook, for a caller that owns the whole of its life -- the
+    /// conformance runner -- rather than the daemon, which lets one live
+    /// until its connection ends.
+    ///
+    /// Closing the child's stdin first, and killing only what will not go,
+    /// is not politeness. `sh -c <command>` may run the hook in a process
+    /// of its own; a signal then reaps the shell and leaves the hook an
+    /// orphan, still holding the stdout pipe, so whoever is reading it
+    /// waits for an end that never comes. Every hook's serve loop ends at
+    /// EOF on stdin, so closing it stops the process that is actually
+    /// serving, whichever one that is.
+    pub fn shutdown(&mut self, grace: Duration) -> std::io::Result<()> {
+        self.link.close_writer();
+        let until = std::time::Instant::now() + grace;
+        loop {
+            if self.child.try_wait()?.is_some() {
+                return Ok(());
+            }
+            if std::time::Instant::now() >= until {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let _ = self.child.kill();
         self.child.wait().map(|_| ())
     }
 

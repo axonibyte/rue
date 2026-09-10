@@ -127,7 +127,10 @@ pub fn conform(name: &str, command: &str, deadline: Duration) -> Result<Report, 
         unknown_op_case(&mut d);
     }
 
-    let _ = hook.kill();
+    // Close its stdin and let it end, then read the pump to its end: the
+    // hook may not be the process we spawned, and killing that one leaves
+    // whatever is really serving holding the pipe.
+    let _ = hook.shutdown(Duration::from_secs(5));
     let _ = pump.join();
     Ok(Report {
         name: name.to_string(),

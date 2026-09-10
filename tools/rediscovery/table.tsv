@@ -126,3 +126,4 @@ hook-host-loses-its-rue-root.patch	1	-	cargo	a_host_a_hook_lists_is_the_equal_of
 secret-printed-by-debug.patch	1	-	cargo	a_secret_does_not_survive_being_formatted	-
 hook-missing-field-accepted.patch	1	-	cargo	the_reference_hook_passes_every_case	-
 hook-silent-as-ok.patch	1	-	cargo	the_reference_hook_passes_every_case	-
+hook-killed-not-closed.patch	1	-	cargo	a_hook_the_shell_did_not_exec_still_ends_when_the_suite_does	-

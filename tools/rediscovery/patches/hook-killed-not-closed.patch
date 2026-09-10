@@ -1,0 +1,23 @@
+# Reverts: a hook is stopped by closing its stdin, because `sh -c <command>` need not be the process that serves and signalling it orphans the one that does; here it is killed and whatever was really serving keeps the pipe.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/hook.rs
++++ b/engine/src/hook.rs
+@@ -430,17 +430,7 @@
+     /// EOF on stdin, so closing it stops the process that is actually
+     /// serving, whichever one that is.
+     pub fn shutdown(&mut self, grace: Duration) -> std::io::Result<()> {
+-        self.link.close_writer();
+-        let until = std::time::Instant::now() + grace;
+-        loop {
+-            if self.child.try_wait()?.is_some() {
+-                return Ok(());
+-            }
+-            if std::time::Instant::now() >= until {
+-                break;
+-            }
+-            std::thread::sleep(Duration::from_millis(10));
+-        }
++        let _ = grace;
+         let _ = self.child.kill();
+         self.child.wait().map(|_| ())
+     }
