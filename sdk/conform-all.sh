@@ -99,6 +99,26 @@ if [ -d "$root/sdk/java" ]; then
     run java java "java -cp $root/sdk/java/build dev.rue.hook.example.ConformanceHook conform"
 fi
 
+# .NET needs its SDK on PATH and a writable home; the guest keeps both in
+# a cache, because the SDK is most of a gigabyte and the root disk is not.
+if [ -d "$root/sdk/dotnet" ]; then
+    if [ -d /tank/cache/dotnet ] && [ -z "${DOTNET_ROOT:-}" ]; then
+        DOTNET_ROOT=/tank/cache/dotnet
+        DOTNET_CLI_HOME=${DOTNET_CLI_HOME:-/tank/cache/dotnet-home}
+        PATH=$DOTNET_ROOT:$PATH
+        export DOTNET_ROOT DOTNET_CLI_HOME PATH
+    fi
+    export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+    hook=$root/sdk/dotnet/examples/ConformanceHook
+    if command -v dotnet > /dev/null 2>&1; then
+        if ! ( cd "$hook" && dotnet build -v q --nologo > /dev/null ); then
+            echo "conform-all: sdk/dotnet does not build" >&2
+            rc=1
+        fi
+    fi
+    run dotnet dotnet "dotnet $hook/bin/Debug/net8.0/ConformanceHook.dll conform"
+fi
+
 if [ "$rc" -eq 0 ]; then
     echo "conform-all: every SDK conforms"
 fi
