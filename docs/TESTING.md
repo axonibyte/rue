@@ -547,7 +547,11 @@ second `AuthorizedKeysFile`; the loopback alias `127.0.0.2` every e2e plan
 addresses its target by, so a plan that severs ssh severs only itself and
 never reaper's transport; a firewall baseline that skips the management
 interface (pf `set skip`; an nftables table of rue's own whose input chain
-accepts); the `rue` group; and `rue_root` under `$REAPER_STATE/rue`, the
+accepts); a scheduler baseline that removes every `# rue-region` block an
+earlier run left in the crontab, because reaper's reset rolls back the state
+dataset and not `/var/cron`, so an entry outlives the instance directory it
+names and would answer a later run's question about whether a backstop is
+present; the `rue` group; and `rue_root` under `$REAPER_STATE/rue`, the
 dataset reaper's reset rolls back. Every ssh call the harness makes is
 `ssh -F none -o IdentitiesOnly=yes -i <its key> -o UserKnownHostsFile=<its
 file> -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes`.

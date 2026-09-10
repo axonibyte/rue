@@ -144,6 +144,16 @@ apply() {
             ;;
     esac
 
+    # The scheduler baseline: no backstop of an earlier run is still armed.
+    # reaper rolls back the state dataset between runs but not /var/cron, so
+    # a crontab entry outlives by days the instance directory it names: cron
+    # fires it into a missing file every minute, and a test asking whether a
+    # backstop is present can be answered by the last run's entry rather than
+    # its own -- instance ids are deterministic, so the ids even match. This
+    # asserts nothing and weakens nothing; it is the same known starting
+    # point the firewall and sshd baselines above establish.
+    strip_crontab_regions || exit 2
+
     # The group and rue_root (section 7.7).
     case $os in
         FreeBSD) pw groupshow rue > /dev/null 2>&1 || pw groupadd rue || exit 2 ;;
@@ -157,6 +167,22 @@ apply() {
     chown root:rue "$rue_root/lock"
     chmod 0664 "$rue_root/lock"
     echo "provisioned: mgmt=$mgmt alias=$alias_addr root=$root rue_root=$rue_root"
+}
+
+# Remove every `# rue-region <id> begin`..`end` block from the scheduler's
+# crontab, leaving anything else in it alone. A crontab with no such block
+# is left untouched, so this never rewrites a file it has nothing to say
+# about.
+strip_crontab_regions() {
+    crontab -l 2> /dev/null | grep -q '^# rue-region ' || return 0
+    ct=$root/crontab.rue-e2e
+    crontab -l 2> /dev/null | awk '
+        /^# rue-region .* begin$/ { skip = 1; next }
+        /^# rue-region .* end$/   { skip = 0; next }
+        !skip
+    ' > "$ct" || return 1
+    crontab "$ct" || return 1
+    rm -f "$ct"
 }
 
 # --- check -----------------------------------------------------------------
@@ -173,6 +199,7 @@ pf_enabled() { pfctl -s info 2> /dev/null | grep -q 'Status: Enabled'; }
 pf_skips_mgmt() { pfctl -s Interfaces -v 2> /dev/null | grep -q "^$mgmt (skip)"; }
 nft_table_present() { nft list table inet rue; }
 nft_input_accepts() { nft list chain inet rue input 2> /dev/null | grep -q 'policy accept'; }
+no_crontab_regions() { ! crontab -l 2> /dev/null | grep -q '^# rue-region '; }
 group_rue_exists() {
     case $os in
         FreeBSD) pw groupshow rue ;;
@@ -198,6 +225,7 @@ check() {
             chk "nftables input chain accepts by policy" nft_input_accepts
             ;;
     esac
+    chk "no backstop of an earlier run is left armed in the crontab" no_crontab_regions
     chk "group rue exists" group_rue_exists
     chk "rue_root $rue_root/instances present" test -d "$rue_root/instances"
     exit "$rc"
