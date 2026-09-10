@@ -67,7 +67,9 @@ image = "docker.io/library/rust@sha256:b1b3c9c0d921d7fa0a6d1f9ec7e4eab87f8c8ec97
 # them. Finding that class of fault after twenty-five minutes of gate, or
 # later still under wine, has cost three cycles; finding it after two
 # minutes of compiling costs almost nothing, since ci/test-windows.sh reuses
-# what this built.
+# what this built. The target's standard library is added here for the same
+# reason it is added there: `cargo check --target` cannot find `core`
+# without it, and rustup makes the second call a no-op.
 cmd = """
 find . -name '*.rs' -not -path './target/*' -exec touch {} + && \
 find . -name '*.toml' -not -path './target/*' -exec touch {} + && \
@@ -93,6 +95,7 @@ cabal update && \
 cabal build all --builddir $REAPER_CACHE_BUILD_DIR && \
 cd .. && \
 cargo build --workspace --all-targets --release --locked && \
+rustup target add x86_64-pc-windows-gnu && \
 cargo check --workspace --exclude rue-e2e --all-targets --release --locked \
 --target x86_64-pc-windows-gnu && \
 sh tools/check.sh && \
