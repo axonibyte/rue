@@ -451,16 +451,31 @@ impl StdioHook {
     }
 }
 
-/// Spawn `command` under `sh -c` and read the registration frame its first
-/// line of stdout must be (docs/hook-protocol.md, "A hook over stdio").
+/// The shell a hook's command is run through, and the flag that hands it
+/// one command: the host's own, since `--spawn NAME=COMMAND` is written in
+/// whatever the operator's machine speaks. `rued` runs on all three
+/// families (7.4), so hard-coding `sh` made a spawned hook a thing only
+/// two of them could have.
+pub fn host_shell() -> (&'static str, &'static str) {
+    if cfg!(windows) {
+        ("cmd", "/C")
+    } else {
+        ("sh", "-c")
+    }
+}
+
+/// Spawn `command` under the host's shell and read the registration frame
+/// its first line of stdout must be (docs/hook-protocol.md, "A hook over
+/// stdio").
 ///
 /// The protocol version and the name are checked here, because both are the
 /// protocol's business and neither depends on who is spawning: a child that
 /// registers under a name other than the one it was spawned as is refused,
 /// so a `--spawn` key always means what it says.
 pub fn spawn_stdio_hook(name: &str, command: &str) -> Result<StdioHook, HookError> {
-    let mut child = std::process::Command::new("sh")
-        .arg("-c")
+    let (shell, flag) = host_shell();
+    let mut child = std::process::Command::new(shell)
+        .arg(flag)
         .arg(command)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -1012,5 +1027,24 @@ impl Notify for HookNotify {
                 }
                 HookError::Io(m) => ExecError::Io(m),
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::host_shell;
+
+    /// `rued --spawn` and `rue sdk-conform` hand one string to a shell, and
+    /// which shell that is follows the host. A hook spawned on Windows was
+    /// unreachable while this said `sh` everywhere, and nothing said so:
+    /// the failure is a hook that will not start, blamed on the hook.
+    #[test]
+    fn the_shell_a_hook_is_spawned_through_is_the_host_s_own() {
+        let (shell, flag) = host_shell();
+        if cfg!(windows) {
+            assert_eq!((shell, flag), ("cmd", "/C"));
+        } else {
+            assert_eq!((shell, flag), ("sh", "-c"));
+        }
     }
 }

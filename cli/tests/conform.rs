@@ -1,6 +1,14 @@
 //! `rue sdk-conform` as an operator meets it: what it exits, and what it
 //! says. The suite's own judgements are tested where the suite lives
 //! (sdk/rust/tests/conform.rs); this is the verb around it.
+//!
+//! Unix only, like cli/tests/daemon.rs beside it: the hook these cases
+//! judge is `tests/fixtures/stub-hook.sh`, a POSIX shell script, and there
+//! is no `sh` to run it on Windows. What is scoped here is the fixture,
+//! not the verb -- `rue sdk-conform` runs a hook through whatever shell
+//! the host has (`rue_engine::hook::host_shell`).
+
+#![cfg(unix)]
 
 use std::io::Read;
 use std::process::{Command, Stdio};

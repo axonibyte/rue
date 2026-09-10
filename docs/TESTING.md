@@ -275,11 +275,15 @@ world of `docs/sdk-conformance.md`. Exit 0 when every case passed, 1 when
 any failed, 2 when the hook never registered -- a hook that ran and failed
 has been judged, and one that never started has not.
 
+A hook's command is run through the host's own shell (`sh -c` on unix,
+`cmd /C` on Windows), because `--spawn NAME=COMMAND` is written in whatever
+the operator's machine speaks and `rued` runs on all three families.
+
 A hook is stopped by closing its stdin, never by signalling it. The process
-`rue sdk-conform` spawns is `sh -c <command>`, which need not be the process
-that serves: signal that one and the shell is reaped while the hook lives on
-as an orphan still holding the stdout pipe, so whoever reads it waits for an
-end that never comes. Every hook's serve loop ends at EOF on stdin, so
+spawned is the shell, which need not be the process that serves: signal that
+one and the shell is reaped while the hook lives on as an orphan still
+holding the stdout pipe, so whoever reads it waits for an end that never
+comes. Every hook's serve loop ends at EOF on stdin, so
 closing it stops whichever process is really serving; a kill is the fallback
 for one that will not go.
 
