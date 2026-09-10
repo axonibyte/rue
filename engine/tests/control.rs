@@ -121,7 +121,7 @@ impl Conn {
                 uid: None,
             };
             let writer: SharedWriter = Arc::new(Mutex::new(Box::new(server_tx)));
-            handle(BufReader::new(server_rx), writer, peer, &d);
+            handle(BufReader::new(server_rx), writer, peer, d);
         });
         Conn {
             reader: BufReader::new(client_rx),

@@ -19,3 +19,4 @@ repository.workspace = true
 # The daemon's stderr is drained without blocking when a scenario has
 # waited long enough and wants to say why.
 libc = "0.2"
+serde_json.workspace = true

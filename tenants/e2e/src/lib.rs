@@ -175,6 +175,30 @@ impl Site {
         Site::with(name, plans, "", "", "")
     }
 
+    /// A site whose text the scenario writes itself, for one that shares
+    /// none of the shape above.
+    ///
+    /// T4 is the case: its inventory, journal and executor are all hooks,
+    /// so there is no file inventory to write and no ssh executor to name.
+    /// `inventory` is written beside the site file for `rue check
+    /// --inventory` to read, because a hook inventory has no hosts until
+    /// the hook is asked and checking needs them now (E0607).
+    pub fn raw(name: &str, text: &str, inventory: &str) -> Site {
+        let root = e2e_root().expect("the harness root");
+        let dir = root.join(format!("case-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("the case directory");
+        fs::write(dir.join("inventory.toml"), inventory).expect("the inventory");
+        let file = dir.join("site.rue");
+        fs::write(&file, text).expect("the site file");
+        Site {
+            store: dir.join("store"),
+            socket: dir.join("rued.sock"),
+            dir,
+            file,
+        }
+    }
+
     /// As `new`, with extra lines inside the site block, extra hosts in
     /// the inventory, and extra executors on the one `execute via:` line
     /// (a second such line replaces the first: the site takes one line
@@ -470,6 +494,51 @@ pub fn python() -> String {
         }
     }
     panic!("no python3 on this guest; the tenant's hook fixtures need one");
+}
+
+/// The Elixir T4's reactive host runs under, and the compiled SDK it needs
+/// on its code path.
+///
+/// A guest without Elixir is a refusal and not a skipped scenario: this
+/// stage is the only place an embedded host is exercised at all, and a
+/// silent skip would leave the phase's acceptance line unproven while
+/// reporting success.
+pub fn elixir() -> String {
+    let ok = Command::new("elixir")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    assert!(
+        ok,
+        "no elixir on this guest; T4's reactive host is written on the Elixir SDK"
+    );
+    "elixir".to_string()
+}
+
+/// `elixir -pa <the SDK's ebin>`, compiled if it is not already.
+pub fn elixir_with_sdk() -> Vec<String> {
+    let sdk = repo_root().join("sdk/elixir");
+    let ebin = sdk.join("_build/dev/lib/rue_hook/ebin");
+    if !ebin.is_dir() {
+        // Compiling on the first request would leave the hook Silent while
+        // it ran, and Silent is a refusal with nothing to say.
+        let out = Command::new("mix")
+            .arg("compile")
+            .current_dir(&sdk)
+            .output()
+            .expect("mix compile");
+        assert!(
+            out.status.success(),
+            "sdk/elixir does not compile: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    vec![
+        elixir(),
+        "-pa".to_string(),
+        ebin.to_string_lossy().into_owned(),
+    ]
 }
 
 /// Run a command on the target and return its stdout.

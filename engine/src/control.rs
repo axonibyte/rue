@@ -394,7 +394,16 @@ pub type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
 
 /// Handle one connection to its end. Generic so a test can drive it over
 /// a socket pair; `serve` calls it per accepted socket.
-pub fn handle<R: BufRead>(mut reader: R, writer: SharedWriter, peer: Peer, daemon: &Daemon) {
+/// Serve one connection until it closes.
+///
+/// A verb is dispatched on a thread of its own rather than on this loop.
+/// That is not for throughput -- a control channel is not busy -- but
+/// because a connection may be a hook and an operator at once (7.4, and
+/// T4's whole shape). Dispatch a verb on the reading thread and an apply
+/// that calls back into a hook on *this* connection waits forever: the
+/// engine is blocked on the hook's reply, and the only thing that could
+/// read that reply is the loop that is blocked on the engine.
+pub fn handle<R: BufRead>(mut reader: R, writer: SharedWriter, peer: Peer, daemon: Arc<Daemon>) {
     let mut line = String::new();
     // 1. hello
     let operator = loop {
@@ -500,7 +509,7 @@ pub fn handle<R: BufRead>(mut reader: R, writer: SharedWriter, peer: Peer, daemo
             }
             Frame::Register(r) => {
                 let reply = match register(
-                    daemon,
+                    &daemon,
                     &peer,
                     &operator,
                     &connection,
@@ -522,14 +531,19 @@ pub fn handle<R: BufRead>(mut reader: R, writer: SharedWriter, peer: Peer, daemo
                 );
             }
             Frame::Request(req) => {
-                let reply = match dispatch(daemon, &operator, &req.verb, &req.args) {
-                    Ok(result) => json!({ "id": req.id, "ok": true, "result": result }),
-                    Err(e) => error_frame(Some(req.id), &e),
-                };
-                let _ = write_line(
-                    &mut *writer.lock().unwrap_or_else(|e| e.into_inner()),
-                    &reply,
-                );
+                // On its own thread, so this loop keeps reading: the reply
+                // to a hook request this verb makes may have to arrive on
+                // this very connection before the verb can finish.
+                let d = daemon.clone();
+                let op = operator.clone();
+                let w = writer.clone();
+                std::thread::spawn(move || {
+                    let reply = match dispatch(&d, &op, &req.verb, &req.args) {
+                        Ok(result) => json!({ "id": req.id, "ok": true, "result": result }),
+                        Err(e) => error_frame(Some(req.id), &e),
+                    };
+                    let _ = write_line(&mut *w.lock().unwrap_or_else(|e| e.into_inner()), &reply);
+                });
             }
             Frame::Reply(v) => {
                 if let Some(l) = &link {
@@ -1073,7 +1087,7 @@ pub fn serve(
                         Err(_) => return,
                     });
                     let writer: SharedWriter = Arc::new(Mutex::new(Box::new(stream)));
-                    handle(reader, writer, peer, &d);
+                    handle(reader, writer, peer, d);
                 });
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {

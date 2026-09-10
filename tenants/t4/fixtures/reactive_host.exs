@@ -43,15 +43,41 @@ defmodule Actuator do
     File.write!(Path.join(state_dir(), name), value <> "\n")
   end
 
-  # execute: the engine's `hook(:host_actuate, set: %{...})` primitive.
+  # execute: the engine's resolved primitives. A hook's arguments arrive as
+  # `[[name, {text, secret}], ...]`, and what an argument MEANS is the
+  # appliance's business -- rue carries `set:` across verbatim and does not
+  # pretend to understand an actuator map.
   def run(_host, _instance, body) do
-    for prim <- body, %{"hook" => h} = prim do
-      for {k, v} <- Map.get(h, "args", %{}) || %{}, is_binary(k) do
-        write(k, RueHook.expose(v))
-      end
-    end
-
+    Enum.each(body, &apply_prim/1)
     {:ok, %{"stdout" => "", "outputs" => %{}}}
+  end
+
+  defp apply_prim(%{"hook" => h}) do
+    for [name, value] <- Map.get(h, "args") || [], name == "set" do
+      for {k, v} <- parse_set(RueHook.expose(value)), do: write(k, v)
+    end
+  end
+
+  # A restore of a `modified` fact: the engine hands back what it read
+  # before the step, one fact at a time, and the appliance puts it back.
+  defp apply_prim(%{"write" => w}) do
+    case String.split(Map.get(w, "shape", ""), ":") do
+      ["actuator", "state", name] -> write(name, String.trim(RueHook.expose(w["content"])))
+      _ -> :ok
+    end
+  end
+
+  defp apply_prim(other) do
+    # Never silently: a primitive this appliance does not implement is a
+    # thing rue asked for and did not get.
+    IO.puts(:stderr, "actuator: no idea what to do with " <> JSON.encode!(other))
+  end
+
+  # `%{"hvac-1": :off, "pump-1": :low}` as the tenant writes it.
+  defp parse_set(text) do
+    ~r/"([^"]+)":\s*:?([A-Za-z0-9_-]+)/
+    |> Regex.scan(text)
+    |> Enum.map(fn [_, k, v] -> {k, v} end)
   end
 
   # The engine reads a modified fact back to compare it: `actuator.state(x)`.
@@ -76,17 +102,6 @@ defmodule Actuator do
   def clock(_host), do: {:ok, System.system_time(:second)}
 end
 
-defmodule HostLog do
-  @moduledoc "journal to: hook(:host_log). The host keeps its own record."
-
-  def append(entry) do
-    path = Path.join(Actuator.state_dir(), "journal.ndjson")
-    File.mkdir_p!(Actuator.state_dir())
-    File.write!(path, JSON.encode!(entry) <> "\n", [:append])
-    :ok
-  end
-end
-
 defmodule Host do
   def main([socket | rest]) do
     {:ok, c} =
@@ -96,8 +111,10 @@ defmodule Host do
         events_to: self()
       )
 
-    :ok = RueHook.Client.register(c, "host_log", %RueHook.Hooks{journal: HostLog})
-
+    # Only the actuator: the journal and the inventory are spawned
+    # children, because both are used before the socket is served and a
+    # hook that connects over it cannot have registered by then. The host
+    # still sees every entry through its subscription.
     :ok =
       RueHook.Client.register(c, "host_actuate", %RueHook.Hooks{
         execute: Actuator,
@@ -114,7 +131,9 @@ defmodule Host do
 
     case RueHook.Client.call(c, "apply", %{"ir" => ir, "params" => %{}}) do
       {:ok, result} -> IO.puts(result["id"] <> " " <> result["state"])
-      {:error, e} -> die("apply refused: #{inspect(e)}")
+      # A refusal is an answer, and the code is what the harness asserts
+      # on, so it goes to stdout rather than into an exit status.
+      {:error, e} -> IO.puts("refused " <> JSON.encode!(e))
     end
   end
 
@@ -136,7 +155,7 @@ defmodule Host do
 
   # A name outside `may_register`: R0505.
   defp run(c, ["rogue-register"]) do
-    case RueHook.Client.register(c, "not_declared", %RueHook.Hooks{journal: HostLog}) do
+    case RueHook.Client.register(c, "not_declared", %RueHook.Hooks{execute: Actuator}) do
       :ok -> die("a name outside may_register was accepted")
       {:error, e} -> IO.puts("refused " <> JSON.encode!(e))
     end

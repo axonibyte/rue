@@ -312,7 +312,7 @@ pub fn serve(
                 uid: None,
             };
             let writer: SharedWriter = Arc::new(Mutex::new(Box::new(file)));
-            handle(std::io::BufReader::new(reader_file), writer, peer, &d);
+            handle(std::io::BufReader::new(reader_file), writer, peer, d);
         });
     }
     Ok(())

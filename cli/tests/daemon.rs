@@ -305,8 +305,10 @@ fn a_daemon_whose_inventory_hook_never_registers_refuses_to_start() {
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(
-        err.contains("hook world") && err.contains("--inventory"),
-        "the refusal must name the hook and the way out:\n{err}"
+        err.contains("hook(:world)")
+            && err.contains("--spawn world=")
+            && err.contains("--inventory"),
+        "the refusal must name the hook and both ways out:\n{err}"
     );
 }
 

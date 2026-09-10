@@ -1958,7 +1958,18 @@ impl Engine {
         host: &Host,
     ) -> Result<(), EngineError> {
         for (k, e) in op.footprint.iter().enumerate() {
-            if !matches!(e.kind, Kind::Modified | Kind::Region) || !e.shape.starts_with("file:") {
+            if !matches!(e.kind, Kind::Modified | Kind::Region) {
+                continue;
+            }
+            // A region lives in a file by construction -- it is text between
+            // two markers -- so a region on anything else is not a thing to
+            // snapshot. A `modified` fact is under no such obligation: an
+            // appliance's reported state is a fact the engine can read back
+            // through the executor and put back on undo, and T4's whole
+            // footprint is of that kind. Snapshotting only files left such a
+            // plan applying cleanly and unable to revert, which is the one
+            // outcome this project exists to prevent.
+            if matches!(e.kind, Kind::Region) && !e.shape.starts_with("file:") {
                 continue;
             }
             let ex = match self.executor_for(host) {

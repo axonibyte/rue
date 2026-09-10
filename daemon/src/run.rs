@@ -235,6 +235,34 @@ fn acceptors_of(
     Ok(v)
 }
 
+/// Every hook the daemon needs before it can serve its socket, and so
+/// before anything can register over that socket.
+///
+/// Two bindings are used at boot: the inventory is asked once for the host
+/// map, and the journal is written to by boot recovery itself. A hook
+/// serving either must therefore be a `--spawn` child; one that means to
+/// connect over the socket will not have registered yet, and the daemon
+/// cannot wait for it because it is not listening.
+///
+/// This is checked before boot so the refusal names the problem. Without
+/// it the failure arrives as `R0304: entry 1 not acknowledged by
+/// hook(:x)`, which is true, unhelpful, and reads like a fault in the
+/// hook rather than in how it was launched.
+fn boot_time_hooks(decl: &SiteDecl) -> Vec<(&'static str, String)> {
+    let mut need = Vec::new();
+    if let Some(b) = &decl.inventory {
+        if b.kind == "hook" {
+            need.push(("inventory from", b.arg.clone().unwrap_or_default()));
+        }
+    }
+    if let Some(b) = &decl.journal {
+        if b.kind == "hook" {
+            need.push(("journal to", b.arg.clone().unwrap_or_default()));
+        }
+    }
+    need
+}
+
 /// The hook an `inventory from: hook()` names, when the daemon must ask
 /// it: `--inventory` names a record instead and takes precedence, which is
 /// how dry-run mode rehearses a hook-inventoried site with no hook.
@@ -458,24 +486,32 @@ fn spawn_child(spec: &str, daemon: &Arc<Daemon>) -> Result<(), Refusal> {
         connection: format!("child pid {pid}"),
         link: link.clone(),
     });
-    daemon
-        .journal_site(rue_core::journal::Event::HookRegistered {
-            name: reg.name.clone(),
-            registrar: registrar.name.clone(),
-            connection: format!("child pid {pid} (stdio, socket owner)"),
-        })
-        .map_err(|e| refused(e.to_string()))?;
-    // Acknowledge the registration on its stdin, as the socket does. Until
-    // this arrives the child is waiting and has served nothing.
+    // Acknowledge first, then journal. A hook cannot answer anything until
+    // it has been acknowledged -- its serve loop is still waiting on that
+    // line -- so journaling first deadlocks the moment the site's own
+    // `journal to:` is a hook: the entry is sent to a child that is waiting
+    // for the ack that the entry is holding up.
+    //
+    // The registration is still never left unjournaled: if the journal
+    // refuses it (R0304), the hook is deregistered again and the daemon
+    // refuses to start, so a registered hook and a journaled registration
+    // remain the same set.
     hook.acknowledge().map_err(|e| refused(e.to_string()))?;
+
+    // The pump before anything is asked of the hook. It is what delivers
+    // replies to whoever is waiting; send a request with no reader on the
+    // child's stdout and the answer goes nowhere, which the engine can
+    // only see as Silent. That matters from the very first entry now that
+    // registering a hook is itself journaled and the journal may be a hook.
     let reader = hook
         .take_stdout()
         .ok_or_else(|| refused(format!("{name}: no stdout")))?;
     let d = daemon.clone();
     let hook_name = reg.name.clone();
-    let registrar_name = registrar.name;
+    let registrar_name = registrar.name.clone();
+    let pumping = link.clone();
     std::thread::spawn(move || {
-        link.pump(reader);
+        pumping.pump(reader);
         d.hooks.deregister(&hook_name);
         let _ = d.journal_site(rue_core::journal::Event::HookDeregistered {
             name: hook_name,
@@ -485,6 +521,20 @@ fn spawn_child(spec: &str, daemon: &Arc<Daemon>) -> Result<(), Refusal> {
         let mut hook = hook;
         let _ = hook.wait();
     });
+
+    // Journalled last, and undone if the journal refuses: a registered hook
+    // and a journaled registration stay the same set (R0304).
+    if let Err(e) = daemon.journal_site(rue_core::journal::Event::HookRegistered {
+        name: reg.name.clone(),
+        registrar: registrar.name.clone(),
+        connection: format!("child pid {pid} (stdio, socket owner)"),
+    }) {
+        daemon.hooks.deregister(&reg.name);
+        return Err(refused(format!(
+            "{}: registering {} could not be journaled, so it is not registered",
+            e, reg.name
+        )));
+    }
     Ok(())
 }
 
@@ -565,8 +615,45 @@ pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
     // The children first: an `inventory from: hook()` has no hosts until
     // its hook has registered and been asked, and boot recovery needs the
     // hosts to reconcile against.
-    for spec in &cfg.spawn {
+    //
+    // The one serving `journal to:` is spawned before the rest, because
+    // registering any hook is itself journaled: spawn another first and its
+    // registration goes to a sink that does not exist yet, and the daemon
+    // refuses to start. Ordering it here rather than asking the operator to
+    // get `--spawn` in the right order means there is no order to get wrong.
+    let journal_hook = sb
+        .decl
+        .journal
+        .as_ref()
+        .and_then(|b| (b.kind == "hook").then(|| b.arg.clone().unwrap_or_default()));
+    let mut specs: Vec<&String> = cfg.spawn.iter().collect();
+    if let Some(first) = &journal_hook {
+        let prefix = format!("{first}=");
+        specs.sort_by_key(|spec| !spec.starts_with(&prefix));
+    }
+    for spec in specs {
         spawn_child(spec, &daemon)?;
+    }
+    // Every hook a boot-time binding names must have registered by now,
+    // which means it must have been a `--spawn` child.
+    for (slot, name) in boot_time_hooks(&sb.decl) {
+        if slot == "inventory from" && cfg.inventory.is_some() {
+            continue;
+        }
+        if !hooks.names().iter().any(|n| n == &name) {
+            return Err(refused(format!(
+                "the site's `{slot}: hook(:{name})` is needed before the socket is served, and \
+                 {name} has not registered. A hook serving the inventory or the journal must be \
+                 a `--spawn` child: one that connects over the socket cannot have registered \
+                 yet, because the daemon is not listening until after boot. Spawn it with \
+                 `--spawn {name}=COMMAND`{}",
+                if slot == "inventory from" {
+                    ", or name a record with --inventory"
+                } else {
+                    ""
+                }
+            )));
+        }
     }
     if let Some(name) = hook_inventory_name(&sb.decl, cfg.inventory.is_some()) {
         let hosts = hook_inventory(&hooks, &name, deadline).map_err(|e| {
