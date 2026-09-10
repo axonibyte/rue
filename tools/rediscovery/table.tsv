@@ -127,3 +127,4 @@ secret-printed-by-debug.patch	1	-	cargo	a_secret_does_not_survive_being_formatte
 hook-missing-field-accepted.patch	1	-	cargo	the_reference_hook_passes_every_case	-
 hook-silent-as-ok.patch	1	-	cargo	the_reference_hook_passes_every_case	-
 hook-killed-not-closed.patch	1	-	cargo	a_hook_the_shell_did_not_exec_still_ends_when_the_suite_does	-
+subscriber-loses-events-mid-verb.patch	1	-	cargo	an_event_arriving_while_a_verb_is_in_flight_is_kept_and_not_discarded	-

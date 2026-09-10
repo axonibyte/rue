@@ -92,7 +92,7 @@ fn site(me: &str, with_operators: bool) -> String {
     // the registrar the execute hook needs (E0605) stays.
     let ops = if with_operators {
         format!(
-            "  operators do\n    identity :ops, user: \"{me}\", operator_for: :all, admin: true\n    identity :owner, user: :socket_owner, operator_for: [:p]\n  end\n  hooks do\n    registrar :owner, user: :socket_owner, may_register: [:act]\n  end\n"
+            "  operators do\n    identity :ops, user: \"{me}\", operator_for: :all, admin: true, subscribe: [:p]\n    identity :owner, user: :socket_owner, operator_for: [:p]\n  end\n  hooks do\n    registrar :owner, user: :socket_owner, may_register: [:act]\n  end\n"
         )
     } else {
         "  hooks do\n    registrar :owner, user: :socket_owner, may_register: [:act]\n  end\n"
@@ -212,6 +212,71 @@ fn serve_hook(socket: &Path, name: &str) -> thread::JoinHandle<Vec<Value>> {
         }
         served
     })
+}
+
+#[test]
+fn an_event_arriving_while_a_verb_is_in_flight_is_kept_and_not_discarded() {
+    // `:ops` subscribes to `:p`, so applying p sends this connection the
+    // plan's journal entries -- on the same socket the reply comes back
+    // on, interleaved with it. Reading past an event to reach the reply is
+    // unavoidable; discarding it is not. A host that subscribes to a plan
+    // and also drives it (T4's shape) would otherwise lose exactly the
+    // events it asked for, and only when it happened to be mid-verb, which
+    // is the hardest kind of loss to notice.
+    let d = TempDir::new("events");
+    let me = user_name(my_uid()).unwrap();
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", site(&me, true))).unwrap();
+    let daemon = Daemon::start(&d.0, &site_file, &[]);
+    let _hook = serve_hook(&daemon.socket, "act");
+
+    let mut c = Client::connect(&daemon.socket).unwrap();
+    c.hello(Some("ops")).unwrap();
+    assert_eq!(c.pending_events(), 0, "nothing has happened yet");
+
+    // Another connection applies p. This one is a subscriber, so the
+    // daemon writes p's entries to its socket as they happen -- they are
+    // sitting in front of the next reply it reads.
+    let out = rue(
+        &daemon.socket,
+        &[
+            "apply",
+            site_file.to_str().unwrap(),
+            "--host",
+            "h",
+            "--identity",
+            "ops",
+        ],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Now ask a question. The reply is reached only by reading past every
+    // one of those events.
+    let r = c.call("status", json!({})).unwrap();
+    assert!(r.is_object() || r.is_array(), "{r}");
+
+    let mut kept = Vec::new();
+    while let Some(e) = c.next_event() {
+        kept.push(e);
+    }
+    assert!(
+        kept.len() >= 3,
+        "the apply's entries were read past and dropped: kept {}",
+        kept.len()
+    );
+    assert!(
+        kept.iter()
+            .all(|e| e.pointer("/event/plan") == Some(&json!("p"))),
+        "an event for a plan this identity does not subscribe to: {kept:?}"
+    );
+    // Drained is drained.
+    assert_eq!(c.pending_events(), 0);
 }
 
 #[test]

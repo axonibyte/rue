@@ -118,7 +118,21 @@ entries as they are chained:
 ← {"event": { ...the entry... }}
 ```
 
-Events interleave with replies; a client reading a reply skips them.
+Events interleave with replies, so a client reading a reply reads past
+whatever arrived first. Reading past one is not discarding it: `Client`
+keeps them in arrival order and hands them back through `next_event`,
+because a host that subscribes to a plan and also drives it (T4's shape)
+would otherwise lose exactly the events it asked for, and only when it
+happened to be mid-verb.
+
+An embedder that wants a reply and an event stream at once owns the
+connection and alternates the two, as T4's host does. There is no split of
+the connection into halves: replies are matched to requests by the one
+reader, so a second thread reading the socket would take a reply its caller
+is waiting for. A client that demultiplexes by id -- what
+`rue_engine::hook::LineLink` is for a hook -- is machinery nothing has
+needed yet, and is not built.
+
 Delivery is best-effort and never a journal refusal.
 
 ## The CLI

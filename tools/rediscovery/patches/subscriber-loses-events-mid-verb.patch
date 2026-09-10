@@ -1,0 +1,12 @@
+# Reverts: an event read past while waiting for a reply is kept for next_event (7.4); here it is discarded, so a subscriber that also issues verbs loses exactly what it subscribed to, and only when it happened to be mid-verb.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -1157,7 +1157,6 @@
+             // because a subscriber that happens to be mid-verb subscribed
+             // to it just the same.
+             if v.get("event").is_some() {
+-                self.events.push_back(v);
+                 continue;
+             }
+             return Ok(v);

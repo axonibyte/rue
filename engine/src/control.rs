@@ -1099,10 +1099,18 @@ pub fn serve(
 // The client
 
 /// A client of the control channel: the CLI, a test, an embedding host.
+///
+/// Replies and events share the connection, so reading a reply means
+/// reading past any event that arrived first. Those events are **kept**,
+/// oldest first, and handed back by [`next_event`](Self::next_event): a
+/// subscriber that issues a verb must not lose what it subscribed to
+/// merely because it asked a question at the wrong moment.
 pub struct Client {
     reader: BufReader<Box<dyn std::io::Read + Send>>,
     writer: Box<dyn Write + Send>,
     next_id: u64,
+    /// Events read while waiting for a reply, in arrival order.
+    events: std::collections::VecDeque<Value>,
 }
 
 impl Client {
@@ -1113,6 +1121,7 @@ impl Client {
             reader: BufReader::new(Box::new(s.try_clone()?)),
             writer: Box::new(s),
             next_id: 1,
+            events: std::collections::VecDeque::new(),
         })
     }
 
@@ -1123,6 +1132,7 @@ impl Client {
             reader: BufReader::new(r),
             writer: w,
             next_id: 1,
+            events: std::collections::VecDeque::new(),
         })
     }
 
@@ -1142,9 +1152,12 @@ impl Client {
             }
             let v: Value = serde_json::from_str(line.trim_end())
                 .map_err(|e| ControlError::new("protocol", e.to_string()))?;
-            // Notifications interleave with replies; a client reading a
-            // reply skips them.
+            // Notifications interleave with replies. Reading past one is
+            // not the same as discarding it: it is kept for `next_event`,
+            // because a subscriber that happens to be mid-verb subscribed
+            // to it just the same.
             if v.get("event").is_some() {
+                self.events.push_back(v);
                 continue;
             }
             return Ok(v);
@@ -1192,9 +1205,26 @@ impl Client {
         }
     }
 
+    /// The next event this client was sent and has not yet been handed,
+    /// oldest first; `None` when there are none waiting. Events arrive
+    /// only for the plans an operator's `subscribe:` names.
+    pub fn next_event(&mut self) -> Option<Value> {
+        self.events.pop_front()
+    }
+
+    /// How many events are waiting.
+    pub fn pending_events(&self) -> usize {
+        self.events.len()
+    }
+
     /// The next frame the daemon sends this client (a request to a hook, or
-    /// an event), as-is. A hook loop reads with this and answers with `send`.
+    /// an event), as-is. A hook loop reads with this and answers with
+    /// `send`. Any event already read past while waiting for a reply comes
+    /// first, so the order a caller sees is the order the daemon sent.
     pub fn next_frame(&mut self) -> Result<Value, ControlError> {
+        if let Some(e) = self.events.pop_front() {
+            return Ok(e);
+        }
         let mut line = String::new();
         match self.reader.read_line(&mut line) {
             Ok(0) => Err(ControlError::new(
