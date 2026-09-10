@@ -6,15 +6,23 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+/// The exit code and stdout, with stderr folded into the text so a failed
+/// assertion on the code says what went wrong. An unexpected exit is
+/// exactly when the reason matters, and the reason is on stderr:
+/// `rue sdk-conform` exits 2 without judging anything when it cannot start
+/// the hook, and says why there.
 fn rue(args: &[&str]) -> (i32, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_rue"))
         .args(args)
         .output()
         .expect("rue runs");
-    (
-        out.status.code().unwrap_or(-1),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-    )
+    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let err = String::from_utf8_lossy(&out.stderr);
+    if !err.trim().is_empty() {
+        text.push_str("\n--- stderr ---\n");
+        text.push_str(&err);
+    }
+    (out.status.code().unwrap_or(-1), text)
 }
 
 #[test]
@@ -77,13 +85,13 @@ fn the_json_report_carries_every_case_and_the_registration() {
 
 /// Run `rue` and refuse to wait forever: a hang is reported as a failure
 /// with something to read, not as a wedged suite.
-fn rue_bounded(args: &[&str], bound: Duration) -> Option<i32> {
+fn rue_bounded(args: &[&str], bound: Duration) -> Option<(i32, String)> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_rue"))
         .args(args)
-        // The report is some four kilobytes, well inside a pipe buffer, so
-        // it is read after the exit rather than concurrently.
+        // Both are some four kilobytes, well inside a pipe buffer, so they
+        // are read after the exit rather than concurrently.
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("rue runs");
     let until = Instant::now() + bound;
@@ -93,7 +101,15 @@ fn rue_bounded(args: &[&str], bound: Duration) -> Option<i32> {
             if let Some(mut o) = child.stdout.take() {
                 let _ = o.read_to_string(&mut out);
             }
-            return Some(status.code().unwrap_or(-1));
+            if let Some(mut e) = child.stderr.take() {
+                let mut err = String::new();
+                let _ = e.read_to_string(&mut err);
+                if !err.trim().is_empty() {
+                    out.push_str("\n--- stderr ---\n");
+                    out.push_str(&err);
+                }
+            }
+            return Some((status.code().unwrap_or(-1), out));
         }
         if Instant::now() >= until {
             let _ = child.kill();
@@ -115,14 +131,15 @@ fn a_hook_the_shell_did_not_exec_still_ends_when_the_suite_does() {
     // so the worst way for this to go wrong. Closing the hook's stdin ends
     // whichever process is really serving.
     let stub = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/stub-hook.sh");
-    let code = rue_bounded(
+    let answered = rue_bounded(
         &["sdk-conform", "--name", "act", &format!("sh {stub} act; :")],
         Duration::from_secs(30),
     );
-    assert_eq!(
-        code,
-        Some(1),
-        "the suite did not end within 30s: a hook the shell did not exec was left holding \
-         the pipe"
-    );
+    let Some((code, out)) = answered else {
+        panic!(
+            "the suite did not end within 30s: a hook the shell did not exec was left holding \
+             the pipe"
+        )
+    };
+    assert_eq!(code, 1, "{out}");
 }
