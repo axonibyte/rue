@@ -183,6 +183,13 @@ strip_crontab_regions() {
     ' > "$ct" || return 1
     crontab "$ct" || return 1
     rm -f "$ct"
+    # Assert the strip here and not in `check`: `check` runs a second time
+    # as a test of its own (tenants/e2e/tests/smoke.rs), by which point this
+    # run's backstops are armed and an empty crontab would be the bug.
+    if crontab -l 2> /dev/null | grep -q '^# rue-region '; then
+        echo "provision: the crontab still holds a rue region after stripping" >&2
+        return 1
+    fi
 }
 
 # --- check -----------------------------------------------------------------
@@ -199,7 +206,6 @@ pf_enabled() { pfctl -s info 2> /dev/null | grep -q 'Status: Enabled'; }
 pf_skips_mgmt() { pfctl -s Interfaces -v 2> /dev/null | grep -q "^$mgmt (skip)"; }
 nft_table_present() { nft list table inet rue; }
 nft_input_accepts() { nft list chain inet rue input 2> /dev/null | grep -q 'policy accept'; }
-no_crontab_regions() { ! crontab -l 2> /dev/null | grep -q '^# rue-region '; }
 group_rue_exists() {
     case $os in
         FreeBSD) pw groupshow rue ;;
@@ -225,7 +231,6 @@ check() {
             chk "nftables input chain accepts by policy" nft_input_accepts
             ;;
     esac
-    chk "no backstop of an earlier run is left armed in the crontab" no_crontab_regions
     chk "group rue exists" group_rue_exists
     chk "rue_root $rue_root/instances present" test -d "$rue_root/instances"
     exit "$rc"

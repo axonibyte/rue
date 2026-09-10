@@ -592,8 +592,10 @@ accepts); a scheduler baseline that removes every `# rue-region` block an
 earlier run left in the crontab, because reaper's reset rolls back the state
 dataset and not `/var/cron`, so an entry outlives the instance directory it
 names and would answer a later run's question about whether a backstop is
-present; the `rue` group; and `rue_root` under `$REAPER_STATE/rue`, the
-dataset reaper's reset rolls back. Every ssh call the harness makes is
+present (`apply` asserts its own strip, and `check` does not: `check` runs a
+second time as a test of its own, once this run's backstops are armed and an
+empty crontab would be the bug); the `rue` group; and `rue_root` under
+`$REAPER_STATE/rue`, the dataset reaper's reset rolls back. Every ssh call the harness makes is
 `ssh -F none -o IdentitiesOnly=yes -i <its key> -o UserKnownHostsFile=<its
 file> -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes`.
 
