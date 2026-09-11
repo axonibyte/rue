@@ -190,3 +190,5 @@ failed-do-undone-though-it-never-took.patch	1	-	cargo	never_took	-
 nonfile-fact-read-by-no-probe.patch	1	-	cargo	by_the_probe_that_reads_it	-
 computed-undo-on-unread-fact-checks-clean.patch	1	-	cargo	a_computed_undo_needs	-
 reads-line-ignored.patch	1	-	cargo	a_probe_that_reads_a_fact_binds	-
+sdk-python-missing-field-asserted.patch	1	-	python	test_a_reply_missing_a_required_field	-
+sdk-rust-conform-hook-bad-line.patch	1	-	cargo	the_conformance_hook_skips	-

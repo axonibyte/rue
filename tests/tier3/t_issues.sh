@@ -1,7 +1,7 @@
 #!/bin/sh
 # Self-test of tools/lint-issues.sh: an issue with no status or a status the
 # tracker does not know, a number that does not match its file, a number
-# used twice, a closed issue naming no commit and an open one naming one, a
+# used twice, a closed issue naming no date and an open one naming one, a
 # title with a pipe, a stray file, and an index that is missing a row, has
 # a stale one or lists an issue that does not exist must each fail; a
 # tracker with no index must refuse; a well-formed tracker and the real
@@ -40,7 +40,7 @@ reset_tree() {
     rm -rf "$tmp/tree"
     mkdir -p "$d" || exit 2
     issue 0001-first.md 0001 "The first" open
-    issue 0002-second.md 0002 "The second" closed abc1234
+    issue 0002-second.md 0002 "The second" closed 2026-09-11
     printf '# Issues\n\n| # | Title | Kind | Status |\n|---|---|---|---|\n| 0001 | The first | defect | open |\n| 0002 | The second | defect | closed |\n' > "$d/README.md"
 }
 index_set() { # index_set <sed expression>: edit the README's index
@@ -69,11 +69,15 @@ expect 1 "a number used twice is caught"
 
 reset_tree
 issue 0002-second.md 0002 "The second" closed
-expect 1 "a closed issue naming no commit is caught"
+expect 1 "a closed issue naming no closing date is caught"
 
 reset_tree
-issue 0001-first.md 0001 "The first" open abc1234
-expect 1 "an open issue naming a closing commit is caught"
+issue 0002-second.md 0002 "The second" closed abc1234
+expect 1 "a closed issue naming something other than a date is caught"
+
+reset_tree
+issue 0001-first.md 0001 "The first" open 2026-09-11
+expect 1 "an open issue naming a closing date is caught"
 
 reset_tree
 issue 0001-first.md 0001 "The | first" open

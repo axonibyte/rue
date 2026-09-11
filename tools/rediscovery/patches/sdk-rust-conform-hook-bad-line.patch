@@ -1,0 +1,22 @@
+# Reverts: the reference conformance hook skips a line that is not JSON, as the SDK serve loop and every other conformance hook do; returned as an error it ended the hook
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/rust/src/bin/conform_hook.rs
++++ b/sdk/rust/src/bin/conform_hook.rs
+@@ -296,16 +296,7 @@
+         }
+     }
+ 
+-    loop {
+-        let frame = match read_frame(&mut r) {
+-            Ok(Some(frame)) => frame,
+-            Ok(None) => break,
+-            // A line that is not JSON is skipped, as the SDK's own serve
+-            // loop and every other SDK's conformance hook skip it; this file
+-            // is the worked example they copy.
+-            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+-            Err(e) => return Err(e),
+-        };
++    while let Some(frame) = read_frame(&mut r)? {
+         if frame.is_null() || frame.get("kind").is_none() {
+             continue;
+         }

@@ -67,3 +67,39 @@ fn the_suite_drives_every_op_of_the_protocol() {
         "these cases name an op the protocol has no row for: {unknown:?}"
     );
 }
+
+/// The reference conformance hook skips a line that is not JSON, as the
+/// SDK's serve loop does, rather than ending: it is the example every other
+/// SDK's conformance hook is written to match.
+#[test]
+fn the_conformance_hook_skips_a_line_that_is_not_json() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rue-conform-hook"))
+        .arg("conform")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    out.read_line(&mut line).unwrap();
+    assert!(line.contains("\"register\""), "{line}");
+    stdin
+        .write_all(
+            b"{\"register\":{\"ok\":true}}\nnot json at all\n\
+              {\"id\":7,\"kind\":\"journal\",\"op\":\"append\",\"entry\":{}}\n",
+        )
+        .unwrap();
+    stdin.flush().unwrap();
+    line.clear();
+    out.read_line(&mut line).unwrap();
+    drop(stdin);
+    let _ = child.wait();
+    let reply: serde_json::Value = serde_json::from_str(line.trim_end())
+        .unwrap_or_else(|e| panic!("the hook ended or wrote something else: {e}: {line:?}"));
+    assert_eq!(reply["id"], serde_json::json!(7), "{reply}");
+    assert_eq!(reply["ok"], serde_json::json!(true), "{reply}");
+}

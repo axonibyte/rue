@@ -24,7 +24,7 @@ failure, and exits 0 only if every phase ran and passed:
 | `hook-ops` | The ops table of `docs/hook-protocol.md` and `OPS` in `rue-hook-proto` name the same 26 ops, in both directions |
 | `hook-proto-frozen` | Every released hook protocol document (`docs/hook-protocol-v<N>.json`) still has the digest pinned when it was released, and the current `HOOK_PROTOCOL` has a document |
 | `sdk-docs` | Every SDK under `sdk/` has user docs (`docs/README.md`), every example a page shows is byte for byte the file its own suite tests, and every relative link in them resolves |
-| `issues` | The tracker in `docs/issues/` keeps its own rules: every issue well formed and numbered as its file, a closed one naming its commit, and the index listing exactly the issues with their titles, kinds and statuses |
+| `issues` | The tracker in `docs/issues/` keeps its own rules: every issue well formed and numbered as its file, a closed one naming the day it closed, and the index listing exactly the issues with their titles, kinds and statuses |
 | `golden-hygiene` | Every expected file has no CR, no trailing whitespace, exactly one trailing LF; JSON begins with `{` |
 | `rediscovery-patches` | Every row of the rediscovery table names a patch that still applies to the tree, and every patch is listed |
 | `darwin-deps` | No crate in the darwin dependency graph (`cargo tree --target *-apple-darwin`) is in `tools/darwin-denylist.txt`: the darwin binaries cross-link with zig and no macOS SDK, which a framework-linking crate would break |

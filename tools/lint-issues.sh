@@ -11,8 +11,9 @@
 #     `# NNNN: title` with the same number; numbers are unique;
 #   * its header names a status (open, in-progress, closed), a kind
 #     (defect, feature, question, not-proven), a phase and the date it was
-#     opened; a closed issue names the commit that closed it, and an issue
-#     that is not closed names none;
+#     opened; a closed issue names the date it was closed, and an issue
+#     that is not closed names none. (The commit that closes one says
+#     `Closes #NNNN`; it cannot name its own hash in the file it changes.)
 #   * the README's index has exactly one row per issue, with its title,
 #     kind and status as the issue itself says them;
 #   * nothing else lives in the directory.
@@ -86,11 +87,12 @@ for f in "$dir"/*; do
         *) bad "docs/issues/$name: opened is \`$opened\`, not a date (YYYY-MM-DD)" ;;
     esac
     if [ "$status" = closed ]; then
-        if ! printf '%s\n' "$closed" | grep -Eq '^[0-9a-f]{7,40}$'; then
-            bad "docs/issues/$name: closed, but names no commit (- closed: <commit>)"
-        fi
+        case $closed in
+            [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+            *) bad "docs/issues/$name: closed, but names no date (- closed: YYYY-MM-DD)" ;;
+        esac
     elif [ -n "$closed" ]; then
-        bad "docs/issues/$name: names a closing commit but is $status"
+        bad "docs/issues/$name: names a closing date but is $status"
     fi
     printf '%s\t%s\t%s\t%s\n' "$num" "$title" "$kind" "$status" >> "$tmp/issues"
 done

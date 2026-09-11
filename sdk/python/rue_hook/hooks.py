@@ -236,7 +236,16 @@ class Hooks:
         reply = {"id": rid, "ok": True}
         reply.update(fields)
         missing = [f for f in row.required_reply if f not in reply]
-        assert not missing, f"{kind}.{op_name} reply is missing {missing}"
+        if missing:
+            # Replies are built from the op's row, so this is a bug in the SDK
+            # and not an R0303 for the far end to puzzle over. Refused by
+            # name, as every other SDK does: an assert here vanished under
+            # `python -O`, and when it fired it ended the serve loop.
+            return {
+                "id": rid,
+                "ok": False,
+                "error": f"the SDK built a {kind}.{op_name} reply without {', '.join(missing)}",
+            }
         return reply
 
     def _handler(self, kind: str, row):

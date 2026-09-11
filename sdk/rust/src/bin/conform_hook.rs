@@ -296,7 +296,16 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    while let Some(frame) = read_frame(&mut r)? {
+    loop {
+        let frame = match read_frame(&mut r) {
+            Ok(Some(frame)) => frame,
+            Ok(None) => break,
+            // A line that is not JSON is skipped, as the SDK's own serve
+            // loop and every other SDK's conformance hook skip it; this file
+            // is the worked example they copy.
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+            Err(e) => return Err(e),
+        };
         if frame.is_null() || frame.get("kind").is_none() {
             continue;
         }

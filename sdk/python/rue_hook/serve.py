@@ -113,9 +113,6 @@ def serve_socket(
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(path)
     with s.makefile("r") as reader, s.makefile("w") as writer:
-        hello = {"id": 0, "verb": "hello", "proto": 1}
-        if identity:
-            hello["identity"] = identity
         _write(writer, {"hello": {"proto": 1, "identity": identity}})
         reply = json.loads(reader.readline() or "{}")
         if reply.get("hello", {}).get("ok") is not True and reply.get("ok") is not True:

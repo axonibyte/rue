@@ -35,6 +35,22 @@ class HooksTest(unittest.TestCase):
         self.assertFalse(fault["ok"])
         self.assertIn("RuntimeError: socket closed", fault["error"])
 
+    def test_a_reply_missing_a_required_field_is_refused_by_name(self):
+        # The dispatch builds replies from the op's row, so only a bug in the
+        # SDK reaches this; it must still be a refusal that names the field,
+        # not an assert that `python -O` strips and that ends the loop.
+        class Forgetful(Hooks):
+            def _dispatch(self, row, r):
+                return {}
+
+        class P(Probe):
+            def observe(self, host, probe):
+                return Observation.yes("up")
+
+        r = Forgetful(probe=P()).answer(req("probe", "observe", host="h", probe="p"))
+        self.assertEqual((r["id"], r["ok"]), (42, False))
+        self.assertIn("probe.observe reply without fact", r["error"])
+
     def test_read_facts_no_such_file_is_an_answer_with_no_content(self):
         class E(Execute):
             def run(self, host, instance, body):
