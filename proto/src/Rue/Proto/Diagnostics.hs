@@ -79,6 +79,7 @@ data Code
   | E0605 -- a hook() binding is declared but no hooks registrar block names who may register it
   | E0606 -- plan has a secret output and the site declares no secrets deliver_to
   | E0607 -- inventory from: hook() checked with no record to check against
+  | E0608 -- an action the host's executor cannot perform (a hook action, or a probe with no run body, on local() or ssh())
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | The code as it appears in a verdict and in the roadmap's table.
@@ -149,3 +150,4 @@ meaning c = case c of
   E0605 -> "A hook() binding is declared but no hooks registrar block names who may register it"
   E0606 -> "Plan has a secret output and the site declares no secrets deliver_to"
   E0607 -> "inventory from: hook() has no record at check time; name one with --inventory"
+  E0608 -> "an action the host's executor cannot perform: a hook() action, or a probe with no run body, on a host reached by local() or ssh()"

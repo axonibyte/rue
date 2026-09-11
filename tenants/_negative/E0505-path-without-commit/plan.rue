@@ -5,6 +5,13 @@ rue 0
 
 import "../../t3/plan.rue" as t3
 
+# `when healthy` names this; undeclared, the case was also E0608, and a
+# negative is wrong in exactly the one way it is named for.
+defprobe :healthy do
+  run "true"
+  locus :controller
+end
+
 defplan :open_mgmt_port, %{os: :freebsd} do
   backstop trigger: [unless_confirmed: 10m], locus: :target, arm_before: 1
   t3.pf_allow(port: 8443)

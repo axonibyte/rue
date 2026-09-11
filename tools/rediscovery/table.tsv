@@ -138,3 +138,8 @@ nonfile-fact-unwatched.patch	1	-	cargo	a_do_that_touches_another_op_s_appliance_
 journal-sinks-truncated.patch	1	-	cargo	a_site_may_declare_more_than_one_journal_sink_and_keeps_all_of_them	-
 rehearsal-blocks-the-real-plan.patch	1	-	cargo	a_rehearsal_neither_blocks_the_real_plan_nor_is_blocked_by_it	-
 hook-protocol-changes-silently.patch	2	-	cargo	every_artifact_matches_its_expected_file	-
+controller-never-reaches-a-hook.patch	1	-	cargo	a_controller_step_goes_to_the_controller_hook_when_the_site_binds_one	-
+hook-action-on-local-checks-clean.patch	2	-	cargo	every_negative_refuses_with_exactly_its_code	-
+probe-without-run-body-checks-clean.patch	2	-	cargo	every_negative_refuses_with_exactly_its_code	-
+imported-probe-declared-qualified.patch	1	-	cargo	an_imported_probe_is_declared_by_the_name_every_reference_uses	-
+open-import-probe-undeclared.patch	1	-	cargo	an_open_import_s_probe_is_declared_too	-

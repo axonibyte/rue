@@ -717,6 +717,8 @@ impl<'a> Context<'a> {
             diags.push(d);
             return None;
         }
+        // The definition's bare name, which is the name `probes_of` declares
+        // it by, whatever path reached it.
         Some(defs[0].1.name.clone())
     }
 
@@ -1752,15 +1754,47 @@ impl<'a> Context<'a> {
         diags: &mut Vec<Diagnostic>,
     ) -> Vec<ProbeDecl> {
         let mut out = Vec::new();
-        let mut defs: Vec<(String, usize, &Def)> = self
-            .program
-            .defs(module, "defprobe")
-            .into_iter()
-            .map(|(m, p)| (p.name.clone(), m, p))
+        // Every probe is declared by its BARE name, whichever module defines
+        // it -- the name every reference already uses. An op imported from
+        // another file names the probes of its own file bare, and so does a
+        // guard or an `observe` written in it; the IR carries an imported op
+        // by its bare id too. Declaring an imported probe as `alias.name`, as
+        // this did, made the declaration the one name in the IR nothing ever
+        // referred to by: `t1.service_posture`'s post-condition named
+        // `sshd_posture_applied` while the plan declared
+        // `t1.sshd_posture_applied`, and the engine, which finds a probe by
+        // name alone, would have found nothing and sent the host an empty
+        // body. An import with no alias (`open`) is included on the same
+        // terms; before this its probes were not declared at all.
+        //
+        // Bare names can collide, and a collision is not something to
+        // resolve by precedence: an imported op naming its own `x` would
+        // silently run the importing file's `x`. So two different probes
+        // under one name are E0103 -- as the engine sees them, a duplicate
+        // definition. The same definition reached twice is not a collision.
+        let mut defs: Vec<(String, usize, &Def)> = Vec::new();
+        let sources: Vec<usize> = std::iter::once(module)
+            .chain(self.program.modules[module].imports.values().copied())
+            .chain(self.program.modules[module].open.iter().copied())
             .collect();
-        for (alias, &m) in &self.program.modules[module].imports {
-            for (_, p) in self.program.defs(m, "defprobe") {
-                defs.push((format!("{alias}.{}", p.name), m, p));
+        for src in sources {
+            for (m, p) in self.program.defs(src, "defprobe") {
+                match defs.iter().find(|(n, _, _)| n == &p.name) {
+                    Some((_, m0, p0)) if *m0 == m && std::ptr::eq(*p0, p) => {}
+                    Some((_, m0, _)) => {
+                        let first = self.program.modules[*m0].path.display().to_string();
+                        diags.push(self.err(
+                            m,
+                            p.name_range,
+                            Code::E0103,
+                            format!(
+                                "probe {} is also defined in {first}; the engine finds a probe by its name, so the two would be indistinguishable",
+                                p.name
+                            ),
+                        ));
+                    }
+                    None => defs.push((p.name.clone(), m, p)),
+                }
             }
         }
         let bindings = Bindings::new();

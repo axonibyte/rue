@@ -124,7 +124,7 @@
         ],
         "equivalence": "bytes",
         "locus": "controller",
-        "name": "t3.verify_reach",
+        "name": "verify_reach",
         "produces": [
           "reach"
         ],

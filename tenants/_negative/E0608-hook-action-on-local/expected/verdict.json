@@ -1,12 +1,14 @@
 {
   "backstop": null,
   "commit_step": null,
-  "controller_only_undos": [],
+  "controller_only_undos": [
+    1
+  ],
   "deferred": [],
   "diagnostics": [
     {
-      "code": "E0509",
-      "message": "gate satisfiable with zero human authenticators and no allow_zero_human",
+      "code": "E0608",
+      "message": "op page: hook(:page) in its do body runs on the controller, reached by local(), which performs run and the fact primitives and never a hook's action",
       "step": 1
     }
   ],
@@ -31,40 +33,27 @@
   "intent": "temporary",
   "may_conflicts": [],
   "mode": "manual",
-  "plan": "fence",
-  "point_of_no_return": {
-    "ack": "none",
-    "cost": "fence_verdict",
-    "gate": "wait(30m)",
-    "guard": "verified_off",
-    "step": 1
-  },
+  "plan": "page",
+  "point_of_no_return": null,
   "rehearsal": false,
   "reversible_back_to": null,
-  "reversible_through": 0,
+  "reversible_through": 1,
   "status": "refused",
   "steps": [
     {
       "conditional": null,
-      "drift": null,
-      "footprint": [],
-      "gate": {
-        "expr": "wait(30m)",
-        "step_digest": true,
-        "wait_alone_at_s": 1800,
-        "window_s": 3600
-      },
-      "knell": {
-        "ack": "none",
-        "cost": "fence_verdict",
-        "guard": "verified_off"
-      },
+      "drift": "clobber",
+      "footprint": [
+        "owned: file:/var/db/paged"
+      ],
+      "gate": null,
+      "knell": null,
       "locus": "controller",
       "n": 1,
-      "op": "fence",
-      "refusal": "knell",
-      "undo": null,
-      "undo_locus": "none"
+      "op": "page",
+      "refusal": "revert",
+      "undo": "remove file:/var/db/paged",
+      "undo_locus": "controller"
     }
   ],
   "unresolved_bindings": [],

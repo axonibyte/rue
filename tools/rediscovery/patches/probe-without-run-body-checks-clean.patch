@@ -1,0 +1,13 @@
+# Reverts: E0608 refuses a probe with no run body (declared by hook :x, or a guard naming nothing) on a host served by local() or ssh(), which answer a probe only by running it; here it passes, so an assert no executor can observe checks clean.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -694,7 +694,7 @@
+             .iter()
+             .find(|d| d.name == name || d.produces.iter().any(|f| f == &name));
+         let runs = decl.is_some_and(|d| d.body.iter().any(|prim| matches!(prim, Prim::Run(_))));
+-        if runs {
++        if runs || !runs {
+             continue;
+         }
+         let (host, reach): (&str, Vec<&str>) = match decl.map(|d| &d.locus) {

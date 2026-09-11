@@ -29,6 +29,15 @@ defprobe :sshd_posture do
 end
 
 # A service-posture drop-in: owned, with a derived verify.
+# The post-condition's probe: sshd accepts the configuration it now reads,
+# drop-in included. `post sshd_posture_applied` named this and nothing
+# declared it, so over ssh() -- which answers a probe only by running it --
+# the step could never have passed its own post-condition (E0608).
+defprobe :sshd_posture_applied do
+  run "sshd -t"
+  locus :target
+end
+
 defop :service_posture, %{os: :freebsd} do
   footprint owned: file("/etc/ssh/sshd_config.d/rue-breakglass.conf"), derived: sshd_posture
   do: [write(file("/etc/ssh/sshd_config.d/rue-breakglass.conf"), content: posture), run("service sshd reload")]

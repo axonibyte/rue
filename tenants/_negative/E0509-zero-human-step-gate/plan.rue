@@ -7,10 +7,28 @@ rue 0
 site do
   inventory from: file("../lab-inventory.toml")
   journal to: local()
+  # A hook for the controller, so the case's hook action has something to
+  # perform it and the case is wrong only in the way it is named for; with
+  # local() alone this was also E0608.
+  execute via: [ssh(identity: "keys/id_ed25519", known_hosts: "known_hosts", user: "root"), hook(:fence_api, transport: :controller)]
   backstop scheduler: cron()
   operators do
     identity :requester, user: "ops", operator_for: :all, admin: true
   end
+  hooks do
+    registrar :requester, user: "ops", may_register: [:fence_api]
+  end
+end
+
+# The knell's guard and its cost are probes the fence driver answers.
+defprobe :verified_off do
+  hook :fence_api
+  locus :controller
+end
+
+defprobe :fence_verdict do
+  hook :fence_api
+  locus :controller
 end
 
 defop :fence, _ do
@@ -18,6 +36,7 @@ defop :fence, _ do
   do: hook(:fence)
   refusal: knell, guard: verified_off, cost: fence_verdict(), ack: :none, reason: "driver verified off"
   undo_locus: :none
+  locus: :controller
 end
 
 defplan :fence, %{name: "db-01"} do

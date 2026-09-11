@@ -1,0 +1,1 @@
+page on db-01: refused; E0608 at step 1: op page: hook(:page) in its do body runs on the controller, reached by local(), which performs run and the fact primitives and never a hook's action.

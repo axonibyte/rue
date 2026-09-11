@@ -11,7 +11,7 @@ use crate::artifact;
 use crate::backstop::{
     coverage, heartbeat_violations, reach_violations, trigger_violations, TriggerViolation,
 };
-use crate::body::Body;
+use crate::body::{Body, Prim};
 use crate::closure;
 use crate::diagnostics::Code;
 use crate::explain::undo_line;
@@ -41,6 +41,93 @@ fn step_host(p: &Plan, o: &Op) -> Result<Host, String> {
 
 fn host_record<'a>(site: &'a Site, h: &str) -> Option<&'a HostRecord> {
     site.hosts.iter().find(|r| r.name == h)
+}
+
+/// The controller's reach, as the engine selects its executor: a hook the
+/// site binds with `transport: :controller` first, `local()` otherwise.
+///
+/// One definition, read by both the checker here and the engine's executor
+/// selection, because the defect E0608 exists for was exactly those two
+/// disagreeing: the checker passed hook actions at the controller while the
+/// engine could send the controller nowhere but `local()`.
+pub const CONTROLLER_REACH: &[&str] = &["controller", "local"];
+
+/// The transport the running engine would reach a host by, chosen as the
+/// engine's `executor_index` chooses: the first of its `reach` that some
+/// executor serves. `local()` is always one of them -- the daemon builds it
+/// for the controller whatever the site says -- and every other executor
+/// is one of the site's transports.
+fn selected_transport<'a>(
+    site: &Site,
+    reach: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
+    reach
+        .into_iter()
+        .find(|t| *t == "local" || site.transports.iter().any(|s| s == t))
+}
+
+/// `local()` and `ssh()` perform `run` and the fact primitives; every other
+/// transport is a hook's (docs/LANGUAGE.md: `hook(:x, transport: :t)` is
+/// `t`), and only a hook performs a `hook(...)` action or answers a probe
+/// by name.
+fn is_hook_transport(t: &str) -> bool {
+    t != "local" && t != "ssh"
+}
+
+/// Every probe the plan will observe, with the step it is observed at, in
+/// `numbered`'s numbering: a guard wherever one appears -- preflight,
+/// assert, a `when`'s condition, an op's pre and post, a knell's -- a
+/// knell's cost probe, and `observe`. A `repeat over:` list is not among
+/// them: it may be a parameter supplied at apply, which nothing observes.
+fn observed_probes(p: &Plan) -> Vec<(u32, String)> {
+    fn go(it: &Item, next: &mut u32, out: &mut Vec<(u32, String)>) {
+        match it {
+            Item::Par { children } => children.iter().for_each(|c| go(c, next, out)),
+            Item::Repeat { body, .. } => body.iter().for_each(|c| go(c, next, out)),
+            Item::When {
+                guard,
+                then_,
+                else_,
+                ..
+            } => {
+                // A `when` is not a leaf; its condition is observed where its
+                // first leaf would run.
+                out.push((*next, guard.name.clone()));
+                then_.iter().for_each(|c| go(c, next, out));
+                else_.iter().for_each(|c| go(c, next, out));
+            }
+            leaf => {
+                let n = *next;
+                *next += 1;
+                match leaf {
+                    Item::Preflight { guards } => {
+                        guards.iter().for_each(|g| out.push((n, g.name.clone())))
+                    }
+                    Item::Assert { guard, .. } => out.push((n, guard.name.clone())),
+                    Item::Observe { probe, .. } => out.push((n, probe.clone())),
+                    Item::Step(s) | Item::Knell(s) => {
+                        let o = &s.op;
+                        for g in o.pre.iter().chain(o.post.iter()) {
+                            out.push((n, g.name.clone()));
+                        }
+                        if let Refusal::Knell { guard, cost, .. } = &o.refusal {
+                            if let Some(g) = guard {
+                                out.push((n, g.name.clone()));
+                            }
+                            if let Cost::Probe(c) = cost {
+                                out.push((n, c.clone()));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    let mut next = 1;
+    let mut out = Vec::new();
+    p.body.iter().for_each(|it| go(it, &mut next, &mut out));
+    out
 }
 
 /// The undo body, when the undo is one.
@@ -555,6 +642,84 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
                     ),
                 ));
             }
+        }
+    }
+
+    // E0608: an action the host's executor cannot perform. The engine sends
+    // every step to one executor, chosen from the host's reach; `local()`
+    // and `ssh()` refuse a `hook(...)` action and answer a probe only by
+    // running its `run` body. A plan that asks either of them for anything
+    // else checks clean and then fails at the step -- which is how T2 was
+    // unrunnable for four phases while its verdict read as it should. A
+    // step whose host nothing reaches is deferred, not refused, and is not
+    // this code's: the engine never acts on it.
+    let owner_reach: Vec<&str> = host_record(site, owner)
+        .map(|r| r.reach.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    for (n, o) in &step_ops {
+        let (host, reach): (String, Vec<&str>) = match &o.locus {
+            Locus::Controller => ("the controller".to_string(), CONTROLLER_REACH.to_vec()),
+            _ => match step_host(p, o).ok().and_then(|h| host_record(site, &h)) {
+                Some(r) => (r.name.clone(), r.reach.iter().map(String::as_str).collect()),
+                None => continue,
+            },
+        };
+        let Some(t) = selected_transport(site, reach) else {
+            continue;
+        };
+        if is_hook_transport(t) {
+            continue;
+        }
+        for (name, body) in bodies(o) {
+            if let Some(h) = body.iter().find_map(|prim| match prim {
+                Prim::Hook(h) => Some(h),
+                _ => None,
+            }) {
+                diagnostics.push(d(
+                    Code::E0608,
+                    Some(*n),
+                    format!(
+                        "op {}: hook(:{}) in its {name} body runs on {host}, reached by {t}(), which performs run and the fact primitives and never a hook's action",
+                        o.id, h.name
+                    ),
+                ));
+            }
+        }
+    }
+    let mut seen_probes: Vec<String> = Vec::new();
+    for (n, name) in observed_probes(p) {
+        if seen_probes.contains(&name) {
+            continue;
+        }
+        seen_probes.push(name.clone());
+        let decl = p
+            .probes
+            .iter()
+            .find(|d| d.name == name || d.produces.iter().any(|f| f == &name));
+        let runs = decl.is_some_and(|d| d.body.iter().any(|prim| matches!(prim, Prim::Run(_))));
+        if runs {
+            continue;
+        }
+        let (host, reach): (&str, Vec<&str>) = match decl.map(|d| &d.locus) {
+            Some(Locus::Controller) => ("the controller", CONTROLLER_REACH.to_vec()),
+            _ => (owner, owner_reach.clone()),
+        };
+        let Some(t) = selected_transport(site, reach) else {
+            continue;
+        };
+        if !is_hook_transport(t) {
+            let why = if decl.is_some() {
+                "is declared with no run body"
+            } else {
+                "has no declaration"
+            };
+            diagnostics.push(d(
+                Code::E0608,
+                Some(n),
+                format!(
+                    "probe {name} {why}, and is observed on {host}, reached by {t}(), which answers a probe only by running it"
+                ),
+            ));
         }
     }
 

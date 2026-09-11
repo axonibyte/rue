@@ -6,9 +6,16 @@ rue 0
 site do
   inventory from: file("../lab-inventory.toml")
   journal to: local()
+  # A hook for the controller, so the case's hook action has something to
+  # perform it and the case is wrong only in the way it is named for; with
+  # local() alone this was also E0608.
+  execute via: [ssh(identity: "keys/id_ed25519", known_hosts: "known_hosts", user: "root"), hook(:token_api, transport: :controller)]
   backstop scheduler: cron()
   operators do
     identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+  hooks do
+    registrar :requester, user: "ops", may_register: [:token_api]
   end
 end
 

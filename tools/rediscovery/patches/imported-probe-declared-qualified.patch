@@ -1,0 +1,18 @@
+# Reverts: every probe is declared by its bare name, the name every reference uses; here an imported probe is also declared as `alias.name`, first -- the declaration nothing refers to by, so an observe or an imported op's guard finds its probe only by accident of order.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -1773,8 +1773,12 @@
+         // under one name are E0103 -- as the engine sees them, a duplicate
+         // definition. The same definition reached twice is not a collision.
+         let mut defs: Vec<(String, usize, &Def)> = Vec::new();
++        for (alias, &m) in &self.program.modules[module].imports {
++            for (_, p) in self.program.defs(m, "defprobe") {
++                defs.push((format!("{alias}.{}", p.name), m, p));
++            }
++        }
+         let sources: Vec<usize> = std::iter::once(module)
+-            .chain(self.program.modules[module].imports.values().copied())
+             .chain(self.program.modules[module].open.iter().copied())
+             .collect();
+         for src in sources {

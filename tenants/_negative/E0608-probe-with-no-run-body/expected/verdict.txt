@@ -1,0 +1,1 @@
+posture on db-01: refused; E0608 at step 1: probe healthy has no declaration, and is observed on db-01, reached by ssh(), which answers a probe only by running it.

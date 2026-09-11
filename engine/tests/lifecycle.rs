@@ -499,10 +499,11 @@ fn an_unknown_guard_waits_until_observed_yes_and_a_no_refuses() {
         o
     };
     w.ssh.observe_as("ready", Observation::unknown("?"));
-    let plan = world::temp_plan(
+    let mut plan = world::temp_plan(
         "p",
         vec![world::step(guarded("a")), world::step(world::op("b"))],
     );
+    plan.probes.push(world::probe("ready"));
     let out = w
         .engine
         .apply(world::ir(plan), BTreeMap::new(), opts())
@@ -540,7 +541,8 @@ fn an_unknown_guard_waits_until_observed_yes_and_a_no_refuses() {
 
     // A guard observed no refuses before anything runs.
     w.ssh.observe_as("ready", Observation::no("down"));
-    let plan = world::temp_plan("q", vec![world::step(guarded("c"))]);
+    let mut plan = world::temp_plan("q", vec![world::step(guarded("c"))]);
+    plan.probes.push(world::probe("ready"));
     let out = w
         .engine
         .apply(world::ir(plan), BTreeMap::new(), opts())
@@ -554,7 +556,8 @@ fn an_unknown_guard_waits_until_observed_yes_and_a_no_refuses() {
 
     // A wait whose bound lapses reverts (on_lapse revert).
     w.ssh.observe_as("ready", Observation::unknown("?"));
-    let plan = world::temp_plan("r", vec![world::step(guarded("d"))]);
+    let mut plan = world::temp_plan("r", vec![world::step(guarded("d"))]);
+    plan.probes.push(world::probe("ready"));
     let out = w
         .engine
         .apply(world::ir(plan), BTreeMap::new(), opts())
@@ -578,7 +581,8 @@ fn an_unknown_guard_waits_until_observed_yes_and_a_no_refuses() {
         .any(|e| matches!(e, J::WaitLapsed { step: 1, .. })));
 
     // Forced by name in manual mode, an unknown guard passes.
-    let plan = world::temp_plan("s", vec![world::step(guarded("e"))]);
+    let mut plan = world::temp_plan("s", vec![world::step(guarded("e"))]);
+    plan.probes.push(world::probe("ready"));
     let out = w
         .engine
         .apply(
@@ -1103,7 +1107,7 @@ fn a_when_chooses_its_arm_once_and_a_repeat_runs_its_body_per_item() {
         env: vec![],
         stdin: None,
     })];
-    let plan = world::temp_plan(
+    let mut plan = world::temp_plan(
         "p",
         vec![
             Item::When {
@@ -1124,6 +1128,7 @@ fn a_when_chooses_its_arm_once_and_a_repeat_runs_its_body_per_item() {
             },
         ],
     );
+    plan.probes.push(world::probe("cold"));
     let mut params = BTreeMap::new();
     params.insert("guests".to_string(), "g1, g2".to_string());
     let out = w.engine.apply(world::ir(plan), params, opts()).unwrap();
@@ -1149,13 +1154,14 @@ fn a_knell_waits_for_its_acknowledgement_unless_acked_up_front() {
         )),
     };
     k.undo = Undo::NoUndo;
-    let plan = world::temp_plan(
+    let mut plan = world::temp_plan(
         "p",
         vec![
             world::step(world::op("a")),
             Item::Knell(StepI::new(k.clone())),
         ],
     );
+    plan.probes.push(world::probe("blast"));
     let out = w
         .engine
         .apply(world::ir(plan), BTreeMap::new(), opts())
@@ -1170,7 +1176,8 @@ fn a_knell_waits_for_its_acknowledgement_unless_acked_up_front() {
     let mut k2 = k.clone();
     k2.id = "fence2".into();
     k2.footprint = vec![FootprintEntry::entry(Kind::Owned, "file:/fence2")];
-    let plan = world::temp_plan("q", vec![Item::Knell(StepI::new(k2))]);
+    let mut plan = world::temp_plan("q", vec![Item::Knell(StepI::new(k2))]);
+    plan.probes.push(world::probe("blast"));
     let out = w
         .engine
         .apply(

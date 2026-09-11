@@ -132,7 +132,8 @@
     ],
     "secrets_deliver_to": [],
     "transports": [
-      "ssh"
+      "ssh",
+      "controller"
     ]
   }
 }

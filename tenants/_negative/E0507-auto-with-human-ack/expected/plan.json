@@ -85,7 +85,7 @@
         "body": [],
         "equivalence": "bytes",
         "locus": "controller",
-        "name": "t2.written_bytes_since_split",
+        "name": "written_bytes_since_split",
         "produces": [],
         "static": false
       },
@@ -93,7 +93,47 @@
         "body": [],
         "equivalence": "bytes",
         "locus": "controller",
-        "name": "t2.fence_verified_off",
+        "name": "fence_verified_off",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "peer_dead",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "probes_agree",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "fence_verdict",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "datasets_ahead",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "destroyed_snapshots",
         "produces": [],
         "static": false
       }
@@ -157,7 +197,8 @@
     ],
     "secrets_deliver_to": [],
     "transports": [
-      "ssh"
+      "ssh",
+      "controller"
     ]
   }
 }

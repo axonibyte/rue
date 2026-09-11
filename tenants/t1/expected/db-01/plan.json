@@ -364,6 +364,26 @@
           "sshd_posture"
         ],
         "static": false
+      },
+      {
+        "body": [
+          {
+            "run": {
+              "cmd": [
+                {
+                  "lit": "sshd -t"
+                }
+              ],
+              "env": [],
+              "stdin": null
+            }
+          }
+        ],
+        "equivalence": "bytes",
+        "locus": "target",
+        "name": "sshd_posture_applied",
+        "produces": [],
+        "static": false
       }
     ],
     "renew_within_s": 1800,

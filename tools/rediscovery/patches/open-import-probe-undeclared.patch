@@ -1,0 +1,12 @@
+# Reverts: an open import's probes are declared, by the bare names they are visible under; here they are not declared at all, so a guard naming one resolves in the text and names nothing the engine can find.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -1775,7 +1775,6 @@
+         let mut defs: Vec<(String, usize, &Def)> = Vec::new();
+         let sources: Vec<usize> = std::iter::once(module)
+             .chain(self.program.modules[module].imports.values().copied())
+-            .chain(self.program.modules[module].open.iter().copied())
+             .collect();
+         for src in sources {
+             for (m, p) in self.program.defs(src, "defprobe") {

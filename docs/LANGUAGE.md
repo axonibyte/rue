@@ -219,6 +219,24 @@ a verdict is then a statement about the record you named, which is the
 point of naming it. `--inventory` overrides a `file()` inventory too, so one
 text can be checked against the site it is going to.
 
+**Every action has to have an executor that can perform it** (E0608). Each
+step goes to one executor, chosen as the first of its host's `reach` that
+the site serves; `local()` is always present. `local()` and `ssh()` perform
+`run` and the fact primitives, and answer a probe only by running its `run`
+line. So a `hook(...)` action, or a probe with no `run` line -- a
+`defprobe` declared with `hook :x`, or a guard naming no `defprobe` at all
+-- is refused on a host they serve, rather than passing the check and
+failing at the step. **The controller is reached by `local()` unless the
+site binds a hook to it**: `execute via: [..., hook(:cluster, transport:
+:controller)]` gives `locus: :controller` steps and probes a hook to
+perform their hook actions and answer their probes by name.
+
+A probe is known in the plan by its bare name, whichever file defines it:
+`observe t3.verify_reach()` observes `verify_reach`, and so does a guard
+inside an op imported from that file. Two different probes with one bare
+name are E0103, because the engine finds a probe by that name alone and
+could not tell them apart.
+
 `rue check --ir` prints the plan IR the text resolves to instead of a
 verdict. That is what an embedded host sends over the control channel to
 apply a plan: resolving `.rue` needs the front end, the front end is Rust,
@@ -368,7 +386,8 @@ E0106, E0107 (a call binding a declared parameter to a value of another
 kind, or a plan option of the wrong kind), E0108, E0110, E0111, E0112,
 E0113, E0114 (the arms of a `when` binding one alias to outputs of
 different kinds), E0204 for a knell without a cost, and E0601 to E0605 and
-E0607 for the site. Every one of them has a golden under `tenants/_negative/`
+E0607 for the site. E0608 is the checker's, since it needs the whole plan
+and the site together, and so it reaches the verdict. Every one of them has a golden under `tenants/_negative/`
 with its text and its rendered diagnostics. Every other code is the
 checker's and reaches the verdict; E0109 is the renderer's.
 

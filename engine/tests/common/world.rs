@@ -10,8 +10,8 @@ use std::sync::Arc;
 use rue_core::body::{Body, Part, Prim, Run};
 use rue_core::ir::{PlanIr, IR_VERSION};
 use rue_core::model::{
-    Duration, FootprintEntry, Guard, HostRecord, Item, Kind, Locus, Op, Plan, Refusal, Site, StepI,
-    Tri, Undo,
+    Duration, FootprintEntry, Guard, HostRecord, Item, Kind, Locus, Op, Plan, ProbeDecl, Refusal,
+    Site, StepI, Tri, Undo,
 };
 use rue_engine::clock::FakeClock;
 use rue_engine::executor::{Executor, FakeExecutor, FakeHandle, LocusKind};
@@ -143,6 +143,31 @@ pub fn ir(plan: Plan) -> PlanIr {
 
 pub fn guard(name: &str, value: Tri) -> Guard {
     Guard::new(name, value)
+}
+
+/// A probe a plan may observe, declared the way a real `ssh()` host needs
+/// it: with a `run` line. The fake answers it by name from `observe_as`,
+/// whatever the line says.
+///
+/// Tests declare the probes their guards name rather than having `ir()`
+/// declare them silently. The world's "ssh" is a fake that answers any
+/// probe by name, which no real `ssh()` does, so a plan leaning on that
+/// checked clean here and could never have run -- the gap E0608 closes.
+/// Declaring them in each test keeps that visible instead of hiding it
+/// from every engine test at once.
+pub fn probe(name: &str) -> ProbeDecl {
+    ProbeDecl {
+        name: name.to_string(),
+        locus: Locus::Target,
+        body: vec![rue_core::body::Prim::Run(rue_core::body::Run {
+            cmd: vec![rue_core::body::Part::Lit(format!("probe {name}"))],
+            env: Vec::new(),
+            stdin: None,
+        })],
+        produces: Vec::new(),
+        static_: false,
+        equivalence: "bytes".into(),
+    }
 }
 
 pub fn hold(mut o: Op) -> Op {

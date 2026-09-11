@@ -1,0 +1,27 @@
+rue 0
+# Negative case E0608: a guard with nothing to answer it. `healthy` names no
+# probe, so the engine observes it on the owner with an empty body -- and
+# db-01 is reached by ssh(), which answers a probe only by running it. The
+# checker must refuse with exactly E0608 rather than pass a plan whose assert
+# could never be observed.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :posture, _ do
+  footprint owned: file("/etc/a")
+  do: write(file("/etc/a"), content: "x")
+  undo: :restore
+end
+
+defplan :posture, %{name: "db-01"} do
+  wane 1h
+  assert healthy
+  posture()
+end

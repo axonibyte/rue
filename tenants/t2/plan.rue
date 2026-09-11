@@ -10,6 +10,12 @@ site do
   inventory from: file("inventory.toml")
   journal to: local()
   approval via: hook(:authority)
+  # The cluster driver serves the controller: the fence, the platform's
+  # slave mode and the placement record are its actions, and the guards the
+  # promote ladder climbs are its answers. Without it the controller has only
+  # local(), which performs none of them -- this text checked clean for four
+  # phases and could not have run a step past the probes (E0608).
+  execute via: [ssh(identity: "keys/id_ed25519", known_hosts: "known_hosts", user: "root"), hook(:cluster, transport: :controller)]
   max_wait 30m
   operators do
     identity :operator, user: "ops", operator_for: :all, admin: true
@@ -17,6 +23,7 @@ site do
   end
   hooks do
     registrar :authority, user: "approvald", may_register: [:authority]
+    registrar :cluster, user: "clusterd", may_register: [:cluster]
   end
 end
 
@@ -27,6 +34,34 @@ end
 
 defprobe :fence_verified_off do
   hook :fence_driver
+  locus :controller
+end
+
+# The rungs' guards and the knells' costs. The ladder named these from the
+# start and nothing declared them, so each was a probe no executor could
+# answer: ssh() runs a probe's body and these had none (E0608).
+defprobe :peer_dead do
+  hook :cluster
+  locus :controller
+end
+
+defprobe :probes_agree do
+  hook :cluster
+  locus :controller
+end
+
+defprobe :fence_verdict do
+  hook :fence_driver
+  locus :controller
+end
+
+defprobe :datasets_ahead do
+  hook :cluster
+  locus :controller
+end
+
+defprobe :destroyed_snapshots do
+  hook :cluster
   locus :controller
 end
 

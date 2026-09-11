@@ -533,3 +533,111 @@ end
         "{diags:?}"
     );
 }
+
+// --- probes across files ---------------------------------------------------
+
+/// The IR a file resolves to, for the one plan it has.
+fn ir_of(path: &std::path::Path, host: &str) -> rue_core::ir::PlanIr {
+    let opts = Options {
+        suspend_e0604: false,
+        host: Some(host.into()),
+        plan: None,
+        requester: None,
+        inventory: None,
+    };
+    resolve(path, &opts)
+        .unwrap_or_else(|ds| panic!("{:?}", ds.iter().map(|d| d.render()).collect::<Vec<_>>()))
+}
+
+#[test]
+fn an_imported_probe_is_declared_by_the_name_every_reference_uses() {
+    // The engine finds a probe by its name and nothing else, so the IR's
+    // declaration and every reference to it must agree. They did not: an
+    // imported probe was declared `lib.ready` while an `observe lib.ready()`
+    // in the importer referred to `ready`, and a guard inside an op imported
+    // from that file named `ready` too. Checked clean; unrunnable, since the
+    // engine found no declaration and sent the host an empty body.
+    let d = Dir::new("probe-names");
+    d.raw(
+        "lib.rue",
+        "rue 0\ndefprobe :ready do\n  run \"true\"\n  locus :target\nend\n\
+         defop :guarded, _ do\n  footprint owned: file(\"/etc/g\")\n  do: write(file(\"/etc/g\"), content: \"x\")\n  undo: :restore\n  post ready\nend\n",
+    );
+    let f = d.file(
+        "plan.rue",
+        "import \"lib.rue\" as lib\n\
+         defplan :p, %{name: \"db-01\"} do\n  wane 1h\n  lib.guarded()\n  observe lib.ready() as r\nend\n",
+    );
+    let ir = ir_of(&f, "db-01");
+    let declared: Vec<&str> = ir.plan.probes.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(declared, vec!["ready"], "declared by its bare name");
+    let observed = ir.plan.body.iter().find_map(|it| match it {
+        rue_core::model::Item::Observe { probe, .. } => Some(probe.as_str()),
+        _ => None,
+    });
+    assert_eq!(
+        observed,
+        Some("ready"),
+        "the observe names what is declared"
+    );
+    let post: Vec<String> = ir
+        .plan
+        .body
+        .iter()
+        .find_map(|it| match it {
+            rue_core::model::Item::Step(s) => {
+                Some(s.op.post.iter().map(|g| g.name.clone()).collect())
+            }
+            _ => None,
+        })
+        .unwrap_or_default();
+    assert_eq!(
+        post,
+        vec!["ready".to_string()],
+        "and so does the imported op's guard"
+    );
+}
+
+#[test]
+fn an_open_import_s_probe_is_declared_too() {
+    // An import with no alias puts its names in scope bare. Its probes were
+    // never declared at all, so a guard naming one resolved and then named
+    // nothing the engine could find.
+    let d = Dir::new("probe-open");
+    d.raw(
+        "lib.rue",
+        "rue 0\ndefprobe :ready do\n  run \"true\"\n  locus :target\nend\n",
+    );
+    let f = d.file(
+        "plan.rue",
+        &format!("import \"lib.rue\"\n{POSTURE}\ndefplan :p, %{{name: \"db-01\"}} do\n  wane 1h\n  assert ready\n  posture()\nend\n"),
+    );
+    let ir = ir_of(&f, "db-01");
+    assert!(
+        ir.plan.probes.iter().any(|p| p.name == "ready"),
+        "an open import's probe is not declared: {:?}",
+        ir.plan.probes.iter().map(|p| &p.name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn two_different_probes_with_one_bare_name_are_e0103() {
+    // Bare names are what the engine resolves by, so two probes sharing one
+    // would be indistinguishable: an imported op naming its own `ready`
+    // would silently run the importer's. Refused rather than resolved by
+    // precedence.
+    let d = Dir::new("probe-clash");
+    d.raw(
+        "lib.rue",
+        "rue 0\ndefprobe :ready do\n  run \"true\"\n  locus :target\nend\n",
+    );
+    let f = d.file(
+        "plan.rue",
+        &format!("import \"lib.rue\" as lib\ndefprobe :ready do\n  run \"false\"\n  locus :target\nend\n{POSTURE}\ndefplan :p, %{{name: \"db-01\"}} do\n  wane 1h\n  posture()\nend\n"),
+    );
+    let cs = codes(&f, "db-01");
+    assert!(
+        matches!(cs.as_slice(), [(Code::E0103, m)] if m.contains("ready")),
+        "{cs:?}"
+    );
+}

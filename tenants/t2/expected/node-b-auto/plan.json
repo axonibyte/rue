@@ -489,6 +489,46 @@
         "name": "fence_verified_off",
         "produces": [],
         "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "peer_dead",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "probes_agree",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "fence_verdict",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "datasets_ahead",
+        "produces": [],
+        "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "destroyed_snapshots",
+        "produces": [],
+        "static": false
       }
     ],
     "renew_within_s": null,
@@ -550,7 +590,8 @@
     ],
     "secrets_deliver_to": [],
     "transports": [
-      "ssh"
+      "ssh",
+      "controller"
     ]
   }
 }

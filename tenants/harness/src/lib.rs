@@ -514,6 +514,18 @@ pub const NEGATIVES: &[NegativeCase] = &[
         owner: "db-01",
         plan: "token",
     },
+    NegativeCase {
+        code: Code::E0608,
+        slug: "hook-action-on-local",
+        owner: "db-01",
+        plan: "page",
+    },
+    NegativeCase {
+        code: Code::E0608,
+        slug: "probe-with-no-run-body",
+        owner: "db-01",
+        plan: "posture",
+    },
 ];
 
 /// The codes the checker emits. Every other code in the table is a surface,
@@ -552,6 +564,7 @@ pub const EMITTED_CODES: &[Code] = &[
     Code::E0508,
     Code::E0509,
     Code::E0606,
+    Code::E0608,
 ];
 
 impl TenantCase {

@@ -1,0 +1,29 @@
+rue 0
+# Negative case E0608: a hook action with nothing to perform it. The step runs
+# at the controller, and this site reaches the controller only by local(),
+# which performs run and the fact primitives and never a hook's action. The
+# checker must refuse with exactly E0608 -- where before it passed a plan the
+# engine would have refused at the step, which is how T2 checked clean for
+# four phases and could not run.
+
+site do
+  inventory from: file("../lab-inventory.toml")
+  journal to: local()
+  backstop scheduler: cron()
+  operators do
+    identity :requester, user: "ops", operator_for: :all, admin: true
+  end
+end
+
+defop :page, _ do
+  footprint owned: file("/var/db/paged")
+  do: [write(file("/var/db/paged"), content: "oncall"), hook(:page, who: "oncall")]
+  undo: :restore
+  undo_locus: :controller
+  locus: :controller
+end
+
+defplan :page, %{name: "db-01"} do
+  wane 1h
+  page()
+end

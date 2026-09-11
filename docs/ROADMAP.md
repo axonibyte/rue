@@ -909,6 +909,7 @@ Golden-tested text with `file:line:col`, expected/found, nearest-name suggestion
 | E0605 | A `hook()` binding is declared but no `hooks` registrar block names who may register it |
 | E0606 | Plan has a `secret` output and the site declares no `secrets deliver_to` |
 | E0607 | `inventory from: hook()` is checked with no record to check against; name one with `rue check --inventory` |
+| E0608 | An action the host's executor cannot perform: a `hook(...)` action, or a probe with no `run` body, on a host reached by `local()` or `ssh()` |
 
 ### 6.8 CLI and exit codes
 

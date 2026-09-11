@@ -774,7 +774,10 @@ impl Engine {
     /// schedulers: two fields of the engine, borrowed disjointly.
     pub(crate) fn executor_index(&self, host: &Host) -> Option<usize> {
         let wanted: Vec<&str> = if host.name() == "controller" {
-            vec!["local"]
+            // A `transport: :controller` hook, when the site binds one, and
+            // `local()` otherwise: the same list the checker's E0608 reads,
+            // so a plan it passes is one this can place.
+            rue_core::check::CONTROLLER_REACH.to_vec()
         } else {
             host.record.reach.iter().map(String::as_str).collect()
         };

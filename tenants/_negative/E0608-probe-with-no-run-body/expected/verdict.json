@@ -1,12 +1,14 @@
 {
   "backstop": null,
   "commit_step": null,
-  "controller_only_undos": [],
+  "controller_only_undos": [
+    2
+  ],
   "deferred": [],
   "diagnostics": [
     {
-      "code": "E0509",
-      "message": "gate satisfiable with zero human authenticators and no allow_zero_human",
+      "code": "E0608",
+      "message": "probe healthy has no declaration, and is observed on db-01, reached by ssh(), which answers a probe only by running it",
       "step": 1
     }
   ],
@@ -20,10 +22,10 @@
   "holds_at": [],
   "host": "db-01",
   "hosts_touched": {
-    "1": [
+    "2": [
       {
-        "directory": "controller",
-        "host": "controller"
+        "directory": "target",
+        "host": "db-01"
       }
     ]
   },
@@ -31,40 +33,40 @@
   "intent": "temporary",
   "may_conflicts": [],
   "mode": "manual",
-  "plan": "fence",
-  "point_of_no_return": {
-    "ack": "none",
-    "cost": "fence_verdict",
-    "gate": "wait(30m)",
-    "guard": "verified_off",
-    "step": 1
-  },
+  "plan": "posture",
+  "point_of_no_return": null,
   "rehearsal": false,
   "reversible_back_to": null,
-  "reversible_through": 0,
+  "reversible_through": 2,
   "status": "refused",
   "steps": [
     {
       "conditional": null,
       "drift": null,
       "footprint": [],
-      "gate": {
-        "expr": "wait(30m)",
-        "step_digest": true,
-        "wait_alone_at_s": 1800,
-        "window_s": 3600
-      },
-      "knell": {
-        "ack": "none",
-        "cost": "fence_verdict",
-        "guard": "verified_off"
-      },
+      "gate": null,
+      "knell": null,
       "locus": "controller",
       "n": 1,
-      "op": "fence",
-      "refusal": "knell",
+      "op": "assert healthy",
+      "refusal": "n/a",
       "undo": null,
       "undo_locus": "none"
+    },
+    {
+      "conditional": null,
+      "drift": "clobber",
+      "footprint": [
+        "owned: file:/etc/a"
+      ],
+      "gate": null,
+      "knell": null,
+      "locus": "target",
+      "n": 2,
+      "op": "posture",
+      "refusal": "revert",
+      "undo": "remove file:/etc/a",
+      "undo_locus": "controller"
     }
   ],
   "unresolved_bindings": [],

@@ -1,0 +1,13 @@
+# Reverts: E0608 refuses a hook() action on a host whose executor is local() or ssh(); here it never looks, so a plan the engine must refuse at the step checks clean -- which is how T2 read as a clean verdict for four phases.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -664,7 +664,7 @@
+         let Some(t) = selected_transport(site, reach) else {
+             continue;
+         };
+-        if is_hook_transport(t) {
++        if !is_hook_transport(t) || is_hook_transport(t) {
+             continue;
+         }
+         for (name, body) in bodies(o) {
