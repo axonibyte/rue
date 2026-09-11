@@ -981,8 +981,9 @@ fn dispatch_inner(
             let reason = arg_str(args, "reason")?;
             let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
             let proof = args.get("proof").and_then(Value::as_str).unwrap_or("");
+            let authenticator = arg_str(args, "authenticator")?;
             let out = e
-                .ack(id, step, reason, proof, &op.name)
+                .ack(id, step, reason, proof, authenticator, &op.name)
                 .map_err(engine_error)?;
             Ok(outcome_json(&out))
         }

@@ -156,6 +156,11 @@ enum Verb {
         step: u32,
         #[arg(long)]
         reason: String,
+        /// The authenticator the proof is for, as the approval binding
+        /// publishes it -- not your operator identity, which is recorded as
+        /// the submitter.
+        #[arg(long)]
+        authenticator: String,
         #[command(flatten)]
         channel: Channel,
     },
@@ -598,6 +603,7 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             instance,
             step,
             reason,
+            authenticator,
             channel,
         } => over_channel(
             &channel,
@@ -606,6 +612,7 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
                 "instance": instance,
                 "step": step,
                 "reason": reason,
+                "authenticator": authenticator,
                 "proof": read_stdin()?.trim(),
             }),
             out,

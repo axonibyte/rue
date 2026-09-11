@@ -472,15 +472,23 @@ impl Engine {
         Ok(())
     }
 
-    /// `rue ack --step N --reason`: the acknowledgement a knell waits for,
-    /// journaled under the operator who gave it.
+    /// `rue ack --step N --reason --authenticator A`: the acknowledgement a
+    /// knell waits for. The proof is verified for `authenticator` -- an id
+    /// the approval binding publishes -- and `submitter` is the operator
+    /// identity that sent it. They are different namespaces: an identity
+    /// says who connected, an authenticator who proved. The channel passed
+    /// the identity as the authenticator, so a human acknowledgement sent
+    /// with `rue ack` could verify only if an operator happened to share an
+    /// authenticator's name -- and 8.2's manual knells could not be
+    /// acknowledged at all. `approve_proof` already kept the two apart.
     pub fn ack(
         &mut self,
         id: &str,
         step: u32,
         reason: &str,
         proof: &str,
-        by: &str,
+        authenticator: &str,
+        submitter: &str,
     ) -> Result<crate::lifecycle::Outcome, EngineError> {
         let mut rec = self.load(id)?;
         if reason.trim().is_empty() {
@@ -505,7 +513,7 @@ impl Engine {
                 digest,
                 scope: Scope::Ack(step),
                 context: reason.to_string(),
-                authenticator: by.to_string(),
+                authenticator: authenticator.to_string(),
                 proof: proof.to_string(),
             };
             let verdict = match self.approval.as_mut() {
@@ -526,12 +534,12 @@ impl Engine {
                     },
                 )?;
                 return Err(EngineError::Runtime(format!(
-                    "the acknowledgement from {by} was not accepted: {}",
+                    "the acknowledgement from {authenticator} was not accepted: {}",
                     verdict.reason
                 )));
             }
             let mut proofs = self.proofs_for(&rec, Scope::Ack(step));
-            proofs.push(by.to_string());
+            proofs.push(authenticator.to_string());
             let auths = self.authenticators();
             let elapsed = rue_core::model::Duration::new(
                 self.clock
@@ -548,16 +556,16 @@ impl Engine {
                 // The proof is recorded; the gate is not yet open.
                 rec.proofs.push(Proof {
                     scope: Scope::Ack(step),
-                    authenticator: by.to_string(),
-                    submitter: by.to_string(),
+                    authenticator: authenticator.to_string(),
+                    submitter: submitter.to_string(),
                     at: self.clock.now(),
                 });
                 self.log(
                     &rec,
                     J::ProofAccepted {
                         scope: Scope::Ack(step),
-                        authenticator: by.to_string(),
-                        submitter: by.to_string(),
+                        authenticator: authenticator.to_string(),
+                        submitter: submitter.to_string(),
                     },
                 )?;
                 self.persist(&rec)?;
@@ -579,8 +587,8 @@ impl Engine {
         }
         rec.proofs.push(Proof {
             scope: Scope::Ack(step),
-            authenticator: by.to_string(),
-            submitter: by.to_string(),
+            authenticator: authenticator.to_string(),
+            submitter: submitter.to_string(),
             at: self.clock.now(),
         });
         self.log(
@@ -588,7 +596,7 @@ impl Engine {
             J::KnellAcknowledged {
                 step,
                 cost,
-                by: format!("{by}: {reason}"),
+                by: format!("{authenticator}: {reason}"),
             },
         )?;
         self.persist(&rec)?;

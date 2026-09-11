@@ -338,10 +338,10 @@ fn a_knell_waits_for_its_acknowledgement_and_the_reason_is_journaled() {
     );
     // An acknowledgement without a reason is refused, and so is one whose
     // token the binding will not accept.
-    assert!(w.engine.ack(&id, 1, "  ", "t", "oncall").is_err());
+    assert!(w.engine.ack(&id, 1, "  ", "t", "oncall", "ops").is_err());
     let out = w
         .engine
-        .ack(&id, 1, "the customer agreed", "token", "oncall")
+        .ack(&id, 1, "the customer agreed", "token", "oncall", "ops")
         .unwrap();
     assert_eq!(out.state, State::Applied, "{}", out.line);
     let events = w.events();
@@ -375,7 +375,7 @@ fn an_acknowledgement_the_binding_refuses_is_denied_and_the_knell_stays_shut() {
     let id = out.id.clone();
     let err = w
         .engine
-        .ack(&id, 1, "go on then", "stale", "oncall")
+        .ack(&id, 1, "go on then", "stale", "oncall", "ops")
         .unwrap_err()
         .to_string();
     assert!(err.contains("that token is not yours"), "{err}");
@@ -585,7 +585,7 @@ fn a_static_probe_is_frozen_where_it_runs_and_a_write_before_the_ack_refuses_it(
     );
     let out = w
         .engine
-        .ack(&id, 1, "fail back now", "token", "oncall")
+        .ack(&id, 1, "fail back now", "token", "oncall", "ops")
         .unwrap();
     assert_ne!(
         out.state,

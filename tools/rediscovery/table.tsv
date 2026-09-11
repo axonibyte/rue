@@ -149,3 +149,4 @@ static-probe-observed-with-empty-body.patch	1	-	cargo	a_static_probe_is_frozen_w
 contract-change-midplan-crashes.patch	1	-	cargo	a_static_probe_is_frozen_where_it_runs_and_a_write_before_the_ack_refuses_it	-
 contract-change-while-waiting-crashes.patch	1	-	cargo	a_static_probe_that_moves_while_a_step_gate_waits_refuses_rather_than_crashing	-
 static-probe-unchecked.patch	1	-	cargo	executor_rules	-
+ack-verified-for-the-operator.patch	1	-	cargo	an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_operator	-

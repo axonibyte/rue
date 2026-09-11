@@ -857,3 +857,90 @@ fn a_hook_reply_missing_a_field_the_op_requires_is_r0303() {
     let e = rue_engine::executor::ExecError::Failed(format!("R0303: {err}"));
     assert!(e.to_string().contains("R0303"), "{e}");
 }
+
+#[test]
+fn an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_operator() {
+    // An identity says who connected; an authenticator says who proved. The
+    // channel passed the operator's identity as the authenticator, so the
+    // proof was recorded against "ops" -- a name the approval binding never
+    // published -- and a knell waiting on `oncall` could never open. 8.2's
+    // manual knells were unacknowledgeable through `rue ack`.
+    let w = World::new("control-ack");
+    let (d, sink, _, _w) = daemon(
+        w,
+        ops(
+            vec![operator("ops", UserSpec::Name(me()), &["all"], true)],
+            vec![],
+        ),
+        false,
+    );
+    d.engine
+        .lock()
+        .unwrap()
+        .set_approval(Box::new(rue_engine::gates::FakeApprovalHandle::new(vec![
+            rue_core::model::Authenticator {
+                id: "oncall".into(),
+                human: true,
+            },
+        ])));
+    let mut op = world::op("fence");
+    op.undo = rue_core::model::Undo::NoUndo;
+    op.refusal = rue_core::model::Refusal::Knell {
+        guard: None,
+        cost: rue_core::model::Cost::NoCost("measured elsewhere".into()),
+        ack: rue_core::model::Ack::Gate(rue_core::model::GateExpr::Single(
+            rue_core::model::Factor::Auth {
+                id: "oncall".into(),
+                weight: 1,
+            },
+        )),
+    };
+    let plan = world::temp_plan(
+        "p",
+        vec![rue_core::model::Item::Knell(rue_core::model::StepI::new(
+            op,
+        ))],
+    );
+    let mut c = Conn::open(&d);
+    c.hello(None);
+    let r = c.call(
+        "apply",
+        json!({ "ir": serde_json::to_value(world::ir(plan)).unwrap(), "params": {} }),
+    );
+    let id = r
+        .pointer("/result/id")
+        .and_then(Value::as_str)
+        .expect("an instance")
+        .to_string();
+    assert_eq!(r.pointer("/result/state"), Some(&json!("Waiting")), "{r}");
+
+    let r = c.call(
+        "ack",
+        json!({ "instance": id, "step": 1, "reason": "the driver verified it off",
+                "authenticator": "oncall", "proof": "token" }),
+    );
+    assert_eq!(
+        r.pointer("/result/state"),
+        Some(&json!("Applied")),
+        "the acknowledgement did not open the knell: {r}"
+    );
+    assert!(
+        sink.events().iter().any(|e| matches!(
+            e,
+            J::KnellAcknowledged { by, .. } if by.starts_with("oncall")
+        )),
+        "the knell was not acknowledged by the authenticator that proved it: {:?}",
+        sink.events()
+    );
+
+    // And the authenticator is required: an acknowledgement is a proof by
+    // somebody the binding knows, never by default the operator.
+    let r = c.call(
+        "ack",
+        json!({ "instance": id, "step": 1, "reason": "again", "proof": "token" }),
+    );
+    assert!(
+        r.get("error").is_some(),
+        "an ack with no authenticator was taken: {r}"
+    );
+}

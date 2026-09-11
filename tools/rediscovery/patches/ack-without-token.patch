@@ -2,7 +2,7 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/gates.rs
 +++ b/engine/src/gates.rs
-@@ -477,19 +477,7 @@
+@@ -525,19 +525,7 @@
                      reason: "the site declares no approval binding".into(),
                  },
              };
@@ -15,11 +15,11 @@
 -                    },
 -                )?;
 -                return Err(EngineError::Runtime(format!(
--                    "the acknowledgement from {by} was not accepted: {}",
+-                    "the acknowledgement from {authenticator} was not accepted: {}",
 -                    verdict.reason
 -                )));
 -            }
 +            let _ = &verdict;
              let mut proofs = self.proofs_for(&rec, Scope::Ack(step));
-             proofs.push(by.to_string());
+             proofs.push(authenticator.to_string());
              let auths = self.authenticators();

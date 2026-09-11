@@ -1,0 +1,13 @@
+# Reverts: an acknowledgement over the channel is proved by the authenticator it names, and the connection's identity is only its submitter; here the operator's identity is passed as the authenticator, so the proof is recorded against a name the approval binding never published and a knell waiting on a human never opens.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -983,7 +983,7 @@
+             let proof = args.get("proof").and_then(Value::as_str).unwrap_or("");
+             let authenticator = arg_str(args, "authenticator")?;
+             let out = e
+-                .ack(id, step, reason, proof, authenticator, &op.name)
++                .ack(id, step, reason, proof, { let _ = authenticator; &op.name }, &op.name)
+                 .map_err(engine_error)?;
+             Ok(outcome_json(&out))
+         }

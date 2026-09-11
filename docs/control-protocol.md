@@ -72,6 +72,7 @@ code of section 6.8 and the verdict line the CLI prints last.
 | `commit` | `instance`, `reason` | | outcome |
 | `resume` | `instance` | | outcome |
 | `handoff_done` | `instance`, `step` | | outcome |
+| `ack` | `instance`, `step`, `reason` (non-empty), `authenticator`, `proof` | the instance's plan | outcome; the proof is verified for `authenticator` -- an id the approval binding publishes -- and the connection's identity is recorded as the submitter. The two are different namespaces, and conflating them made a human acknowledgement unverifiable |
 | `cancel` | `instance` | | outcome |
 | `abandon` | `instance`, `reason` (required, non-empty) | admin (R0506) | outcome |
 | `hooks` | | | the registered hook names |
