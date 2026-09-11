@@ -192,7 +192,16 @@ impl World {
 
 impl Drop for World {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.dir);
+        // A directory the test could not remove is a leak the test caused, not
+        // an error to discard (see engine/tests/common/mod.rs).
+        match std::fs::remove_dir_all(&self.dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) if !std::thread::panicking() => {
+                panic!("{} was not removed: {e}", self.dir.display())
+            }
+            Err(_) => {}
+        }
     }
 }
 

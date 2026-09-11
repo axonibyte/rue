@@ -103,9 +103,39 @@ fn operator(name: &str, user: UserSpec, plans: &[&str], admin: bool) -> Operator
 /// The transport a real daemon binds is the platform's (a Unix socket, a
 /// Windows named pipe); everything these tests exercise sits above it.
 struct Conn {
-    reader: BufReader<std::io::PipeReader>,
-    writer: std::io::PipeWriter,
+    reader: Option<BufReader<std::io::PipeReader>>,
+    writer: Option<std::io::PipeWriter>,
     next: u64,
+    /// The server side's thread, joined when the connection is dropped.
+    server: Option<thread::JoinHandle<()>>,
+}
+
+/// The server side's thread, joined when this is dropped: what a test that
+/// takes a connection's two ends holds in its place.
+struct Joined(Option<thread::JoinHandle<()>>);
+
+impl Drop for Joined {
+    fn drop(&mut self) {
+        if let Some(server) = self.0.take() {
+            let _ = server.join();
+        }
+    }
+}
+
+/// Dropping a connection closes the client's end and waits for the server
+/// side to finish, which includes journaling the disconnect. Without the
+/// wait, that journal write raced the test's own cleanup: it recreated a
+/// file in the store while the temporary directory was being removed, the
+/// removal failed on a directory no longer empty, and /tmp kept one
+/// rue-engine-control-* directory per lost race -- a few hundred of them by
+/// Phase 4's end.
+impl Drop for Conn {
+    fn drop(&mut self) {
+        drop(self.writer.take());
+        if let Some(server) = self.server.take() {
+            let _ = server.join();
+        }
+    }
 }
 
 impl Conn {
@@ -114,7 +144,7 @@ impl Conn {
         let (server_rx, client_tx) = std::io::pipe().unwrap();
         let (client_rx, server_tx) = std::io::pipe().unwrap();
         let d = d.clone();
-        thread::spawn(move || {
+        let server = thread::spawn(move || {
             let peer = Peer {
                 user: rue_engine::peer::my_account(),
                 owner: true,
@@ -124,21 +154,37 @@ impl Conn {
             handle(BufReader::new(server_rx), writer, peer, d);
         });
         Conn {
-            reader: BufReader::new(client_rx),
-            writer: client_tx,
+            reader: Some(BufReader::new(client_rx)),
+            writer: Some(client_tx),
             next: 1,
+            server: Some(server),
         }
     }
 
     fn send(&mut self, v: Value) {
         let mut line = serde_json::to_vec(&v).unwrap();
         line.push(b'\n');
-        self.writer.write_all(&line).unwrap();
+        self.writer.as_mut().unwrap().write_all(&line).unwrap();
+    }
+
+    fn read_line(&mut self, line: &mut String) -> usize {
+        self.reader.as_mut().unwrap().read_line(line).unwrap()
+    }
+
+    /// The two ends, for a test that serves on this connection from a
+    /// thread of its own, and the server side's thread, joined when the
+    /// returned guard is dropped -- which must come after the ends are.
+    fn into_ends(mut self) -> (BufReader<std::io::PipeReader>, std::io::PipeWriter, Joined) {
+        (
+            self.reader.take().unwrap(),
+            self.writer.take().unwrap(),
+            Joined(self.server.take()),
+        )
     }
 
     fn recv(&mut self) -> Value {
         let mut line = String::new();
-        let n = self.reader.read_line(&mut line).unwrap();
+        let n = self.read_line(&mut line);
         assert!(n > 0, "the daemon closed the connection");
         serde_json::from_str(line.trim_end()).unwrap()
     }
@@ -429,10 +475,7 @@ fn a_hook_registers_by_a_declared_registrar_only_is_journaled_and_serves_execute
     // The hook serves: a plan on api-01 (reach api) runs through it. The
     // hook answers on the same connection from another thread while the
     // operator applies over a second connection.
-    let (server_side, _keep) = {
-        let (r, wtr) = (c.reader, c.writer);
-        (r, wtr)
-    };
+    let (server_side, _keep, _server) = c.into_ends();
     let mut hook_reader = server_side;
     let mut hook_writer = _keep;
     let served = Arc::new(Mutex::new(Vec::new()));
@@ -601,7 +644,7 @@ fn a_subscriber_receives_the_entries_of_its_plans_and_dry_run_forces_rehearsal()
     c2.hello(None);
     let mut line = String::new();
     c2.send(json!({ "id": 7, "verb": "apply", "args": { "ir": plan_ir("q"), "params": {} } }));
-    c2.reader.read_line(&mut line).unwrap();
+    c2.read_line(&mut line);
     let v: Value = serde_json::from_str(line.trim_end()).unwrap();
     assert_eq!(v.get("id"), Some(&json!(7)), "{v}");
     let mut events = 0;
@@ -614,7 +657,7 @@ fn a_subscriber_receives_the_entries_of_its_plans_and_dry_run_forces_rehearsal()
     );
     loop {
         first.clear();
-        c3.reader.read_line(&mut first).unwrap();
+        c3.read_line(&mut first);
         let v: Value = serde_json::from_str(first.trim_end()).unwrap();
         if v.get("event").is_some() {
             assert_eq!(v.pointer("/event/plan"), Some(&json!("p")));

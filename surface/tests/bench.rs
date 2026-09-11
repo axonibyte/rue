@@ -64,7 +64,7 @@ fn a_200_step_plan_over_1000_hosts_checks_within_the_acceptance_bound() {
     });
     let v = check(&ir.site, &ir.requester, &ir.plan);
     let elapsed = start.elapsed();
-    let _ = fs::remove_dir_all(&dir);
+    fs::remove_dir_all(&dir).unwrap();
     assert_eq!(
         v.status,
         rue_core::verdict::Status::Ok,

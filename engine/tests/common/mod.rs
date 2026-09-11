@@ -29,9 +29,20 @@ impl TempDir {
     }
 }
 
+/// A directory the test could not remove is a failure of the test, not a
+/// thing to discard: a discarded error here left hundreds of directories in
+/// /tmp, each a race some thread of the test had lost. Not while already
+/// panicking, so the first failure is the one reported.
 impl Drop for TempDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        match std::fs::remove_dir_all(&self.0) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) if !std::thread::panicking() => {
+                panic!("{} was not removed: {e}", self.0.display())
+            }
+            Err(_) => {}
+        }
     }
 }
 

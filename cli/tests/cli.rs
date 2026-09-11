@@ -464,7 +464,7 @@ fn journal_verify_accepts_a_chain_names_a_broken_link_and_refuses_an_empty_file(
         Some(1),
         "a missing file is an empty chain: refused"
     );
-    let _ = fs::remove_dir_all(&d);
+    fs::remove_dir_all(&d).unwrap();
 }
 
 #[test]
@@ -522,7 +522,7 @@ fn journal_verify_with_a_key_checks_every_signature_and_refuses_an_unsigned_entr
     ]);
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("unsigned"));
-    let _ = fs::remove_dir_all(&d);
+    fs::remove_dir_all(&d).unwrap();
 }
 
 #[test]
