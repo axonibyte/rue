@@ -524,3 +524,63 @@ fn journal_verify_with_a_key_checks_every_signature_and_refuses_an_unsigned_entr
     assert!(String::from_utf8_lossy(&out.stderr).contains("unsigned"));
     let _ = fs::remove_dir_all(&d);
 }
+
+#[test]
+fn every_text_checks_identically_standalone_and_embedded() {
+    // Phase 4's acceptance line, for every case the project holds. The
+    // verdict a person gets from `rue check` on the text is the case's
+    // verdict.json golden (tier 2 holds it equal to check(resolve(text))).
+    // The verdict an embedder's daemon reaches is check() of the IR
+    // `rue check --ir` handed the host, deserialized the way the control
+    // channel's `apply` deserializes it. They must be the same bytes. T4's
+    // stage proves this for one host over a real channel, on one guest;
+    // this is every tenant case and every negative, on every machine, and
+    // it is what the row embedded-verdict-differs reverts against. Until it
+    // existed the row the roadmap seeded for that line had no test at all.
+    let root = repo_root().unwrap();
+    let mut cases: Vec<(String, &str, &str, &str)> = TENANT_CASES
+        .iter()
+        .map(|c| (c.dir(), c.owner, c.plan, c.requester))
+        .collect();
+    cases.extend(
+        NEGATIVES
+            .iter()
+            .map(|n| (n.dir(), n.owner, n.plan, rue_tenants::NEGATIVE_REQUESTER)),
+    );
+    assert!(cases.len() > 20, "the case table is where it was");
+    for (dir, owner, plan, requester) in cases {
+        let text = rue_tenants::text_of(&root, &dir);
+        let record = text.parent().unwrap().join("inventory.toml");
+        let mut args = vec![
+            "check".to_string(),
+            text.to_string_lossy().into_owned(),
+            "--ir".into(),
+            "--host".into(),
+            owner.into(),
+            "--plan-name".into(),
+            plan.into(),
+            "--as".into(),
+            requester.into(),
+        ];
+        if record.is_file() {
+            args.push("--inventory".into());
+            args.push(record.to_string_lossy().into_owned());
+        }
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = rue(&args);
+        assert!(
+            out.status.success(),
+            "{dir}: rue check --ir: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let sent: serde_json::Value = serde_json::from_slice(&out.stdout).expect("the IR is JSON");
+        let ir: rue_core::ir::PlanIr = serde_json::from_value(sent).expect("the IR deserializes");
+        let v = rue_core::check::check(&ir.site, &ir.requester, &ir.plan);
+        let embedded = rue_core::json::canonical::encode(&rue_core::verdict::to_json(&v)).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&embedded),
+            String::from_utf8_lossy(&golden(&root, &format!("{dir}/verdict.json"))),
+            "{dir}: the embedded verdict differs from the standalone one"
+        );
+    }
+}

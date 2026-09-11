@@ -157,3 +157,4 @@ repeat-shape-taken-literally.patch	1	-	cargo	each_iteration_of_nested_repeats_to
 repeat-iterations-share-a-snapshot.patch	1	-	cargo	each_iteration_of_nested_repeats_touches_and_restores_the_fact_it_names	-
 older-store-reported-as-newer.patch	1	-	cargo	a_v0_1_0_store_is_refused_until_migrated_and_its_instance_then_reverts	-
 nested-repeat-skips-its-second-pass.patch	1	-	cargo	each_iteration_of_nested_repeats_touches_and_restores_the_fact_it_names	-
+embedded-verdict-differs.patch	1	-	cargo	every_text_checks_identically_standalone_and_embedded	-

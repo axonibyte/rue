@@ -1,0 +1,13 @@
+# Reverts: the IR an embedded host sends carries everything check reads (Phase 4's acceptance line: the same text checks identically standalone and embedded); here the probe declarations are left out of it, so the daemon checks a different plan from the one the person checked.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/model.rs
++++ b/core/src/model.rs
+@@ -556,7 +556,7 @@
+     pub require_journal: Option<JournalRequirement>,
+     pub body: Vec<Item>,
+     /// The probes the plan's guards, observes and asserts may name (IR 4).
+-    #[serde(default)]
++    #[serde(default, skip_serializing)]
+     pub probes: Vec<ProbeDecl>,
+ }
+ 
