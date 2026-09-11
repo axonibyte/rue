@@ -19,7 +19,33 @@ reviewable surface.
 The plan of record is [`docs/ROADMAP.md`](docs/ROADMAP.md). Every rule is
 stated once, in the section that governs it.
 
-## Status: Phase 3 complete; v0.1.0 tagged
+## Status: Phase 4 complete; v0.2.0 tagged
+
+A host process can embed rue. It holds one connection to `rued` and is, on
+that one connection, a declared operator issuing verbs, a registrar whose
+hooks the engine calls back into, and a subscriber to its own plans. The
+hook protocol is frozen at v1 (`docs/hook-protocol-v1.json`, pinned by
+the gate), and it is spoken by six clients that agree on it case for
+case: a Rust SDK, the `rue-hook` shim for shell tenants, and SDKs for
+Python, Elixir, Java and .NET, each judged by `rue sdk-conform` against
+one scripted world. A site's inventory can come from a hook, secrets
+resolve through one, and an embedder gets the same verdict from the
+daemon that a person gets from `rue check` at a terminal.
+
+The two tenants that could only check now run. T4's reactive host, an
+Elixir process, fires a temporary plan on entering a state and recants on
+leaving it, over appliance facts that live in no filesystem, and both
+drift policies hold or clobber a hand-flipped actuator. T2's cluster
+succession runs over `jail(8)` on a FreeBSD guest: the corpse is fenced
+through the cluster driver, the guests start as real jails, the heir on a
+console-only node is handed off by a person, a knell's acknowledger is
+shown the real list of what a ZFS rollback will destroy, a second promote
+for the same corpse is refused, and a recant stops each guest it started.
+Running T2 found what four phases of checking it had not; the roadmap's
+Phase 4 entry lists what, and what it still does not prove.
+
+## Status of Phase 3
+
 
 Rue applies and reverts plans against real hosts. `rued` is a daemon over
 a locked instance store with a chained, optionally signed journal; `rue`

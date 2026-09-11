@@ -921,9 +921,8 @@ impl Engine {
 
     // --- request -----------------------------------------------------------
 
-    /// The instance id: plan, owner host and the parameters' hash (5.12).
-    /// The instance id: the plan, the host it is for, and a digest of the
-    /// parameters -- and, for a rehearsal, its own.
+    /// The instance id (5.12): the plan, the host it is for, and a digest of
+    /// the parameters -- and, for a rehearsal, its own.
     ///
     /// A rehearsal's separate id is not cosmetic. 7.9 says a rehearsal
     /// never blocks a real plan, and D-085 puts the reason in the

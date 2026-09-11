@@ -13,7 +13,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <PackageId>Rue.Hook</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Description>A conformance-tested client of rue's hook protocol (docs/hook-protocol.md v1).</Description>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>

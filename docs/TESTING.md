@@ -321,7 +321,23 @@ guest and in the pipeline, never in the local gate: the workstation carries
 none of their toolchains, and the alternative -- a gate phase per SDK, each
 declared skippable -- was the thing this phase's decision ruled out. A
 missing interpreter there is a failure, not a skip, because the script runs
-only where the toolchains are provisioned. The Rust SDK and the `rue-hook`
+only where the toolchains are provisioned. The reaper guest judges all four
+at once. The pipeline judges each in the image that carries its toolchain,
+one parallel step per SDK after the builds and before any deploy, naming the
+SDK (`sh ci/sdk-conform.sh python`): the step takes the Linux binary the
+build left in `dist/` rather than building one, and runs `rue --version`
+first, so an image that cannot load it fails by name. Naming an SDK judges
+that one alone, and a named SDK whose toolchain or directory is missing
+still fails (`tests/tier3/t_conform_all.sh`); the four steps together name
+all four. The Java step also builds the jar with maven, which is what
+proves the POM, and the .NET step packs the NuGet package.
+
+The acceptance line of the phase -- the same text checks identically
+standalone and embedded -- is held for every tenant case and negative by
+`cli/tests/cli.rs`: the IR `rue check --ir` hands a host, deserialized as
+the control channel's `apply` deserializes it and checked again, yields
+the case's `verdict.json` byte for byte. T4's stage shows the same over a
+real channel for one host. The Rust SDK and the `rue-hook`
 shim are workspace crates, so their conformance runs are ordinary
 `cargo test` targets and the gate covers them everywhere.
 
@@ -638,6 +654,29 @@ driving it with the real `rue`:
   a site with two journal sinks, one of them a hook that starts refusing
   after boot, refuses the plan with R0304 before any step runs, with the
   refusal delivered to the sink that still acknowledges.
+- **Succession** (`succession.rs`): T2's shape, on the FreeBSD guest only,
+  because the pseudo-cluster is base `jail(8)`. What runs is a text of T2's
+  shape beside the test; `tenants/t2/plan.rue`, with its `cbsd` calls, stays
+  the checked artifact. node-b is the guest over the harness's ssh, and the
+  guests it starts are empty persist jails observed with `jls`; node-a, the
+  corpse, is reached only through the cluster driver
+  (`tenants/t2/fixtures/cluster.py`), which records every fence, platform
+  and placement action it is asked for; node-c is on the console, so the
+  heir's step defers and the test continues it with `rue handoff-done`. The
+  rollback knell acts on a real ZFS dataset that `provision.sh` gives an
+  `@split` snapshot, and the cost its acknowledger is shown is the real list
+  of what `zfs rollback -r` will destroy. The auto promote fences, starts its
+  guests, defers the heir and commits; a recant after the guests started
+  stops each one by its own undo and records the placement's reversal; the
+  placement service refusing the entry after the fence holds the promote
+  (exit 3) with the guests kept, until `resume` retries it; a second promote
+  for the same corpse while the first waits is R0101 and exit 75; the
+  manual promote waits on both knells, each acknowledged by a human
+  authenticator against the challenge `rue ack` prints, and rolls the
+  dataset back past a snapshot taken after the split; and a write between
+  the request and the acknowledgement changes the host contract, so the
+  failback refuses with nothing fenced. Linux has no jails, so `run.sh`
+  withholds the stage there and says why.
 - **Recovery** (`recovery.rs`): a daemon killed with SIGKILL inside a
   step's `do` comes back, demotes what it was applying, and undoes both
   the steps it had marked applied and the one it was in the middle of; a
@@ -733,3 +772,21 @@ and the roadmap's not-proven table says so.
 - The heartbeat under a real network partition: the beat is written and
   read on one machine's clocks, never across a severed link (a vnet stage
   is Phase 5's).
+- The non-Rust SDKs beyond conformance. `rue sdk-conform` drives every op
+  of every kind through each one's own serve loop, and nothing else tests
+  them: none has a package-native suite, the Java SDK's hand-written JSON
+  codec included. .NET is judged on Linux only; the Windows guest is
+  Phase 3W's.
+- Drift on a `modified` fact that is not a file, over `ssh()`. ssh reads
+  files only, so such a fact -- T2's `guest.state(g)` -- reads as absent
+  when it is marked and again when it is checked, and a change to it is
+  never seen. Every executor also reads a failed read, a dropped
+  connection among them, as absence.
+- A failed step's undo against an object it did not make. A failed step is
+  undone at once (5.9), and an undo that removes by name -- T2's
+  `jail -r rue-t2-#{g}`, its `cbsd bstop` -- removes a same-named object
+  that predates the plan. `undo_pre` is what would catch it, and it guards
+  only facts the executor can read, which the previous item says
+  `guest.state(g)` over ssh is not.
+- A step inside a `repeat` undone by the backstop artifact: the artifact is
+  rendered per step, not per iteration.

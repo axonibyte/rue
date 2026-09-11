@@ -260,6 +260,24 @@ unit. What is in place:
   that present a hook as the engine's executor, journal sink or inventory,
   looking the link up at call time so an unregistered hook refuses
   honestly. Secrets have a place in exactly four messages.
+- **Embedding** (docs/control-protocol.md, docs/hook-protocol.md, `sdk/`):
+  a host process embeds rue by holding a connection to `rued`, never by
+  linking it (NIF embedding is deliberately not built). On one connection
+  it is a declared operator issuing verbs within `operator_for`, a declared
+  registrar whose hooks the engine calls back into within `may_register`,
+  and a subscriber to its plans; `Client::read` queues an event that
+  arrives while a verb is in flight, for `next_event` to drain, so a host
+  alternates verbs and events on the one connection rather than splitting
+  it. The wire is one table, `rue-hook-proto`'s `OPS`, frozen at v1 by
+  `docs/hook-protocol-v1.json`; each SDK of 7.11 carries a transcription
+  of it that `tools/lint-hook-ops.sh` binds to `OPS`, and `rue sdk-conform`
+  judges any of them against the scripted world of docs/sdk-conformance.md.
+  `rue check --ir` gives an embedder the IR a terminal check produces, and
+  the verdict the daemon reaches for an embedded apply is the one
+  `rue check` gives on the same text. A hook may stand in for the
+  controller: `hook(:x, transport: :controller)` puts the controller's
+  actions in a host process, and E0608 refuses at check a plan with an
+  action no executor it reaches can perform.
 - **Backstops at runtime** (`engine/src/backstop.rs`,
   `engine/src/scheduler.rs`, 5.6, 7.7): the artifact rendered into the
   instance directory before the first covered step and registered with the
