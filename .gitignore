@@ -12,6 +12,9 @@
 /.cargo_cache/
 # The wine prefix the CI Windows test step creates.
 /.wine/
+# Python's bytecode cache, written beside any module that is imported: the
+# Python SDK, the tenants' hook fixtures. Build output, never source.
+__pycache__/
 
 ### reaper ###
 # reaper pulls session results into out/ at the tree root.
