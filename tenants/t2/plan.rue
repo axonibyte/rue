@@ -31,6 +31,16 @@ end
 # frozen into the host contract when the promote is requested and measured
 # again when an acknowledgement arrives and at apply. Bytes written in
 # between are R0301, which refuses rather than rolling back over them.
+# A guest's running state is a fact no filesystem holds, and node-b is
+# reached over ssh(), which reads files alone: this is how the engine reads
+# it, so start_guest's undo -- `cbsd bstop`, by name -- can tell a guest the
+# promote started from one it did not (E0609). Exit 0 is running, exit 1
+# stopped, anything else unknown.
+defprobe :guest_state do
+  run "test $(cbsd bstatus jname=#{g}) = 1 && echo running"
+  reads guest.state(g)
+end
+
 defprobe :written_bytes_since_split do
   hook :written_bytes
   locus :controller

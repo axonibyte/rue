@@ -12,6 +12,8 @@
 //! Every struct refuses unknown fields, so an emitter that grows a field
 //! without bumping `ir_version` fails loudly here.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::body::Body;
@@ -536,6 +538,14 @@ pub struct ProbeDecl {
     /// The notion of "restored" for the facts it produces: `bytes`,
     /// `line_set`, `json`, or a tenant-declared name.
     pub equivalence: String,
+    /// The fact shape this probe reads (`reads guest.state(g)`), with the
+    /// names it binds as `{name}`: `guest:state:{g}`. Over `local()` and
+    /// `ssh()`, which read files alone, the engine reads a fact of that
+    /// shape by running the probe with those names bound -- yes is
+    /// present and its text the value, no is absent, anything else a read
+    /// that failed (IR 5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reads: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -555,7 +565,8 @@ pub struct Plan {
     pub exclusivity: Option<String>,
     pub require_journal: Option<JournalRequirement>,
     pub body: Vec<Item>,
-    /// The probes the plan's guards, observes and asserts may name (IR 4).
+    /// The probes the plan's guards, observes and asserts may name (IR 4),
+    /// and the probes that read its non-file facts (IR 5).
     #[serde(default)]
     pub probes: Vec<ProbeDecl>,
 }
@@ -638,8 +649,89 @@ pub struct Site {
     pub secrets_deliver_to: Vec<String>,
 }
 
+/// The names a probe's `reads` pattern binds when it matches a concrete
+/// fact shape: `guest:state:{g}` against `guest:state:g1` is `g = g1`, and
+/// `guest:state:rue-{g}` against `guest:state:rue-g1` is too. A `{name}`
+/// takes what lies between the literal text around it; a shape the
+/// pattern's literal text does not fit is `None`, and so is a binder that
+/// would take nothing.
+pub fn bind_shape(pattern: &str, shape: &str) -> Option<BTreeMap<String, String>> {
+    let mut vars = BTreeMap::new();
+    let mut pat = pattern;
+    let mut rest = shape;
+    loop {
+        match pat.find('{') {
+            None => return (pat == rest).then_some(vars),
+            Some(open) => {
+                let lit = &pat[..open];
+                rest = rest.strip_prefix(lit)?;
+                let after = &pat[open + 1..];
+                let close = after.find('}')?;
+                let name = &after[..close];
+                pat = &after[close + 1..];
+                // What the binder takes: up to the next literal text of the
+                // pattern, or everything when nothing follows it.
+                let next_lit = &pat[..pat.find('{').unwrap_or(pat.len())];
+                let end = if next_lit.is_empty() {
+                    if pat.is_empty() {
+                        rest.len()
+                    } else {
+                        // Two binders side by side cannot be told apart.
+                        return None;
+                    }
+                } else {
+                    rest.find(next_lit)?
+                };
+                if end == 0 {
+                    return None;
+                }
+                vars.insert(name.to_string(), rest[..end].to_string());
+                rest = &rest[end..];
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_reads_pattern_binds_the_names_a_concrete_shape_fills() {
+        let one = |p: &str, s: &str| bind_shape(p, s);
+        let vars = |kv: &[(&str, &str)]| {
+            Some(
+                kv.iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect::<BTreeMap<_, _>>(),
+            )
+        };
+        assert_eq!(
+            one("guest:state:{g}", "guest:state:g1"),
+            vars(&[("g", "g1")])
+        );
+        assert_eq!(
+            one("guest:state:rue-{g}", "guest:state:rue-g1"),
+            vars(&[("g", "g1")])
+        );
+        assert_eq!(
+            one("a:{x}:b:{y}", "a:1:b:2"),
+            vars(&[("x", "1"), ("y", "2")])
+        );
+        assert_eq!(one("guest:state:heir", "guest:state:heir"), vars(&[]));
+        // The value may hold what the pattern's separators do.
+        assert_eq!(
+            one("guest:state:{g}", "guest:state:a:b"),
+            vars(&[("g", "a:b")])
+        );
+        assert_eq!(one("guest:state:{g}", "platform:mode:node-a"), None);
+        assert_eq!(
+            one("guest:state:{g}", "guest:state:"),
+            None,
+            "a binder takes something"
+        );
+        assert_eq!(one("guest:state:heir", "guest:state:g1"), None);
+        assert_eq!(one("x:{a}{b}", "x:12"), None, "two binders side by side");
+    }
+
     use super::*;
 
     #[test]

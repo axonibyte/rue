@@ -154,6 +154,20 @@ from decision to write (the fake logs every lock, run and write in order);
 the manifest is never written in place; `bootstrap` reports a family's
 commands and runs nothing. The tier-4 table now drives `DriftOnDefer` too.
 
+`engine/tests/reads.rs` holds the reads to their word, with the fake's
+`failing_reads` (a shape whose reads fail after so many succeed, as a
+dropped connection does) and `FailHaving`/`OkHaving` (a run that leaves
+facts changed, which a `run` command's effect is to the fake): a fact
+unreadable before `do` refuses the step and nothing runs; unreadable after
+`do`, the step has failed; unreadable at undo, the undo fails with R0205 and
+no drift is judged; the R0201 witness refuses the same way; a failed `do`
+that never took is not undone and leaves what was there, while one that
+took something is; a jail's state over ssh is read by the probe that
+`reads` it, with the fact's instance bound into the probe's run line, so a
+jail restarted by hand is drift; and a reading probe that cannot tell is a
+read that failed. The E0609 check has a pair in `core/tests/check.rs` and a
+negative case; `surface/tests/resolve.rs` holds what `reads` resolves to.
+
 `bindings/tests/local.rs` runs `local()` against real files in a temporary
 root; `bindings/tests/ssh.rs` runs `ssh()` over a fake transport and reads
 the scripts it would send (a secret never bare, the artifact's helpers

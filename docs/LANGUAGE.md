@@ -231,6 +231,31 @@ site binds a hook to it**: `execute via: [..., hook(:cluster, transport:
 :controller)]` gives `locus: :controller` steps and probes a hook to
 perform their hook actions and answer their probes by name.
 
+**A fact that is no file is read through the probe the text names for
+it.** `local()` and `ssh()` read files alone, so a footprint's
+`guest.state(g)` on a host they reach is read by a probe whose `reads` line
+names that shape:
+
+```
+defprobe :guest_state do
+  run "jls -j rue-#{g} jid"
+  reads guest.state(g)
+end
+```
+
+The names in the shape are bound to the fact's instance whenever the engine
+reads it -- `guest.state("g1")` runs `jls -j rue-g1 jid` -- and the run line
+sees them as it sees a repeat's variable. Exit 0 is present, with the
+probe's output as the fact's value; exit 1 is absent; anything else is a
+read that failed (R0205), never an absence. A probe `reads` one shape, and
+names its instance (E0101 otherwise). A hook answers a fact by name and
+needs no such probe. **A computed undo on a fact the host's executor cannot
+read is E0609**: an undo written out rather than `:restore`, on a fact that
+is no file, on a host `local()` or `ssh()` reaches, with no probe that reads
+it. Its drift could never be seen, and a failed `do` could not show it never
+took, so its undo -- which acts by name, `jail -r g1` -- would remove
+whatever holds that name.
+
 A probe is known in the plan by its bare name, whichever file defines it:
 `observe t3.verify_reach()` observes `verify_reach`, and so does a guard
 inside an op imported from that file. Two different probes with one bare

@@ -2,10 +2,10 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -2964,12 +2964,7 @@
-                 // it is undone with the rest (5.9). An undo of a step that
-                 // never took is harmless: that is what makes an undo an
-                 // undo.
+@@ -3082,12 +3082,7 @@
+                 // memory of the engine that died. An undo that acts by
+                 // name can therefore remove an object of that name the
+                 // step never made (ROADMAP Phase 5, "not proven").
 -                if let Some(a) = rec.attempting.take() {
 -                    if !rec.is_applied(a.step, a.iteration, &a.vars) {
 -                        report.interrupted.push((rec.id.clone(), a.step));

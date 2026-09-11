@@ -2,10 +2,10 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1720,7 +1720,11 @@
-                 }
-                 // R0201: nothing outside the step's footprint changed.
-                 let after = self.watched(rec, &host, &at);
+@@ -1752,7 +1752,11 @@
+                     Ok(w) => w,
+                     Err(why) => return self.fail_after_do(rec, &at, &op, &pre, why),
+                 };
 -                let changed = footprint::changed_facts(&before, &after);
 +                let changed: Vec<String> = if std::env::var_os("RUE_NEVER_SET").is_some() {
 +                    footprint::changed_facts(&before, &after)

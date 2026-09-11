@@ -1318,6 +1318,7 @@ fn run_probe(name: &str, locus: Locus) -> ProbeDecl {
         produces: vec![],
         static_: false,
         equivalence: "bytes".into(),
+        reads: None,
     }
 }
 
@@ -1429,4 +1430,59 @@ fn executor_rules() {
         ..run_probe("written", Locus::Target)
     });
     pair(Code::E0608, &frozen, &runnable);
+}
+
+#[test]
+fn a_computed_undo_needs_a_fact_its_executor_can_read() {
+    // E0609: T2's start_guest in the small. A jail's running state, over
+    // ssh(), which reads files alone, undone by name: refused until a probe
+    // says it reads that fact, because a failed start could not show it
+    // never took and drift on the jail could never be seen.
+    let run = |cmd: &str| {
+        Prim::Run(Run {
+            cmd: vec![Part::Lit(cmd.into())],
+            env: vec![],
+            stdin: None,
+        })
+    };
+    let start = Op {
+        do_: vec![run("jail -c name=g1 persist")],
+        undo: computed(vec![run("jail -r g1")], &["guest:state:g1"]),
+        ..Op::new(
+            "start",
+            vec![FootprintEntry::entry(Kind::Modified, "guest:state:g1")],
+        )
+    };
+    let unread = temp(vec![s(start.clone())]);
+    let mut read = temp(vec![s(start.clone())]);
+    read.probes.push(ProbeDecl {
+        reads: Some("guest:state:{g}".into()),
+        ..run_probe("guest_state", Locus::Target)
+    });
+    pair(Code::E0609, &unread, &read);
+
+    // A probe that reads some other fact does not read this one.
+    let mut elsewhere = temp(vec![s(start.clone())]);
+    elsewhere.probes.push(ProbeDecl {
+        reads: Some("service:state:{s}".into()),
+        ..run_probe("service_state", Locus::Target)
+    });
+    assert!(
+        raises(Code::E0609, &elsewhere),
+        "{:?}",
+        codes_of(&elsewhere)
+    );
+
+    // A file fact is one ssh() reads; a restore puts back what it
+    // snapshotted and removes nothing by name.
+    let file = Op {
+        undo: computed(vec![run("rm /f")], &["file:/f"]),
+        ..owned("f")
+    };
+    assert!(!raises(Code::E0609, &temp(vec![s(file)])));
+    let restored = Op {
+        undo: Undo::Restore,
+        ..start
+    };
+    assert!(!raises(Code::E0609, &temp(vec![s(restored)])));
 }

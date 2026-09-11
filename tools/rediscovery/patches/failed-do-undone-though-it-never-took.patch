@@ -1,0 +1,21 @@
+# Reverts: a failed step whose do left every observed fact as it found them is not undone (its undo acts by name, and would remove what it never made)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1863,16 +1863,6 @@
+     ) -> Result<(), EngineError> {
+         let n = at.step;
+         rec.attempting = None;
+-        if !pre.is_empty() && self.untouched(rec, op, pre) {
+-            self.log(
+-                rec,
+-                J::UndoSkipped {
+-                    step: n,
+-                    reason: "its do left every fact of its footprint as it found them".into(),
+-                },
+-            )?;
+-            return self.persist(rec);
+-        }
+         if let Err(why) = self.undo_step(rec, at, op) {
+             rec.applied.push(at.clone());
+             self.log(

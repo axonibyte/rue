@@ -127,9 +127,12 @@ fn the_write_ahead_entry_is_acknowledged_before_the_step_runs() {
 #[test]
 fn a_failing_step_is_itself_reverted_then_the_prefix_and_the_ledger_is_released() {
     let mut w = World::new("refuse");
+    // Step b fails having written its file: a `do` that got partway, which
+    // is what a failed step is undone for (a `do` that took nothing is not
+    // undone at all; see reads.rs).
     w.ssh.script(vec![
         Scripted::Ok(Output::default()),
-        Scripted::Fail("boom".into()),
+        Scripted::FailHaving("boom".into(), vec![("file:/b".into(), b"half".to_vec())]),
     ]);
     let plan = world::temp_plan(
         "p",
@@ -176,7 +179,7 @@ fn a_failing_undo_is_stuck_retried_each_pass_and_abandonable() {
     let mut w = World::new("stuck");
     w.ssh.script(vec![
         Scripted::Ok(Output::default()),
-        Scripted::Fail("boom".into()),
+        Scripted::FailHaving("boom".into(), vec![("file:/b".into(), b"half".to_vec())]),
         Scripted::Ok(Output::default()), // undo b
         Scripted::Fail("undo a broke".into()),
     ]);
@@ -232,7 +235,7 @@ fn a_failing_undo_is_stuck_retried_each_pass_and_abandonable() {
 fn abandon_closes_a_stuck_instance_with_the_world_left_as_is() {
     let mut w = World::new("abandon");
     w.ssh.script(vec![
-        Scripted::Fail("boom".into()),
+        Scripted::FailHaving("boom".into(), vec![("file:/a".into(), b"half".to_vec())]),
         Scripted::Fail("undo broke".into()),
         Scripted::Fail("undo broke again".into()),
     ]);
@@ -276,8 +279,12 @@ fn an_executor_that_promises_output_and_returns_none_is_a_refusal() {
         name: "token".into(),
         secret: false,
     }];
-    // The first run says nothing; the second (another plan) says the output.
-    w.ssh.script(vec![Scripted::Ok(Output::default())]);
+    // The first run does its work and says nothing; the second (another
+    // plan) says the output.
+    w.ssh.script(vec![Scripted::OkHaving(
+        Output::default(),
+        vec![("file:/a".into(), b"done".to_vec())],
+    )]);
     let plan = world::temp_plan("p", vec![world::step(o.clone())]);
     let out = w
         .engine
@@ -602,7 +609,7 @@ fn a_refusal_after_a_holding_step_holds_and_resume_retries_the_failed_step() {
     let mut w = World::new("hold");
     w.ssh.script(vec![
         Scripted::Ok(Output::default()),
-        Scripted::Fail("flaky".into()),
+        Scripted::FailHaving("flaky".into(), vec![("file:/b".into(), b"half".to_vec())]),
         Scripted::Ok(Output::default()), // step b's own undo
         Scripted::Ok(Output::default()), // step b again, on resume
     ]);
@@ -637,7 +644,7 @@ fn a_refusal_after_a_holding_step_holds_and_resume_retries_the_failed_step() {
     // Recant from Held reverts.
     w.ssh.script(vec![
         Scripted::Ok(Output::default()),
-        Scripted::Fail("flaky".into()),
+        Scripted::FailHaving("flaky".into(), vec![("file:/d".into(), b"half".to_vec())]),
         Scripted::Ok(Output::default()),
     ]);
     let plan = world::temp_plan(

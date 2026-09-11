@@ -1902,6 +1902,45 @@ impl<'a> Context<'a> {
         }
         let bindings = Bindings::new();
         for (name, m, p) in defs {
+            // `reads guest.state(g)` first: the names its shape binds are
+            // values the engine supplies when it reads the fact, so the
+            // probe's `run` line sees them as it sees a repeat's variable.
+            let mut reads = None;
+            let mut scope = scope.clone();
+            for l in super::lines(&p.body).filter(|l| l.keyword == "reads") {
+                let cx = OpCx {
+                    module: m,
+                    def: p,
+                    bindings: &bindings,
+                    scope: &scope,
+                };
+                match (l.args.as_slice(), reads.is_some()) {
+                    ([a @ Arg::Expr(Expr::Call { .. })], false) => {
+                        if let Some((shape, _)) = self.shape(&cx, a, false, diags) {
+                            reads = Some(shape);
+                        }
+                    }
+                    (_, true) => diags.push(self.err(
+                        m,
+                        l.range,
+                        Code::E0101,
+                        "a probe reads one fact shape".into(),
+                    )),
+                    _ => diags.push(
+                        self.err(
+                            m,
+                            l.range,
+                            Code::E0101,
+                            "`reads` names one fact shape with its instance, as `guest.state(g)`"
+                                .into(),
+                        ),
+                    ),
+                }
+            }
+            if let Some(shape) = &reads {
+                scope.loop_vars.extend(bound_names(shape));
+            }
+            let scope = &scope;
             let cx = OpCx {
                 module: m,
                 def: p,
@@ -1915,6 +1954,7 @@ impl<'a> Context<'a> {
                 produces: Vec::new(),
                 static_: false,
                 equivalence: "bytes".into(),
+                reads,
             };
             for l in super::lines(&p.body) {
                 match l.keyword.as_str() {
@@ -2362,4 +2402,19 @@ fn on_lapse(args: &[Arg]) -> OnLapse {
         Some("hold") => OnLapse::Hold,
         _ => OnLapse::Revert,
     }
+}
+
+/// The names a fact shape binds: every `{name}` in it, in order.
+fn bound_names(shape: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut rest = shape;
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            break;
+        };
+        names.push(after[..close].to_string());
+        rest = &after[close + 1..];
+    }
+    names
 }

@@ -1,0 +1,13 @@
+# Reverts: E0609: a computed undo on a fact the host executor cannot read (no file, local() or ssh(), no probe reads it) is refused at check
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -735,7 +735,7 @@
+                     .as_deref()
+                     .is_some_and(|pat| bind_shape(pat, &e.shape).is_some())
+             });
+-            if !read {
++            if !read && read {
+                 diagnostics.push(d(
+                     Code::E0609,
+                     Some(*n),

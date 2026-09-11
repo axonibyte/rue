@@ -9,7 +9,7 @@ use rue_core::model::*;
 // A small plan in canonical form: one step with a knell ack gate, a wait
 // factor, a bound-host locus, a heartbeat backstop, and every item kind.
 const DOC: &str = r#"{
-  "ir_version": 4,
+  "ir_version": 5,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -461,6 +461,35 @@ const DOC: &str = r#"{
           "posture"
         ],
         "static": false
+      },
+      {
+        "body": [
+          {
+            "run": {
+              "cmd": [
+                {
+                  "lit": "jls -j "
+                },
+                {
+                  "ref": {
+                    "controller": "g"
+                  }
+                },
+                {
+                  "lit": " jid"
+                }
+              ],
+              "env": [],
+              "stdin": null
+            }
+          }
+        ],
+        "equivalence": "bytes",
+        "locus": "target",
+        "name": "guest_state",
+        "produces": [],
+        "reads": "guest:state:{g}",
+        "static": false
       }
     ],
     "renew_within_s": null,
@@ -507,8 +536,13 @@ fn the_documented_spelling_parses_and_writes_back_identically() {
     let ir = parse(DOC.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(ir.ir_version, IR_VERSION);
     assert_eq!(ir.requester, "req");
-    assert_eq!(ir.plan.probes.len(), 1);
+    assert_eq!(ir.plan.probes.len(), 2);
     assert_eq!(ir.plan.probes[0].produces, vec!["posture".to_string()]);
+    assert_eq!(
+        ir.plan.probes[0].reads, None,
+        "absent when a probe reads nothing"
+    );
+    assert_eq!(ir.plan.probes[1].reads.as_deref(), Some("guest:state:{g}"));
     assert_eq!(ir.plan.mode, Mode::Auto);
     assert_eq!(ir.plan.require_journal, Some(JournalRequirement::Chained));
     match &ir.plan.body[3] {

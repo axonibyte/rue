@@ -139,6 +139,11 @@ defop :resurrection_gate, _ do
   locus: :controller
 end
 
+defprobe :guest_state do
+  run "jls -j rue-t2-#{g} jid"
+  reads guest.state(g)
+end
+
 defop :start_guest, %{os: :freebsd} do
   footprint modified: guest.state(g)
   do: run("jail -c name=rue-t2-#{g} persist")
@@ -463,12 +468,8 @@ fn a_refusal_after_the_fence_holds_under_auto_until_resumed() {
     // back. The step's own compensation is recorded, so the log keeps the
     // entry and its reversal, and the instance holds rather than reverts.
     //
-    // Not an obstacle jail under a guest's name, which this case once used:
-    // the failed step is undone at once (5.9), and `jail -r rue-t2-g1` is
-    // entitled to remove the jail of that name whoever made it. That the
-    // undo cannot tell is what undo_pre is for, and over ssh guest.state(g)
-    // is not a fact the engine can read -- stated in the roadmap's Phase 4
-    // "not proven", not arranged around here.
+    // The obstacle-jail case, a start that fails on a jail someone else
+    // made, is the next test's.
     let c = Cluster::start("t2-hold");
     c.set("placement_refuses", "held then resumed");
     let out = c.promote("promote_auto", "held then resumed");
@@ -499,6 +500,72 @@ fn a_refusal_after_the_fence_holds_under_auto_until_resumed() {
     assert!(
         c.read("placement").contains("held then resumed"),
         "the placement was recorded on the retry"
+    );
+    let out = rue(&c.d.socket, &["handoff-done", &id, "--step", "8"]);
+    let line = must("handoff-done", &out);
+    assert!(line.to_lowercase().contains("committed"), "{line}");
+}
+
+/// The jail's id, as `jls` reports it; empty when there is no such jail.
+fn jid(name: &str) -> String {
+    let out = Command::new("jls")
+        .args(["-j", name, "jid"])
+        .output()
+        .expect("jls");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn a_start_that_fails_on_a_jail_it_did_not_make_leaves_that_jail_and_holds() {
+    // A jail already holds a guest's name, made by someone else. The guest's
+    // start fails on it after the fence, and a failed step is undone at once
+    // (5.9) -- by its undo, `jail -r rue-t2-g1`, which removes the jail of
+    // that name whoever made it. It must not run: the engine reads the
+    // guest's state through the probe that reads it (`jls` over ssh), the
+    // state is the same before and after the failed start, so the start
+    // never took and there is nothing to undo. The promote holds; with the
+    // obstacle gone, resume starts the guest.
+    let c = Cluster::start("t2-obstacle");
+    let made = Command::new("jail")
+        .args(["-c", "name=rue-t2-g1", "persist"])
+        .status()
+        .expect("jail");
+    assert!(made.success(), "the obstacle jail");
+    let planted = jid("rue-t2-g1");
+    assert!(!planted.is_empty());
+
+    let out = c.promote("promote_auto", "an obstacle in the way");
+    let line = expect_exit("apply", &out, 3);
+    let id = instance_of(&line);
+    assert_eq!(
+        jid("rue-t2-g1"),
+        planted,
+        "the failed start's undo removed or replaced a jail it never made"
+    );
+    assert!(
+        c.journal().contains("\"undo_skipped\""),
+        "the failed start is journaled as not undone: {}",
+        c.journal()
+    );
+    assert!(
+        c.read("actions").contains("fence node-a"),
+        "the hold is after the fence"
+    );
+
+    // Whoever made the obstacle removes it; resume retries the start.
+    let removed = Command::new("jail")
+        .args(["-r", "rue-t2-g1"])
+        .status()
+        .expect("jail");
+    assert!(removed.success());
+    let out = rue(&c.d.socket, &["resume", &id]);
+    expect_exit("resume", &out, 5);
+    let mut running = jails();
+    running.sort();
+    assert_eq!(
+        running,
+        vec!["rue-t2-g1".to_string(), "rue-t2-g2".to_string()],
+        "resume started both guests"
     );
     let out = rue(&c.d.socket, &["handoff-done", &id, "--step", "8"]);
     let line = must("handoff-done", &out);

@@ -17,7 +17,7 @@
               "run": {
                 "cmd": [
                   {
-                    "lit": "tunnel up"
+                    "lit": "service worker onestart"
                   }
                 ],
                 "env": [],
@@ -31,49 +31,20 @@
             {
               "anchor": null,
               "instance": null,
-              "kind": "held",
-              "shape": "proc:tunnel"
+              "kind": "modified",
+              "shape": "service:state:worker"
             }
           ],
           "handoff_done": null,
-          "id": "tunnel",
+          "id": "start_worker",
           "locus": "target",
-          "outputs": [
-            {
-              "name": "token",
-              "secret": true
-            }
-          ],
+          "outputs": [],
           "post": [],
           "pre": [],
           "reach": [],
-          "reestablish": [
-            {
-              "run": {
-                "cmd": [
-                  {
-                    "lit": "tunnel up"
-                  }
-                ],
-                "env": [],
-                "stdin": null
-              }
-            }
-          ],
+          "reestablish": null,
           "refusal": "revert",
-          "suspend": [
-            {
-              "run": {
-                "cmd": [
-                  {
-                    "lit": "tunnel suspend"
-                  }
-                ],
-                "env": [],
-                "stdin": null
-              }
-            }
-          ],
+          "suspend": null,
           "undo": {
             "computed": {
               "body": [
@@ -81,7 +52,7 @@
                   "run": {
                     "cmd": [
                       {
-                        "lit": "tunnel down"
+                        "lit": "service worker onestop"
                       }
                     ],
                     "env": [],
@@ -90,7 +61,7 @@
                 }
               ],
               "undo_pre": [
-                "proc:tunnel"
+                "service:state:worker"
               ]
             }
           },
@@ -103,7 +74,7 @@
     "exclusivity": null,
     "fires_by_construction": false,
     "gate": null,
-    "id": "tunnel",
+    "id": "worker",
     "mode": "manual",
     "owner": "db-01",
     "probes": [],
@@ -164,9 +135,7 @@
     "scheduler_present": [
       "db-01"
     ],
-    "secrets_deliver_to": [
-      "requester"
-    ],
+    "secrets_deliver_to": [],
     "transports": [
       "ssh"
     ]

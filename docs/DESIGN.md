@@ -78,7 +78,8 @@ listing (Appendix B); both read only the verdict and the plan.
 
 The checker's input as data, `docs/TESTING.md` "The plan IR": one
 canonical-JSON document holding the site, the requester and one host's
-plan, `ir_version` 4 (3 plus the plan's probe declarations). It is `rue_core::model`'s serde form, spelled field by
+plan, `ir_version` 5 (3 plus the plan's probe declarations, 4 plus the
+fact shape a probe `reads`). It is `rue_core::model`'s serde form, spelled field by
 field, with unknown fields refused. The tenants' terms are the IR's only
 emitter until Phase 2's front end; `core/tests/ir.rs` holds a document that
 exercises every primitive and reference and round-trips byte for byte.
@@ -176,7 +177,15 @@ unit. What is in place:
   facts that live in a file: a region is the text between two markers
   inside a file by construction, and a region on anything else is not a
   fact to compare. So an appliance's reported state, reached through a
-  hook, drifts and is watched exactly as a file does. `markers/<n>` on the
+  hook, drifts and is watched exactly as a file does, and over `local()`
+  or `ssh()`, which read files alone, a fact that is no file is read by
+  the probe whose `reads` names its shape, run with the shape's names
+  bound (`Engine::fact_bytes`, `footprint::bind_shape`). **A read that
+  fails is R0205, never the fact's absence**: before `do` it refuses the
+  step, after `do` it fails the step, at undo it fails the undo. Before
+  `do` every observable fact's digest is kept with the snapshot, and a
+  failed step whose facts all read as they did then is not undone
+  (`UndoSkipped`): its `do` never took. `markers/<n>` on the
   host carries the file facts alone, because its other reader is a
   rendered artifact with no executor (below); the engine's own record
   carries every one, and the two therefore agree wherever the artifact can

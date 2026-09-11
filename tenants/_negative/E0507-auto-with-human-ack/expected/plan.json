@@ -1,5 +1,5 @@
 {
-  "ir_version": 4,
+  "ir_version": 5,
   "plan": {
     "backstop": null,
     "body": [
@@ -81,6 +81,35 @@
     "mode": "auto",
     "owner": "node-b",
     "probes": [
+      {
+        "body": [
+          {
+            "run": {
+              "cmd": [
+                {
+                  "lit": "test $(cbsd bstatus jname="
+                },
+                {
+                  "ref": {
+                    "controller": "g"
+                  }
+                },
+                {
+                  "lit": ") = 1 && echo running"
+                }
+              ],
+              "env": [],
+              "stdin": null
+            }
+          }
+        ],
+        "equivalence": "bytes",
+        "locus": "target",
+        "name": "guest_state",
+        "produces": [],
+        "reads": "guest:state:{g}",
+        "static": false
+      },
       {
         "body": [],
         "equivalence": "bytes",

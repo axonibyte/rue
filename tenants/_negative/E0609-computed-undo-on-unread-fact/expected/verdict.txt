@@ -1,0 +1,1 @@
+worker on db-01: refused; E0609 at step 1: op start_worker: its computed undo acts on service:state:worker on db-01, reached by ssh(), which reads files alone, and no probe reads that fact; declare one (`reads`) or restore it by footprint.

@@ -1,0 +1,15 @@
+# Reverts: a fact read that fails is R0205 wherever the lifecycle reads one (snapshot, R0201 witness, markers, undo drift check) and never the fact absent
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -854,9 +854,7 @@
+             .executor_for(host)
+             .ok_or_else(|| format!("R0205: no executor reaches {} to read {shape}", host.name()))?;
+         let Some(run) = reader else {
+-            return ex
+-                .read_fact(host, shape)
+-                .map_err(|e| format!("R0205: {shape} on {} could not be read: {e}", host.name()));
++            return Ok(ex.read_fact(host, shape).ok().flatten());
+         };
+         let o = ex.observe(host, &run).map_err(|e| {
+             format!(

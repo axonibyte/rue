@@ -2,7 +2,7 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1983,15 +1983,7 @@
+@@ -2478,15 +2478,7 @@
              .ok_or_else(|| format!("no executor reaches {}", host.name()))?;
          // The host lock across a region undo: every read the decision
          // makes and every write that follows see one world (5.2, 7.7).
@@ -17,9 +17,9 @@
 -        };
 +        let mut _lock = None;
          for (k, e, p) in &facts {
-             let bytes = self.executors[idx]
-                 .read_fact(&host, &e.shape)
-@@ -2060,6 +2052,13 @@
+             // A fact that cannot be read cannot be judged: the undo fails
+             // with the reason rather than deciding over an absence it never
+@@ -2555,6 +2547,13 @@
              }
          }
          let has_dir = rec.dirs.contains(&host.name().to_string());

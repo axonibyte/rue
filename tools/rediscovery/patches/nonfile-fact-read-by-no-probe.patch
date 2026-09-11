@@ -1,0 +1,13 @@
+# Reverts: a fact that is no file, on a host local() or ssh() reaches, is read by the probe whose `reads` names it, so its drift is decided; with no reader it read as absent every time and drift on it was never seen
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -888,7 +888,7 @@
+         host: &Host,
+         shape: &str,
+     ) -> Result<Option<ProbeRun>, String> {
+-        if region::file_path(shape).is_some() {
++        if region::file_path(shape).is_some() || !shape.is_empty() {
+             return Ok(None);
+         }
+         match self.executor_for(host).map(|ex| ex.locus()) {

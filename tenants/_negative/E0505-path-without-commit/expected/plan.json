@@ -1,5 +1,5 @@
 {
-  "ir_version": 4,
+  "ir_version": 5,
   "plan": {
     "backstop": {
       "arm_before": 1,
@@ -145,6 +145,35 @@
         "produces": [
           "reach"
         ],
+        "static": false
+      },
+      {
+        "body": [
+          {
+            "run": {
+              "cmd": [
+                {
+                  "lit": "if (Get-NetFirewallRule -Name "
+                },
+                {
+                  "ref": {
+                    "controller": "rule"
+                  }
+                },
+                {
+                  "lit": " -ErrorAction SilentlyContinue) { 'present' } else { exit 1 }"
+                }
+              ],
+              "env": [],
+              "stdin": null
+            }
+          }
+        ],
+        "equivalence": "bytes",
+        "locus": "target",
+        "name": "winfw_rule",
+        "produces": [],
+        "reads": "winfw:rule:{rule}",
         "static": false
       }
     ],

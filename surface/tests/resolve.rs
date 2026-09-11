@@ -754,3 +754,70 @@ fn a_call_s_arguments_reach_the_body_as_what_they_were_bound_to() {
         "a fact's instance names what the call bound, or is the literal"
     );
 }
+
+const START_GUEST: &str = "defop :start, _, g: g do\n  footprint modified: guest.state(g)\n  do: run(\"jail -c name=rue-#{g} persist\")\n  undo: run(\"jail -r rue-#{g}\", idempotent: true)\n  undo_pre guest.state(g)\n  undo_locus: :controller\nend\n\
+defplan :p, %{name: \"db-01\"} do\n  wane 1h\n  start(g: \"g1\")\nend\n";
+
+#[test]
+fn a_probe_that_reads_a_fact_binds_its_instance_for_its_run_line() {
+    // `reads guest.state(g)`: the probe the engine runs, over ssh(), to read
+    // a fact of that shape, with `g` whatever the fact's instance is. So the
+    // shape is the footprint's own spelling with `g` left open, and `#{g}` in
+    // the run line is a value the engine supplies, not a plan parameter.
+    let d = Dir::new("probe-reads");
+    let f = d.file(
+        "plan.rue",
+        &format!("defprobe :guest_state do\n  run \"jls -j rue-#{{g}} jid\"\n  reads guest.state(g)\nend\n{START_GUEST}"),
+    );
+    let ir = ir_of(&f, "db-01");
+    let probe = ir
+        .plan
+        .probes
+        .iter()
+        .find(|p| p.name == "guest_state")
+        .expect("declared");
+    assert_eq!(probe.reads.as_deref(), Some("guest:state:{g}"));
+    use rue_core::body::{Part, Prim, Ref};
+    match probe.body.as_slice() {
+        [Prim::Run(r)] => assert_eq!(
+            r.cmd,
+            vec![
+                Part::Lit("jls -j rue-".into()),
+                Part::Ref(Ref::Controller("g".into())),
+                Part::Lit(" jid".into()),
+            ]
+        ),
+        other => panic!("{other:?}"),
+    }
+    // E0609 over the IR is the checker's: core/tests/check.rs and the
+    // E0609 negative case hold it.
+}
+
+#[test]
+fn reads_names_one_fact_shape_with_its_instance() {
+    let d = Dir::new("probe-reads-bad");
+    let twice = d.file(
+        "twice.rue",
+        &format!("defprobe :guest_state do\n  run \"jls -j #{{g}}\"\n  reads guest.state(g)\n  reads guest.mode(g)\nend\n{START_GUEST}"),
+    );
+    assert!(
+        codes(&twice, "db-01")
+            .iter()
+            .any(|(c, m)| *c == Code::E0101 && m.contains("reads one fact shape")),
+        "{:?}",
+        codes(&twice, "db-01")
+    );
+    let bare = d.file(
+        "bare.rue",
+        &format!(
+            "defprobe :guest_state do\n  run \"jls\"\n  reads guest.state\nend\n{START_GUEST}"
+        ),
+    );
+    assert!(
+        codes(&bare, "db-01")
+            .iter()
+            .any(|(c, m)| *c == Code::E0101 && m.contains("names one fact shape with its instance")),
+        "{:?}",
+        codes(&bare, "db-01")
+    );
+}

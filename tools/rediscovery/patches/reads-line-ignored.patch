@@ -1,0 +1,13 @@
+# Reverts: a defprobe `reads` line becomes the probe shape pattern in the IR, its names bound for the run line; ignored, the engine had no reader and the run line a parameter nobody set
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -1917,7 +1917,7 @@
+                 match (l.args.as_slice(), reads.is_some()) {
+                     ([a @ Arg::Expr(Expr::Call { .. })], false) => {
+                         if let Some((shape, _)) = self.shape(&cx, a, false, diags) {
+-                            reads = Some(shape);
++                            reads = Some(shape).filter(|_| false);
+                         }
+                     }
+                     (_, true) => diags.push(self.err(

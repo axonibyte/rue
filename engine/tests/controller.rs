@@ -127,10 +127,12 @@ fn with_no_controller_hook_the_controller_is_still_local() {
     };
     // Two actions nothing here can perform -- the fence in the do body and
     // the unfence in the undo -- and each is named, so an operator sees both
-    // rather than fixing one and meeting the other at revert.
+    // rather than fixing one and meeting the other at revert. And a third
+    // defect of the same plan: its computed undo acts on the fence's state,
+    // which local() cannot read (E0609); a controller hook answers both.
     assert_eq!(
         codes,
-        vec![Code::E0608, Code::E0608],
+        vec![Code::E0608, Code::E0608, Code::E0609],
         "a hook action with only local() at the controller must be refused by the check"
     );
     assert!(

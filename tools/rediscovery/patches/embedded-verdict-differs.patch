@@ -2,10 +2,10 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/core/src/model.rs
 +++ b/core/src/model.rs
-@@ -556,7 +556,7 @@
-     pub require_journal: Option<JournalRequirement>,
+@@ -565,7 +565,7 @@
      pub body: Vec<Item>,
-     /// The probes the plan's guards, observes and asserts may name (IR 4).
+     /// The probes the plan's guards, observes and asserts may name (IR 4),
+     /// and the probes that read its non-file facts (IR 5).
 -    #[serde(default)]
 +    #[serde(default, skip_serializing)]
      pub probes: Vec<ProbeDecl>,

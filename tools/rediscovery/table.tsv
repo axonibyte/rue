@@ -185,3 +185,8 @@ sdk-dotnet-secret-formatted-by-accident.patch	1	-	dotnet	FullyQualifiedName~Reso
 sdk-dotnet-budget-ignored.patch	1	-	dotnet	FullyQualifiedName~ServeTests.AHandlerOverItsBudget	-
 sdk-rust-bad-line-ends-the-hook.patch	1	-	cargo	a_line_that_is_not_json_is_skipped	-
 sdk-shim-bad-line-ends-the-shim.patch	1	-	cargo	is_skipped_rather_than_ending_the_shim	-
+fact-read-failure-read-as-absent.patch	1	-	cargo	cannot_be_read	-
+failed-do-undone-though-it-never-took.patch	1	-	cargo	never_took	-
+nonfile-fact-read-by-no-probe.patch	1	-	cargo	by_the_probe_that_reads_it	-
+computed-undo-on-unread-fact-checks-clean.patch	1	-	cargo	a_computed_undo_needs	-
+reads-line-ignored.patch	1	-	cargo	a_probe_that_reads_a_fact_binds	-

@@ -623,7 +623,7 @@ What each state holds:
 - `Applied` and `Suspended` exist only for temporary plans: a permanent plan goes from `Applying` to `Committed` and never rests, so `confirm` on a permanent plan happens while `Applying`. `renew` is meaningful while `Applying` as well as `Applied`, since `wane` is anchored at approval.
 - All observations take `now`. `Expired` and `ApprovalExpired` are observed, never scheduled. The boundary is closed: observed *at* the instant is expired.
 - `Applying` is persisted (write-ahead) before any `do`. A crash in `Applying` demotes to `Reverting` at boot.
-- Apply is atomic-or-reported: a failed step is itself reverted (it may be half-applied). `Stuck` is persisted and retried every pass; `Closed{reverted}` is journaled only when clean.
+- Apply is atomic-or-reported: a failed step is itself reverted (it may be half-applied). `Stuck` is persisted and retried every pass; `Closed{reverted}` is journaled only when clean. *(Amended in Phase 5's second unit.)* A failed step whose `do` left every fact it observes as it read them before `do` did not happen, and is not undone (`UndoSkipped`): its undo is the op's text written in advance, and one that acts by name would remove an object of that name the step never made. A step that observes no fact, or a fact that cannot be read after the failure, is undone as before, because nothing shows it untouched.
 - One instance per (host, exclusivity class): a second is refused with exit 75 (R0101). Every host a step touches acquires the class for the instance's life.
 
 ### 5.10 Journal model
@@ -631,7 +631,7 @@ What each state holds:
 ```
 Entry = { seq, prev_hash, hash, at, plan, instance, host, event, secret_labels: [Label], sig: Option<Sig> }
 event ∈ { Checked, Requested, ProofAccepted{scope, authenticator, submitter}, Approved{rehearsal}, ApprovalExpired, Cancelled,
-          Applying{step, undo_line}, StepDone{step}, StepFailed{step, error}, Applied, Renewed, Confirmed,
+          Applying{step, undo_line}, StepDone{step}, StepFailed{step, error}, UndoSkipped{step, reason}, Applied, Renewed, Confirmed,
           Committed{by, reason}, Recant, Reverting{steps}, Reverted, Stuck{steps}, Expired, Closed{reason},
           BackstopFired{step}, BackstopFiredAfterAbandon{host, steps}, Held{step}, Resumed{step, by},
           Deferred{step, handoff}, HandoffDone{step, by}, Suspended, Reestablished,
@@ -910,6 +910,7 @@ Golden-tested text with `file:line:col`, expected/found, nearest-name suggestion
 | E0606 | Plan has a `secret` output and the site declares no `secrets deliver_to` |
 | E0607 | `inventory from: hook()` is checked with no record to check against; name one with `rue check --inventory` |
 | E0608 | An action the host's executor cannot perform: a `hook(...)` action, or a probe with no `run` body, on a host reached by `local()` or `ssh()` |
+| E0609 | A computed undo on a fact the host's executor cannot read: a fact that is no file, on a host reached by `local()` or `ssh()`, that no probe `reads` |
 
 ### 6.8 CLI and exit codes
 
@@ -1283,6 +1284,8 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Scheduled second (owner, 2026-09-11): facts read honestly, and a failed step undone only when it took.** Three items from Phase 4's "not proven", after the SDK suites. A read that fails -- a dropped connection among them -- is an error the step or its undo reports, never the absence of the fact, on every executor. A non-file fact can be read over `ssh()` and `local()` through a probe the text names for it (T2's `guest.state(g)` by `jls`), so its drift is decided like any other fact's. And a failed step's undo runs only when some fact of its footprint differs from its snapshot before `do` -- a `do` that never took is not undone -- with a computed undo on a fact its host's executor cannot read raised at check time. Each lands with its rediscovery row, and the T2 stage's hold case goes back to the obstacle jail it first used, which this unit is what makes safe.
 
+**Second unit, as built (2026-09-11).** One reader, `Engine::fact_bytes`, serves every place the lifecycle reads a fact -- the snapshot, the R0201 witness before and after `do`, the markers, the undo's drift check -- and a read that fails is **R0205** there, never the fact's absence: before `do` the step is refused and nothing runs, after `do` the step has failed, at undo the undo fails and says so. The snapshot had silently kept nothing for an unreadable file, and a `:restore` then removed the file it should have put back. **`reads`** on a `defprobe` names the fact shape it reads (`reads guest.state(g)`); over `local()` and `ssh()` a fact that is no file and matches is read by running the probe with the shape's names bound (exit 0 present, 1 absent, anything else R0205), so drift on a jail's state is decided like any file's; hooks still answer by name. The plan IR is version 5 for it. Before `do`, every observed fact's digest is kept with the snapshot, and **a failed step whose facts all read as they did then is not undone** (`UndoSkipped`). **E0609** refuses at check a computed undo on a fact the host's executor cannot read. T2's text gains a `cbsd bstatus` probe for `guest.state(g)` and T3's a PowerShell one for `winfw.rule(rule)`; both tenants' verdicts are byte-identical, as E0608 left them -- the texts are completed, not changed in meaning. The T2 stage gains the obstacle-jail case: a start that fails on a jail someone else made leaves it, holds, and resumes once it is gone; the placement-refusal hold stays beside it. **Rows added:** `fact-read-failure-read-as-absent`, `failed-do-undone-though-it-never-took`, `nonfile-fact-read-by-no-probe`, `computed-undo-on-unread-fact-checks-clean`, `reads-line-ignored`. **Not proven:** a step whose `do` the engine died inside is still undone on the way back regardless, since what its facts read before `do` was in the memory that died -- an undo by name there can still remove what the step never made, and persisting the digests is a store-schema change this unit did not take. A failed step that observes no fact (an append-only footprint, as `record_succession`'s) is undone as before, because nothing shows it untouched. T2's `cbsd` probe and T3's Windows probe run nowhere: T2's own text is never executed, and Windows is Phase 3W's.
+
 **Acceptance.** Editor highlighting and hover on all tenant files; drill attestation journaled and verified; partition stage passes; v0.1.0 tenant files under v0.3.0 pass or emit a migration diagnostic naming the change.
 
 **Exit criteria.** Tag v0.3.0; public README with §1.2 as its prior-art section; the name sweep recorded.
@@ -1381,7 +1384,7 @@ Secrets render as `<secret:label>`. Undo lines are printed before the step runs 
 
 Instance and locking: `R0101` exclusivity held (exit 75) · `R0102` verb not admitted by the plan's intent · `R0103` `recant` on `DriftHeld` without `--force=drift` · `R0104` `hold(until: :wane)` on a permanent plan with no site `max_wait`.
 
-Footprints: `R0201` footprint violation observed · `R0202` drift observed; step policy applied · `R0203` cross-plan umbra overlap with an active or pending instance · `R0204` target snapshot cap exceeded.
+Footprints: `R0201` footprint violation observed · `R0202` drift observed; step policy applied · `R0203` cross-plan umbra overlap with an active or pending instance · `R0204` target snapshot cap exceeded · `R0205` a fact could not be read -- before `do` the step is refused, after `do` it has failed, at undo the undo fails -- and is never taken for the fact's absence.
 
 Gates and bindings: `R0301` host contract changed since request (proofs invalidated) · `R0302` binding failed at runtime · `R0303` hook contract violation · `R0304` sink did not acknowledge · `R0305` a `Secret` in a hook message other than the four permitted (value dropped).
 

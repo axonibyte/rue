@@ -213,8 +213,11 @@ pub fn changed_facts(before: &Watched, after: &Watched) -> Vec<String> {
         .collect()
 }
 
+pub use rue_core::model::bind_shape;
+
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]

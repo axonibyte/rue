@@ -144,6 +144,7 @@ events! {
     Applying { step: u32, undo_line: String } => "applying",
     StepDone { step: u32 } => "step_done",
     StepFailed { step: u32, error: String } => "step_failed",
+    UndoSkipped { step: u32, reason: String } => "undo_skipped",
     Applied => "applied",
     Renewed => "renewed",
     Confirmed => "confirmed",

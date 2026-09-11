@@ -141,6 +141,13 @@ pub trait Executor: Send {
 pub enum Scripted {
     Ok(Output),
     Fail(String),
+    /// The run succeeded having left these facts as given, over and above
+    /// what its body writes: a `run` command's effect, which the fake cannot
+    /// infer from the command.
+    OkHaving(Output, Vec<(String, Vec<u8>)>),
+    /// The run failed having left these facts as given: a `do` that got
+    /// partway.
+    FailHaving(String, Vec<(String, Vec<u8>)>),
     Silent,
     Unreachable,
 }
@@ -170,10 +177,17 @@ pub struct FakeExecutor {
     /// write went through which door.
     pub events: Arc<Mutex<Vec<String>>>,
     pub observed: Vec<(String, String)>,
+    /// The body of every probe observed, resolved, beside its name: what a
+    /// reading probe was run with.
+    pub probe_bodies: Vec<(String, Vec<RPrim>)>,
     /// File facts by shape, as the target holds them; `read_fact` reads
     /// here and a `Write`/`Remove`/`RegionSet`/`RegionClear` in a run body
     /// updates it, so a restore can be checked end to end.
     pub facts: BTreeMap<String, Vec<u8>>,
+    /// Shapes whose reads fail after this many succeed, as a connection
+    /// that drops mid-plan does: 0 fails the next read. An unlisted shape
+    /// always reads.
+    pub failing_reads: BTreeMap<String, u32>,
     pub dirs: BTreeSet<(String, String)>,
     pub files: BTreeMap<(String, String, String), Vec<u8>>,
     pub bootstrap: BootstrapState,
@@ -197,7 +211,9 @@ impl FakeExecutor {
             calls: Vec::new(),
             events: Arc::new(Mutex::new(Vec::new())),
             observed: Vec::new(),
+            probe_bodies: Vec::new(),
             facts: BTreeMap::new(),
+            failing_reads: BTreeMap::new(),
             dirs: BTreeSet::new(),
             files: BTreeMap::new(),
             bootstrap: BootstrapState {
@@ -270,7 +286,15 @@ impl Executor for FakeHandle {
                 body: body.to_vec(),
             });
             let outcome = f.script.pop_front();
-            if matches!(outcome, None | Some(Scripted::Ok(_))) {
+            if let Some(Scripted::OkHaving(_, left) | Scripted::FailHaving(_, left)) = &outcome {
+                for (shape, bytes) in left {
+                    f.facts.insert(shape.clone(), bytes.clone());
+                }
+            }
+            if matches!(
+                outcome,
+                None | Some(Scripted::Ok(_) | Scripted::OkHaving(..))
+            ) {
                 // A successful body acts on the fake's file facts.
                 for p in body {
                     match p {
@@ -320,8 +344,8 @@ impl Executor for FakeHandle {
             }
             match outcome {
                 None => Ok(Output::default()),
-                Some(Scripted::Ok(o)) => Ok(o),
-                Some(Scripted::Fail(e)) => Err(ExecError::Failed(e)),
+                Some(Scripted::Ok(o) | Scripted::OkHaving(o, _)) => Ok(o),
+                Some(Scripted::Fail(e) | Scripted::FailHaving(e, _)) => Err(ExecError::Failed(e)),
                 Some(Scripted::Silent) => Err(ExecError::Silent),
                 Some(Scripted::Unreachable) => Err(ExecError::Unreachable(host.address.clone())),
             }
@@ -331,6 +355,8 @@ impl Executor for FakeHandle {
         self.with(|f| {
             f.observed
                 .push((host.name().to_string(), probe.name.clone()));
+            f.probe_bodies
+                .push((probe.name.clone(), probe.body.clone()));
             f.observations
                 .get(&probe.name)
                 .cloned()
@@ -340,6 +366,14 @@ impl Executor for FakeHandle {
     fn read_fact(&mut self, _host: &Host, shape: &str) -> Result<Option<Vec<u8>>, ExecError> {
         self.with(|f| {
             note(&f.events, format!("read {shape}"));
+            if let Some(left) = f.failing_reads.get_mut(shape) {
+                if *left == 0 {
+                    return Err(ExecError::Unreachable(format!(
+                        "the connection dropped reading {shape}"
+                    )));
+                }
+                *left -= 1;
+            }
             Ok(f.facts.get(shape).cloned())
         })
     }

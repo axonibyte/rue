@@ -33,6 +33,15 @@ defprobe :verify_reach do
   produces reach
 end
 
+# The Windows Firewall rule is a fact no filesystem holds, and ssh() reads
+# files alone: this is how the engine reads it, so the rule's undo -- by
+# name -- can tell a rule the plan made from one it did not (E0609). Exit 0
+# is present, exit 1 absent.
+defprobe :winfw_rule do
+  run "if (Get-NetFirewallRule -Name #{rule} -ErrorAction SilentlyContinue) { 'present' } else { exit 1 }"
+  reads winfw.rule(rule)
+end
+
 defop :pf_allow, %{os: [:freebsd, :macos]} do
   footprint region: file("/etc/pf.conf", anchor: "rue-mgmt")
   reach ssh(host)

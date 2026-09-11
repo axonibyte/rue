@@ -46,7 +46,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::backstop::{BackstopState, Disarm, DEFAULT_SKEW_TOLERANCE};
 use crate::clock::Clock;
-use crate::executor::{BootstrapState, ExecCaps, Executor, Observation, ProbeRun, RPrim, Resolved};
+use crate::executor::{
+    BootstrapState, ExecCaps, Executor, LocusKind, Observation, ProbeRun, RPrim, Resolved,
+};
 use crate::footprint::{self, Decision, Marker, Watched};
 use crate::gates::{hex, nonce, Approval, Proof};
 use crate::host::Host;
@@ -824,6 +826,97 @@ impl Engine {
     /// first of the host's `reach` transports an executor serves.
     fn executor_for(&mut self, host: &Host) -> Option<&mut Box<dyn Executor>> {
         self.executor_index(host).map(|i| &mut self.executors[i])
+    }
+
+    /// A fact's bytes on a host as they are now, or `None` for a fact that
+    /// is not there.
+    ///
+    /// A read that fails -- a dropped connection, a transport that cannot
+    /// read the shape -- is R0205, and never the fact's absence. Read as
+    /// absent, a failed snapshot kept nothing and a `:restore` then removed
+    /// the file it should have put back; a failed marker matched a failed
+    /// read at undo, so drift was never seen; and a failed read beside a
+    /// real marker looked like a change nobody made (5.2).
+    ///
+    /// A fact that is not a file, on a host `local()` or `ssh()` reaches, is
+    /// read by the probe whose `reads` names its shape: those two read
+    /// files alone, and the text is what knows how to observe a jail or a
+    /// service. Yes is present and the probe's text the value; no is
+    /// absent; anything else is a read that failed.
+    fn fact_bytes(
+        &mut self,
+        rec: &InstanceRecord,
+        host: &Host,
+        shape: &str,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let reader = self.reading_probe(rec, host, shape)?;
+        let ex = self
+            .executor_for(host)
+            .ok_or_else(|| format!("R0205: no executor reaches {} to read {shape}", host.name()))?;
+        let Some(run) = reader else {
+            return ex
+                .read_fact(host, shape)
+                .map_err(|e| format!("R0205: {shape} on {} could not be read: {e}", host.name()));
+        };
+        let o = ex.observe(host, &run).map_err(|e| {
+            format!(
+                "R0205: {shape} on {} could not be read by its probe {}: {e}",
+                host.name(),
+                run.name
+            )
+        })?;
+        match o.as_tri() {
+            Tri::Yes => Ok(Some(o.text.into_bytes())),
+            Tri::No => Ok(None),
+            Tri::Unknown => Err(format!(
+                "R0205: {shape} on {}: its probe {} could not tell ({})",
+                host.name(),
+                run.name,
+                o.text.trim()
+            )),
+        }
+    }
+
+    /// The probe that reads `shape` on `host`, its body resolved with the
+    /// names the shape binds; `None` where the executor reads the shape
+    /// itself -- a file, or any fact through a hook, which knows its facts
+    /// by name -- or where the text names no probe for it. A probe that
+    /// reads a fact runs where the fact is.
+    fn reading_probe(
+        &mut self,
+        rec: &InstanceRecord,
+        host: &Host,
+        shape: &str,
+    ) -> Result<Option<ProbeRun>, String> {
+        if region::file_path(shape).is_some() {
+            return Ok(None);
+        }
+        match self.executor_for(host).map(|ex| ex.locus()) {
+            Some(LocusKind::Local | LocusKind::Ssh) => {}
+            _ => return Ok(None),
+        }
+        for d in &rec.plan().probes {
+            let Some(vars) = d
+                .reads
+                .as_deref()
+                .and_then(|p| footprint::bind_shape(p, shape))
+            else {
+                continue;
+            };
+            let env = self.env_for(rec, &vars);
+            let body = resolve_body(&d.body, host, &env).map_err(|u| {
+                format!(
+                    "R0205: {shape} on {}: its probe {}: {u}",
+                    host.name(),
+                    d.name
+                )
+            })?;
+            return Ok(Some(ProbeRun {
+                name: d.name.clone(),
+                body,
+            }));
+        }
+        Ok(None)
     }
 
     /// The same choice as an index, for a caller that must also borrow the
@@ -1677,8 +1770,19 @@ impl Engine {
             Ok(o) => o,
             Err(u) => return self.refuse(rec, n, &format!("step {n}: {u}")),
         };
-        self.snapshot(rec, &at, &op, &host)?;
-        let before = self.watched(rec, &host, &at);
+        // Nothing has run yet: a fact that cannot be read now refuses the
+        // step, rather than letting `do` run with no way to put it back.
+        let taken = match self.snapshot(rec, &at, &op, &host)? {
+            Ok(pre) => self.watched(rec, &host, &at).map(|before| (pre, before)),
+            Err(why) => Err(why),
+        };
+        let (pre, before) = match taken {
+            Ok(t) => t,
+            Err(why) => {
+                rec.attempting = None;
+                return self.refuse(rec, n, &why);
+            }
+        };
         // A secret the step names is fetched here, once, just before the
         // body that uses it runs.
         if let Err(why) = self.load_secrets(&mut env, &op.do_) {
@@ -1714,11 +1818,16 @@ impl Engine {
                         },
                     )?;
                     rec.refusal = Some(format!("step {n}: {why}"));
-                    self.undo_failed(rec, &at, &op)?;
+                    self.undo_failed(rec, &at, &op, &pre)?;
                     return self.refuse_applied(rec, n);
                 }
-                // R0201: nothing outside the step's footprint changed.
-                let after = self.watched(rec, &host, &at);
+                // R0201: nothing outside the step's footprint changed. A
+                // fact that cannot be read now leaves that unknown, and
+                // `do` has run: the step failed, and says why.
+                let after = match self.watched(rec, &host, &at) {
+                    Ok(w) => w,
+                    Err(why) => return self.fail_after_do(rec, &at, &op, &pre, why),
+                };
                 let changed = footprint::changed_facts(&before, &after);
                 if !changed.is_empty() {
                     self.log(
@@ -1732,10 +1841,12 @@ impl Engine {
                         "step {n}: R0201: footprint violation: {}",
                         changed.join(", ")
                     ));
-                    self.undo_failed(rec, &at, &op)?;
+                    self.undo_failed(rec, &at, &op, &pre)?;
                     return self.refuse_applied(rec, n);
                 }
-                self.write_markers(rec, &host, &at, &op)?;
+                if let Err(why) = self.write_markers(rec, &host, &at, &op)? {
+                    return self.fail_after_do(rec, &at, &op, &pre, why);
+                }
                 for p in &op.do_ {
                     if let rue_core::body::Prim::Stage(st) = p {
                         rec.staged.push(Staged {
@@ -1777,23 +1888,67 @@ impl Engine {
                 // The step failed: the instance closes because something
                 // refused it, which is what exit 1 says (6.8).
                 rec.refusal = Some(format!("step {n}: {e}"));
-                self.undo_failed(rec, &at, &op)?;
+                self.undo_failed(rec, &at, &op, &pre)?;
                 self.refuse_applied(rec, n)
             }
         }
     }
 
+    /// A step whose `do` ran but whose facts could not be read back
+    /// afterwards: it failed, with the read's reason, and is undone as any
+    /// failed step is.
+    fn fail_after_do(
+        &mut self,
+        rec: &mut InstanceRecord,
+        at: &AppliedStep,
+        op: &Op,
+        pre: &Watched,
+        why: String,
+    ) -> Result<Flow, EngineError> {
+        let n = at.step;
+        self.log(
+            rec,
+            J::StepFailed {
+                step: n,
+                error: why.clone(),
+            },
+        )?;
+        rec.refusal = Some(format!("step {n}: {why}"));
+        self.undo_failed(rec, at, op, pre)?;
+        self.refuse_applied(rec, n)
+    }
+
     /// A failed step is itself reverted at once (it may be half-applied).
     /// If that undo fails too, the step stays in the applied set so the
     /// revert retries it and reports it stuck.
+    ///
+    /// Unless its `do` never took. An undo is the op's own text, written in
+    /// advance, and one that acts by name -- `jail -r g1`, `rm`, `service
+    /// x stop` -- removes the object of that name whoever made it: T2's
+    /// `jail -c` failing on a jail that already existed was undone by
+    /// removing that jail. So when every fact the step observes reads as
+    /// it did before `do` (`pre`), nothing was done and nothing is undone.
+    /// A step that observes no fact, or a fact that cannot be read now,
+    /// cannot show that, and is undone as before.
     fn undo_failed(
         &mut self,
         rec: &mut InstanceRecord,
         at: &AppliedStep,
         op: &Op,
+        pre: &Watched,
     ) -> Result<(), EngineError> {
         let n = at.step;
         rec.attempting = None;
+        if !pre.is_empty() && self.untouched(rec, op, pre) {
+            self.log(
+                rec,
+                J::UndoSkipped {
+                    step: n,
+                    reason: "its do left every fact of its footprint as it found them".into(),
+                },
+            )?;
+            return self.persist(rec);
+        }
         if let Err(why) = self.undo_step(rec, at, op) {
             rec.applied.push(at.clone());
             self.log(
@@ -1805,6 +1960,18 @@ impl Engine {
             )?;
         }
         self.persist(rec)
+    }
+
+    /// Whether every fact in `pre` reads now as it did then. A fact that
+    /// cannot be read is not shown untouched.
+    fn untouched(&mut self, rec: &InstanceRecord, op: &Op, pre: &Watched) -> bool {
+        let Ok(host) = self.step_host(rec, op) else {
+            return false;
+        };
+        pre.iter().all(|(shape, was)| {
+            self.fact_bytes(rec, &host, shape)
+                .is_ok_and(|now| footprint::digest_of(now.as_deref()) == *was)
+        })
     }
 
     /// After a step's `do`: mark it applied, then its post guards.
@@ -1893,10 +2060,15 @@ impl Engine {
     /// repeat is another fact when its shape names the variable, and this
     /// step must leave it alone like any other. A shape still waiting on a
     /// runtime value no application has supplied names no fact yet.
-    fn watched(&mut self, rec: &InstanceRecord, host: &Host, at: &AppliedStep) -> Watched {
+    fn watched(
+        &mut self,
+        rec: &InstanceRecord,
+        host: &Host,
+        at: &AppliedStep,
+    ) -> Result<Watched, String> {
         let mut w = Watched::new();
         if rec.rehearsal {
-            return w;
+            return Ok(w);
         }
         let on_host = |this: &Self, o: &Op| {
             this.step_host(rec, o).map(|h| h.name() == host.name()) == Ok(true)
@@ -1935,16 +2107,16 @@ impl Engine {
             }
         }
         let own: Vec<String> = facts_of(self, at);
-        if let Some(ex) = self.executor_for(host) {
+        if self.executor_for(host).is_some() {
             for shape in shapes {
                 if own.contains(&shape) || w.contains_key(&shape) {
                     continue;
                 }
-                let d = footprint::digest_of(ex.read_fact(host, &shape).ok().flatten().as_deref());
+                let d = footprint::digest_of(self.fact_bytes(rec, host, &shape)?.as_deref());
                 w.insert(shape, d);
             }
         }
-        w
+        Ok(w)
     }
 
     /// The markers of step `n`'s facts as `do` left them, and the manifest
@@ -1964,21 +2136,25 @@ impl Engine {
         host: &Host,
         at: &AppliedStep,
         op: &Op,
-    ) -> Result<(), EngineError> {
+    ) -> Result<Result<(), String>, EngineError> {
         let n = at.step;
         let id = rec.id.clone();
         let has_dir = rec.dirs.contains(&host.name().to_string());
         let mut markers = Vec::new();
-        if let Some(ex) = self.executor_for(host) {
+        if self.executor_for(host).is_some() {
             for (_, e, addr) in footprint::observed_facts(&op.footprint) {
-                let d =
-                    footprint::digest_of(ex.read_fact(host, &e.shape).ok().flatten().as_deref());
+                let d = match self.fact_bytes(rec, host, &e.shape) {
+                    Ok(bytes) => footprint::digest_of(bytes.as_deref()),
+                    Err(why) => return Ok(Err(why)),
+                };
                 markers.push(Marker {
                     kind: e.kind,
                     path: addr,
                     digest: d,
                 });
             }
+        }
+        if let Some(ex) = self.executor_for(host) {
             if has_dir {
                 let on_host: Vec<Marker> = footprint::file_facts(&op.footprint)
                     .into_iter()
@@ -2012,7 +2188,8 @@ impl Engine {
                 .map_err(|e| EngineError::Internal(format!("manifest on {}: {e}", host.name())))?;
             }
         }
-        self.persist(rec)
+        self.persist(rec)?;
+        Ok(Ok(()))
     }
 
     /// Every region this instance holds on a host: the applied steps'
@@ -2114,48 +2291,61 @@ impl Engine {
         self.persist(rec)
     }
 
+    /// Before `do`: the snapshot a `:restore` puts back, and the digest of
+    /// every fact the step observes, which is how a failed step tells
+    /// whether its `do` took. `Ok(Err(why))` is a fact that could not be
+    /// read (R0205), and the step does not run.
     fn snapshot(
         &mut self,
         rec: &mut InstanceRecord,
         at: &AppliedStep,
         op: &Op,
         host: &Host,
-    ) -> Result<(), EngineError> {
+    ) -> Result<Result<Watched, String>, EngineError> {
         let n = at.step;
-        for (k, e) in op.footprint.iter().enumerate() {
-            if !matches!(e.kind, Kind::Modified | Kind::Region) {
-                continue;
-            }
-            // A region lives in a file by construction -- it is text between
-            // two markers -- so a region on anything else is not a thing to
-            // snapshot. A `modified` fact is under no such obligation: an
-            // appliance's reported state is a fact the engine can read back
-            // through the executor and put back on undo, and T4's whole
-            // footprint is of that kind. Snapshotting only files left such a
-            // plan applying cleanly and unable to revert, which is the one
-            // outcome this project exists to prevent.
-            if matches!(e.kind, Kind::Region) && !e.shape.starts_with("file:") {
-                continue;
-            }
-            let ex = match self.executor_for(host) {
-                Some(ex) => ex,
-                None => continue,
+        let mut pre = Watched::new();
+        if self.executor_for(host).is_none() {
+            self.persist(rec)?;
+            return Ok(Ok(pre));
+        }
+        // Every observed fact once: its digest, and for a `modified` fact or
+        // a region (whose file is what a restore writes back), its bytes.
+        //
+        // A region lives in a file by construction -- it is text between two
+        // markers -- so a region on anything else is not a thing to observe.
+        // A `modified` fact is under no such obligation: an appliance's
+        // reported state is a fact the engine can read back through the
+        // executor and put back on undo, and T4's whole footprint is of that
+        // kind. Snapshotting only files left such a plan applying cleanly
+        // and unable to revert, which is the one outcome this project exists
+        // to prevent.
+        for (k, e, _) in footprint::observed_facts(&op.footprint) {
+            let (k, kind, shape) = (k, e.kind, e.shape.clone());
+            let bytes = match self.fact_bytes(rec, host, &shape) {
+                Ok(bytes) => bytes,
+                Err(why) => return Ok(Err(why)),
             };
-            if let Ok(Some(bytes)) = ex.read_fact(host, &e.shape) {
+            pre.insert(shape.clone(), footprint::digest_of(bytes.as_deref()));
+            if !matches!(kind, Kind::Modified | Kind::Region) {
+                continue;
+            }
+            if let Some(bytes) = bytes {
                 // R0204: the cap the verdict states is the cap the engine
                 // keeps. A fact above it is not snapshotted, and the step
                 // that wanted the snapshot is refused rather than left
                 // with an undo it cannot perform.
                 if bytes.len() as u64 > SNAPSHOT_CAP {
                     return Err(EngineError::Runtime(format!(
-                        "R0204: {} on {} is {} bytes, above the {SNAPSHOT_CAP}-byte snapshot cap",
-                        e.shape,
+                        "R0204: {shape} on {} is {} bytes, above the {SNAPSHOT_CAP}-byte snapshot cap",
                         host.name(),
                         bytes.len()
                     )));
                 }
                 if rec.dirs.contains(&host.name().to_string()) {
-                    let _ = ex.replace_file(host, &rec.id, &format!("snapshots/{n}/{k}"), &bytes);
+                    if let Some(ex) = self.executor_for(host) {
+                        let _ =
+                            ex.replace_file(host, &rec.id, &format!("snapshots/{n}/{k}"), &bytes);
+                    }
                 }
                 rec.snapshots.insert(
                     format!("{}/{k}", at.key()),
@@ -2163,7 +2353,8 @@ impl Engine {
                 );
             }
         }
-        self.persist(rec)
+        self.persist(rec)?;
+        Ok(Ok(pre))
     }
 
     fn defer(
@@ -2373,10 +2564,10 @@ impl Engine {
             None
         };
         for (k, e, p) in &facts {
-            let bytes = self.executors[idx]
-                .read_fact(&host, &e.shape)
-                .ok()
-                .flatten();
+            // A fact that cannot be read cannot be judged: the undo fails
+            // with the reason rather than deciding over an absence it never
+            // saw.
+            let bytes = self.fact_bytes(rec, &host, &e.shape)?;
             let current = footprint::digest_of(bytes.as_deref());
             let recorded = markers
                 .iter()
@@ -2960,9 +3151,13 @@ impl Engine {
             if rec.state == State::Applying {
                 // The step whose `do` was in flight may have half
                 // happened; its write-ahead entry says how to undo it, so
-                // it is undone with the rest (5.9). An undo of a step that
-                // never took is harmless: that is what makes an undo an
-                // undo.
+                // it is undone with the rest (5.9). Unlike a step that
+                // fails in front of the engine, which is undone only when
+                // a fact of its footprint changed, this one is undone
+                // regardless: what its facts read before `do` was in the
+                // memory of the engine that died. An undo that acts by
+                // name can therefore remove an object of that name the
+                // step never made (ROADMAP Phase 5, "not proven").
                 if let Some(a) = rec.attempting.take() {
                     if !rec.is_applied(a.step, a.iteration, &a.vars) {
                         report.interrupted.push((rec.id.clone(), a.step));

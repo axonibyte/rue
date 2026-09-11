@@ -700,6 +700,53 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
             }
         }
     }
+    // E0609: a computed undo on a fact the host's executor cannot read. A
+    // failed step is undone only when a fact of its footprint changed
+    // (5.9), and a step's undo decides drift by reading its facts (5.2);
+    // `local()` and `ssh()` read files alone, so a fact that is no file is
+    // readable there only through a probe the text says `reads` it. An
+    // undo that restores by footprint puts back what it snapshotted; a
+    // computed one acts by name -- `jail -r g1`, `service x stop` -- and on
+    // a fact nobody can read it removes whatever holds that name. Same
+    // executor selection as E0608.
+    for (n, o) in &step_ops {
+        if !matches!(o.undo, Undo::Computed { .. }) {
+            continue;
+        }
+        let (host, reach): (String, Vec<&str>) = match &o.locus {
+            Locus::Controller => ("the controller".to_string(), CONTROLLER_REACH.to_vec()),
+            _ => match step_host(p, o).ok().and_then(|h| host_record(site, &h)) {
+                Some(r) => (r.name.clone(), r.reach.iter().map(String::as_str).collect()),
+                None => continue,
+            },
+        };
+        let Some(t) = selected_transport(site, reach) else {
+            continue;
+        };
+        if is_hook_transport(t) {
+            continue;
+        }
+        for e in &o.footprint {
+            if !matches!(e.kind, Kind::Owned | Kind::Modified) || e.shape.starts_with("file:") {
+                continue;
+            }
+            let read = p.probes.iter().any(|d| {
+                d.reads
+                    .as_deref()
+                    .is_some_and(|pat| bind_shape(pat, &e.shape).is_some())
+            });
+            if !read {
+                diagnostics.push(d(
+                    Code::E0609,
+                    Some(*n),
+                    format!(
+                        "op {}: its computed undo acts on {} on {host}, reached by {t}(), which reads files alone, and no probe reads that fact; declare one (`reads`) or restore it by footprint",
+                        o.id, e.shape
+                    ),
+                ));
+            }
+        }
+    }
     let mut seen_probes: Vec<String> = Vec::new();
     for (n, name) in observed_probes(p) {
         if seen_probes.contains(&name) {

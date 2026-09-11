@@ -167,6 +167,7 @@ pub fn probe(name: &str) -> ProbeDecl {
         produces: Vec::new(),
         static_: false,
         equivalence: "bytes".into(),
+        reads: None,
     }
 }
 
