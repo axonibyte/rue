@@ -1,0 +1,23 @@
+# Reverts: a line that is not JSON is skipped by the Rust serve loop, as every other SDK skips it; returned as an error it ended the loop and every later request met silence
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/rust/src/serve.rs
++++ b/sdk/rust/src/serve.rs
+@@ -102,17 +102,7 @@
+     mut hooks: Hooks,
+     opts: &ServeOptions,
+ ) -> std::io::Result<()> {
+-    loop {
+-        let frame = match read_frame(r) {
+-            Ok(Some(frame)) => frame,
+-            Ok(None) => break,
+-            // A line that is not JSON -- garbled, truncated, not UTF-8,
+-            // nested past serde_json's depth -- is skipped like any other
+-            // line that is not a request. Returned as an error, it ended
+-            // the loop, and every later request met silence.
+-            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+-            Err(e) => return Err(e),
+-        };
++    while let Some(frame) = read_frame(r)? {
+         if frame.is_null() {
+             continue;
+         }

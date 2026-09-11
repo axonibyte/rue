@@ -437,6 +437,45 @@ fn the_socket_handshake_registers_for_what_is_served_and_then_answers_requests()
 }
 
 #[test]
+fn a_line_that_is_not_json_is_skipped_rather_than_ending_the_hook() {
+    let mut script = Vec::new();
+    for line in [
+        json!({ "id": 0, "result": { "ok": true } }).to_string(),
+        json!({ "register": { "ok": true, "name": "actuate" } }).to_string(),
+        "not json at all".to_string(),
+        "[".repeat(10_000),
+        r#"{"id": 1, "kind": "notify", "op": "del"#.to_string(),
+    ] {
+        script.extend_from_slice(line.as_bytes());
+        script.push(b'\n');
+    }
+    script.extend_from_slice(b"\xff\xfe not UTF-8\n");
+    script.extend_from_slice(
+        format!(
+            "{}\n",
+            json!({ "id": 2, "kind": "notify", "op": "deliver", "level": "info",
+                    "subject": "s", "body": "b" })
+        )
+        .as_bytes(),
+    );
+    let mut r = BufReader::new(&script[..]);
+    let mut w: Vec<u8> = Vec::new();
+    serve_socket(&mut r, &mut w, everything(), ServeOptions::new("actuate")).unwrap();
+    let out: Vec<Value> = String::from_utf8(w)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(out.len(), 3, "hello, register, one reply: {out:?}");
+    assert_eq!(
+        out[2]["id"],
+        json!(2),
+        "the request after the bad lines was answered"
+    );
+    assert_eq!(out[2]["ok"], json!(true));
+}
+
+#[test]
 fn a_refused_registration_ends_the_serve_loop_rather_than_serving_anyway() {
     let script = format!(
         "{}\n{}\n{}\n",

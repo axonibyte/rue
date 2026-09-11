@@ -102,7 +102,17 @@ fn pump<R: BufRead, W: Write>(
     mut hooks: Hooks,
     opts: &ServeOptions,
 ) -> std::io::Result<()> {
-    while let Some(frame) = read_frame(r)? {
+    loop {
+        let frame = match read_frame(r) {
+            Ok(Some(frame)) => frame,
+            Ok(None) => break,
+            // A line that is not JSON -- garbled, truncated, not UTF-8,
+            // nested past serde_json's depth -- is skipped like any other
+            // line that is not a request. Returned as an error, it ended
+            // the loop, and every later request met silence.
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+            Err(e) => return Err(e),
+        };
         if frame.is_null() {
             continue;
         }

@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/RueHook/RueHook.csproj" />
+    <!-- The quick start of docs/README.md, so its tests drive the code the page shows. -->
+    <ProjectReference Include="../../examples/AuditHook/AuditHook.csproj" />
   </ItemGroup>
 
 </Project>

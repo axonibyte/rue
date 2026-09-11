@@ -223,6 +223,8 @@ on both registered guests. Validate the manifest with
 | `tools/lint-ecodes.sh` | The E-code guard: `Rue.Proto.Diagnostics` and the roadmap's table must agree |
 | `tools/lint-rcodes.sh` | The R-code guard: every runtime code Appendix D documents is raised in the engine and asserted by a test |
 | `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
+| `tools/lint-sdk-docs.sh` | The SDK docs guard: every SDK has user docs, and every example a page shows is the file its suite tests |
+| `sdk/` | The embedding SDKs of 7.11 -- `rust/`, `python/`, `elixir/`, `java/`, `dotnet/` -- and `shim/`, the `rue-hook` shim; each has user docs in its own `docs/` |
 | `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
 | `Cargo.toml`, `core/` | The Rust workspace and `rue-core` (Phase 1): the model and its plan-IR shape, the checker, the verdict and its prose, `explain`, the state machine, the ledger; pure, no I/O |
 | `cli/` | `rue`, the operator CLI: the whole verb list of section 6.8, over a `.rue` file for the offline verbs and over the control channel for the rest; exit codes per that section |

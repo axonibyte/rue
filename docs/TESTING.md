@@ -23,6 +23,7 @@ failure, and exits 0 only if every phase ran and passed:
 | `rcodes` | Every R-code of Appendix D is raised somewhere and asserted by a test, and no `"R0xxx"` literal exists outside the enumerations |
 | `hook-ops` | The ops table of `docs/hook-protocol.md` and `OPS` in `rue-hook-proto` name the same 26 ops, in both directions |
 | `hook-proto-frozen` | Every released hook protocol document (`docs/hook-protocol-v<N>.json`) still has the digest pinned when it was released, and the current `HOOK_PROTOCOL` has a document |
+| `sdk-docs` | Every SDK under `sdk/` has user docs (`docs/README.md`), every example a page shows is byte for byte the file its own suite tests, and every relative link in them resolves |
 | `golden-hygiene` | Every expected file has no CR, no trailing whitespace, exactly one trailing LF; JSON begins with `{` |
 | `rediscovery-patches` | Every row of the rediscovery table names a patch that still applies to the tree, and every patch is listed |
 | `darwin-deps` | No crate in the darwin dependency graph (`cargo tree --target *-apple-darwin`) is in `tools/darwin-denylist.txt`: the darwin binaries cross-link with zig and no macOS SDK, which a framework-linking crate would break |
@@ -352,6 +353,20 @@ conformance, and each pipeline step runs its SDK's suite before judging it.
 The JUnit and xUnit suites fetch their frameworks from Maven Central and
 NuGet, which the conformance runs never need; on the guest both land in
 caches.
+
+Each SDK directory, the shim's included, carries user docs in its own
+`docs/`: a README with a quick start, a guide to every kind, and a page on
+testing a hook. The quick start is the same audit hook in every language (a
+journal sink and a notifier) and is a real file each SDK's own suite drives
+-- `tests/test_audit_example.py`, `test/audit_example_test.exs` (as a child
+process, the way `rued` runs it), `AuditHookTest`, `AuditExampleTests`,
+`sdk/rust/tests/audit_example.rs`, `sdk/shim/tests/audit_example.rs` -- and
+`tools/lint-sdk-docs.sh` (the `sdk-docs` phase, `tests/tier3/t_sdk_docs.sh`)
+fails when a page's copy of it differs from the file by a byte, when an SDK
+has no docs, or when a link in them resolves to nothing. Writing them ran
+each quick start through `rue sdk-conform` (4 of 4, the journal and notify
+cases a hook of one's own can pass) and through a dry-run `rued` that
+spawned it; neither of those is automated.
 
 The acceptance line of the phase -- the same text checks identically
 standalone and embedded -- is held for every tenant case and negative by

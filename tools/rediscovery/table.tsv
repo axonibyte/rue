@@ -183,3 +183,5 @@ sdk-dotnet-refusal-reuses-the-id-node.patch	1	-	dotnet	FullyQualifiedName~HooksT
 sdk-dotnet-unwritable-reply-ends-the-hook.patch	1	-	dotnet	FullyQualifiedName~ReplyTheSerializerRefuses|FullyQualifiedName~ReplyThatCannotBeWritten	-
 sdk-dotnet-secret-formatted-by-accident.patch	1	-	dotnet	FullyQualifiedName~ResolvedTests.ARunHandlersBody	-
 sdk-dotnet-budget-ignored.patch	1	-	dotnet	FullyQualifiedName~ServeTests.AHandlerOverItsBudget	-
+sdk-rust-bad-line-ends-the-hook.patch	1	-	cargo	a_line_that_is_not_json_is_skipped	-
+sdk-shim-bad-line-ends-the-shim.patch	1	-	cargo	is_skipped_rather_than_ending_the_shim	-
