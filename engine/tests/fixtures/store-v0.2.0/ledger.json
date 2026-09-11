@@ -1,0 +1,19 @@
+{
+  "held": [
+    {
+      "exclusivity": null,
+      "host": "h",
+      "id": "upgrade.h.ca3d163b@h",
+      "umbra": [
+        [
+          "file:/a",
+          null
+        ],
+        [
+          "file:/b",
+          null
+        ]
+      ]
+    }
+  ]
+}

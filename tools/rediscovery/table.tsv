@@ -192,3 +192,6 @@ computed-undo-on-unread-fact-checks-clean.patch	1	-	cargo	a_computed_undo_needs	
 reads-line-ignored.patch	1	-	cargo	a_probe_that_reads_a_fact_binds	-
 sdk-python-missing-field-asserted.patch	1	-	python	test_a_reply_missing_a_required_field	-
 sdk-rust-conform-hook-bad-line.patch	1	-	cargo	the_conformance_hook_skips	-
+boot-undoes-a-step-that-never-took.patch	1	-	cargo	whose_do_never_took_is_not_undone_on_the_way_back	-
+migration-note-missing.patch	1	-	cargo	a_released_text_checks_clean_or_is_told	-
+older-record-unreadable.patch	1	-	cargo	store_migrates_and_its_instance_is_driven	-

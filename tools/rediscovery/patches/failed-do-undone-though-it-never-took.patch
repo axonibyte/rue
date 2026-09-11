@@ -2,10 +2,10 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1863,16 +1863,6 @@
-     ) -> Result<(), EngineError> {
+@@ -1948,16 +1948,6 @@
          let n = at.step;
          rec.attempting = None;
+         rec.attempting_pre.clear();
 -        if !pre.is_empty() && self.untouched(rec, op, pre) {
 -            self.log(
 -                rec,

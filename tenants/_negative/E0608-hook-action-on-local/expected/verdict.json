@@ -8,7 +8,7 @@
   "diagnostics": [
     {
       "code": "E0608",
-      "message": "op page: hook(:page) in its do body runs on the controller, reached by local(), which performs run and the fact primitives and never a hook's action",
+      "message": "op page: hook(:page) in its do body runs on the controller, reached by local(), which performs run and the fact primitives and never a hook's action (new in v0.2.0: declare the probe with a `run` line, or bind a hook that performs the action (`execute via: hook(:x, transport: :t)`))",
       "step": 1
     }
   ],

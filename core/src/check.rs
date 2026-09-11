@@ -492,7 +492,7 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
     let d = |code: Code, n: Option<u32>, msg: String| Diagnostic {
         code,
         step: n,
-        message: msg,
+        message: code.with_migration(msg),
     };
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
@@ -740,7 +740,7 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
                     Code::E0609,
                     Some(*n),
                     format!(
-                        "op {}: its computed undo acts on {} on {host}, reached by {t}(), which reads files alone, and no probe reads that fact; declare one (`reads`) or restore it by footprint",
+                        "op {}: its computed undo acts on {} on {host}, reached by {t}(), which reads files alone, and no probe reads that fact",
                         o.id, e.shape
                     ),
                 ));

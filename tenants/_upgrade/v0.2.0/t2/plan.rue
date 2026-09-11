@@ -1,0 +1,176 @@
+rue 0
+# T2 -- cluster succession (docs/ROADMAP.md section 8.2). Permanent, ending in
+# commit(). Two variants: mode :auto (ack :none) and mode :manual (one human),
+# the manual path alone reaching the destructive rollback knell.
+#
+# Phase 1 carries this text unparsed; the checked form is the Rust term in
+# tenants/harness/src/tenants/t2.rs, and expected/ holds its verdicts.
+
+site do
+  inventory from: file("inventory.toml")
+  journal to: local()
+  approval via: hook(:authority)
+  # The cluster driver serves the controller: the fence, the platform's
+  # slave mode and the placement record are its actions, and the guards the
+  # promote ladder climbs are its answers. Without it the controller has only
+  # local(), which performs none of them -- this text checked clean for four
+  # phases and could not have run a step past the probes (E0608).
+  execute via: [ssh(identity: "keys/id_ed25519", known_hosts: "known_hosts", user: "root"), hook(:cluster, transport: :controller)]
+  max_wait 30m
+  operators do
+    identity :operator, user: "ops", operator_for: :all, admin: true
+    identity :second_operator, user: "ops2", operator_for: [:promote]
+  end
+  hooks do
+    registrar :authority, user: "approvald", may_register: [:authority]
+    registrar :cluster, user: "clusterd", may_register: [:cluster]
+  end
+end
+
+# Failback's written-bytes guard, "measured twice" (8.2): static, so it is
+# frozen into the host contract when the promote is requested and measured
+# again when an acknowledgement arrives and at apply. Bytes written in
+# between are R0301, which refuses rather than rolling back over them.
+defprobe :written_bytes_since_split do
+  hook :written_bytes
+  locus :controller
+  static true
+end
+
+defprobe :fence_verified_off do
+  hook :fence_driver
+  locus :controller
+end
+
+# The rungs' guards and the knells' costs. The ladder named these from the
+# start and nothing declared them, so each was a probe no executor could
+# answer: ssh() runs a probe's body and these had none (E0608).
+defprobe :peer_dead do
+  hook :cluster
+  locus :controller
+end
+
+defprobe :probes_agree do
+  hook :cluster
+  locus :controller
+end
+
+defprobe :fence_verdict do
+  hook :fence_driver
+  locus :controller
+end
+
+defprobe :datasets_ahead do
+  hook :cluster
+  locus :controller
+end
+
+defprobe :destroyed_snapshots do
+  hook :cluster
+  locus :controller
+end
+
+# The heir's handoff: is it running on node-c yet? The reap pass asks this
+# of a deferred step, so it is a probe like the rest, and it too was named
+# without a declaration.
+defprobe :heir_running_on_c do
+  hook :cluster
+  locus :controller
+end
+
+# The fence rung: a knell. Guard is the driver's verified-off; the cost probe is
+# the fence verdict. The ack is :none under :auto (the driver's verified-off is
+# the automation's own evidence) and one human under :manual.
+defop :fence_corpse, _, ack: ack do
+  footprint
+  do: hook(:fence, node: corpse)
+  refusal: knell, guard: fence_verified_off, cost: fence_verdict(), ack: ack
+  undo_locus: :none
+  locus: :controller
+end
+
+defop :rollback_ahead_datasets, _ do
+  footprint
+  do: run("zfs rollback -r #{dataset}@split")
+  refusal: knell, guard: datasets_ahead, cost: destroyed_snapshots(), ack: humans()
+  undo_locus: :none
+end
+
+# The resurrection gate's hold: a platform op, undone by release.
+defop :resurrection_gate, _ do
+  footprint modified: platform.mode("node-a")
+  do: hook(:platform, set: :slave, node: "node-a")
+  undo: hook(:platform, set: :master, node: "node-a", idempotent: true)
+  undo_pre platform.mode("node-a")
+  refusal: :hold, via: :slave_mode
+  undo_locus: :controller
+  locus: :controller
+end
+
+defop :start_guest, %{os: :freebsd} do
+  footprint modified: guest.state(g)
+  do: run("cbsd bstart #{g}")
+  undo: run("cbsd bstop #{g}", idempotent: true)
+  undo_pre guest.state(g)
+  refusal: :hold
+  undo_locus: :controller
+end
+
+defop :record_succession, _ do
+  footprint append_only: file("/var/db/succession.log"), append_only: record.placement
+  do: [append(file("/var/db/succession.log"), line: entry), hook(:placement, set: entry)]
+  undo: compensate: [append(file("/var/db/succession.log"), line: reversal), hook(:placement, set: reversal)]
+  undo_pre file("/var/db/succession.log"), record.placement
+  undo_locus: :controller
+  locus: :controller
+end
+
+# The heir on another node: deferred, continued by handoff-done.
+defop :start_heir, %{os: :freebsd} do
+  footprint modified: guest.state("heir")
+  do: run("cbsd bstart heir")
+  undo: run("cbsd bstop heir", idempotent: true)
+  undo_pre guest.state("heir")
+  refusal: :hold
+  undo_locus: :controller
+  locus: host("node-c")
+  handoff_done: heir_running_on_c()
+end
+
+defplan :promote_auto, %{name: "node-b"} do
+  mode: :auto
+  exclusivity: :"corpse:node-a"
+  preflight do
+    written_bytes_since_split
+  end
+  assert peer_dead
+  assert force: never, probes_agree
+  knell fence_corpse(ack: :none, reason: "the driver's verified-off is the automation's own evidence")
+  resurrection_gate()
+  repeat over: guests, as g, max: 16 do
+    start_guest(g: g)
+  end
+  record_succession(entry: succession_entry)
+  start_heir()
+  commit()
+end
+
+defplan :promote, %{name: "node-b"} do
+  exclusivity: :"corpse:node-a"
+  preflight do
+    written_bytes_since_split
+  end
+  assert peer_dead
+  assert force: never, probes_agree
+  knell fence_corpse(ack: humans())
+  when datasets_ahead do
+    knell rollback_ahead_datasets()
+  end
+  resurrection_gate()
+  repeat over: guests, as g, max: 16 do
+    start_guest(g: g)
+  end
+  record_succession(entry: succession_entry)
+  start_heir()
+  commit()
+end

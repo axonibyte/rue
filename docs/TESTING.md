@@ -100,7 +100,16 @@ held resources are reestablished first, and the settle flag survives a
 crash; a migrated store is journaled once. `engine/tests/store.rs` opens
 the store v0.1.0 wrote (`engine/tests/fixtures/store-v0.1.0`, an instance
 applied across a repeat): it is refused until migrated, and its instance
-then reverts under this build.
+then reverts under this build. `engine/tests/upgrade.rs` does the same for
+every release's store (v0.2.0's, `store-v0.2.0`, was written by v0.2.0's
+own engine: an instance of two steps restored by footprint), and requires
+the journal each release began and this build continued to verify as one
+chain; `tenants/harness/tests/upgrade.rs` checks the tenant texts each
+release shipped (`tenants/_upgrade/`) under this build, and every refusal
+must come from a rule added after that release and say so. Boot recovery
+with a step in flight is held both ways in `engine/tests/lifecycle.rs`: a
+step whose kept pre-`do` reads still hold is not undone, one whose facts
+changed is, and a record that kept none is undone as before.
 
 `engine/tests/table.rs` is tier 4 through the driver: every applicable
 row of the generated transition table (`docs/state-transitions.tsv`, 664

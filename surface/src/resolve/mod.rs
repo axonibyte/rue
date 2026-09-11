@@ -75,7 +75,7 @@ pub(crate) fn diag(code: Code, span: Option<Span>, message: String) -> Diagnosti
         expected: None,
         found: None,
         nearest: None,
-        message,
+        message: code.with_migration(message),
     }
 }
 

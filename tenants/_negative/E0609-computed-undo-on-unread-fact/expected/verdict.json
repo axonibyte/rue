@@ -8,7 +8,7 @@
   "diagnostics": [
     {
       "code": "E0609",
-      "message": "op start_worker: its computed undo acts on service:state:worker on db-01, reached by ssh(), which reads files alone, and no probe reads that fact; declare one (`reads`) or restore it by footprint",
+      "message": "op start_worker: its computed undo acts on service:state:worker on db-01, reached by ssh(), which reads files alone, and no probe reads that fact (new in v0.3.0: declare a probe that `reads` the fact, or undo it with `:restore`)",
       "step": 1
     }
   ],

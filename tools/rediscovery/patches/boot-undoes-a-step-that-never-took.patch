@@ -1,0 +1,13 @@
+# Reverts: a step the engine died inside whose facts read as they did before do (kept with the write-ahead entry, schema 3) is not undone at boot; its undo by name would remove what it never made
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -3179,7 +3179,7 @@
+                                 .and_then(|h| concrete_op(o, &h, &self.env_for(&rec, &a.vars)).ok())
+                         });
+                         let never_took = match &op {
+-                            Some(o) => !pre.is_empty() && self.untouched(&rec, o, &pre),
++                            Some(_) => false,
+                             None => false,
+                         };
+                         if never_took {

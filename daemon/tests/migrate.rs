@@ -56,10 +56,14 @@ fn a_dry_run_reports_the_steps_and_writes_nothing_then_the_real_run_migrates() {
     );
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(
-        text.contains("would migrate") && text.contains("from schema 0 to 2"),
+        text.contains("would migrate") && text.contains("from schema 0 to 3"),
         "{text}"
     );
-    assert!(text.contains("write schema 2"), "{text}");
+    assert!(text.contains("write schema 3"), "{text}");
+    assert!(
+        text.contains("a step in flight records what its facts read"),
+        "{text}"
+    );
     assert!(!store.join("schema").exists());
 
     let out = rued(&["migrate", "--store", store.to_str().unwrap()]);
@@ -69,7 +73,7 @@ fn a_dry_run_reports_the_steps_and_writes_nothing_then_the_real_run_migrates() {
         std::fs::read_to_string(store.join("schema"))
             .unwrap()
             .trim(),
-        "2"
+        "3"
     );
     assert!(store.join("migrated.json").exists());
     let out = rued(&["migrate", "--store", store.to_str().unwrap()]);

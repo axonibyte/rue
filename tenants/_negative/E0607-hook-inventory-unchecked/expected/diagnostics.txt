@@ -1,1 +1,1 @@
-tenants/_negative/E0607-hook-inventory-unchecked/plan.rue:7:1: E0607: `inventory from: hook(host_world)` has no hosts until the hook is asked, and checking needs a record now: name one with `rue check --inventory FILE`
+tenants/_negative/E0607-hook-inventory-unchecked/plan.rue:7:1: E0607: `inventory from: hook(host_world)` has no hosts until the hook is asked, and checking needs a record now: name one with `rue check --inventory FILE` (new in v0.2.0: a hook inventory is checked against a record you name)

@@ -1,0 +1,22 @@
+# T1 inventory (docs/ROADMAP.md Appendix C). Two hosts: the database host the
+# plan runs on, and the management controller it reaches over an API.
+[[host]]
+name = "db-01"
+address = "10.0.4.11"
+os = "freebsd"
+roles = ["db", "primary"]
+reach = ["ssh"]
+filesystem = true
+scheduler = "cron"
+
+[[host]]
+name = "bmc-01"
+address = "10.0.4.111"
+os = "appliance"
+roles = ["bmc"]
+reach = ["api"]
+filesystem = false
+
+[authenticators]
+oncall = { human = true }
+platform_a = { human = true }

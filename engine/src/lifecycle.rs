@@ -241,6 +241,11 @@ pub struct InstanceRecord {
     /// (5.9, 7.8).
     #[serde(default)]
     pub attempting: Option<AppliedStep>,
+    /// What every fact the step in flight observes read before its `do`
+    /// (schema 3), so that boot recovery, like a failure the engine saw,
+    /// undoes it only if its `do` took. Empty in a record written before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub attempting_pre: BTreeMap<String, String>,
     /// Knells acknowledged up front (`--ack`), by step.
     pub acks: Vec<u32>,
     /// Guard names forced by the request or a `recant --force`.
@@ -1094,6 +1099,7 @@ impl Engine {
             proofs: Vec::new(),
             secret_undelivered: false,
             attempting: None,
+            attempting_pre: BTreeMap::new(),
             acks: opts.acks.clone(),
             forced: opts.forced.clone(),
             ledger_ids: Vec::new(),
@@ -1537,6 +1543,7 @@ impl Engine {
     ) -> Result<(), EngineError> {
         rec.applied.push(at);
         rec.attempting = None;
+        rec.attempting_pre.clear();
         self.persist(rec)
     }
 
@@ -1780,6 +1787,7 @@ impl Engine {
             Ok(t) => t,
             Err(why) => {
                 rec.attempting = None;
+                rec.attempting_pre.clear();
                 return self.refuse(rec, n, &why);
             }
         };
@@ -1939,6 +1947,7 @@ impl Engine {
     ) -> Result<(), EngineError> {
         let n = at.step;
         rec.attempting = None;
+        rec.attempting_pre.clear();
         if !pre.is_empty() && self.untouched(rec, op, pre) {
             self.log(
                 rec,
@@ -2353,6 +2362,9 @@ impl Engine {
                 );
             }
         }
+        // Kept with the write-ahead record, so an engine that dies inside
+        // `do` leaves the next one what it needs to tell whether it took.
+        rec.attempting_pre = pre.clone();
         self.persist(rec)?;
         Ok(Ok(pre))
     }
@@ -3151,17 +3163,37 @@ impl Engine {
             if rec.state == State::Applying {
                 // The step whose `do` was in flight may have half
                 // happened; its write-ahead entry says how to undo it, so
-                // it is undone with the rest (5.9). Unlike a step that
-                // fails in front of the engine, which is undone only when
-                // a fact of its footprint changed, this one is undone
-                // regardless: what its facts read before `do` was in the
-                // memory of the engine that died. An undo that acts by
-                // name can therefore remove an object of that name the
-                // step never made (ROADMAP Phase 5, "not proven").
+                // it is undone with the rest (5.9) -- unless what its facts
+                // read before `do`, kept with that entry, is what they read
+                // now: then its `do` never took, and an undo that acts by
+                // name would remove what the step never made. A record
+                // written before schema 3 kept nothing, and a fact that
+                // cannot be read now shows nothing; both are undone as
+                // before.
                 if let Some(a) = rec.attempting.take() {
+                    let pre = std::mem::take(&mut rec.attempting_pre);
                     if !rec.is_applied(a.step, a.iteration, &a.vars) {
-                        report.interrupted.push((rec.id.clone(), a.step));
-                        rec.applied.push(a);
+                        let op = rec.op_at(a.step).and_then(|o| {
+                            self.step_host(&rec, o)
+                                .ok()
+                                .and_then(|h| concrete_op(o, &h, &self.env_for(&rec, &a.vars)).ok())
+                        });
+                        let never_took = match &op {
+                            Some(o) => !pre.is_empty() && self.untouched(&rec, o, &pre),
+                            None => false,
+                        };
+                        if never_took {
+                            self.log(
+                                &rec,
+                                J::UndoSkipped {
+                                    step: a.step,
+                                    reason: "the engine died inside its do, which left every fact of its footprint as it found them".into(),
+                                },
+                            )?;
+                        } else {
+                            report.interrupted.push((rec.id.clone(), a.step));
+                            rec.applied.push(a);
+                        }
                     }
                 }
                 rec.refusal = Some("the engine restarted while applying".into());

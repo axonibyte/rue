@@ -8,7 +8,7 @@
   "diagnostics": [
     {
       "code": "E0608",
-      "message": "probe healthy has no declaration, and is observed on db-01, reached by ssh(), which answers a probe only by running it",
+      "message": "probe healthy has no declaration, and is observed on db-01, reached by ssh(), which answers a probe only by running it (new in v0.2.0: declare the probe with a `run` line, or bind a hook that performs the action (`execute via: hook(:x, transport: :t)`))",
       "step": 1
     }
   ],

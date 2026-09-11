@@ -419,8 +419,13 @@ E0106, E0107 (a call binding a declared parameter to a value of another
 kind, or a plan option of the wrong kind), E0108, E0110, E0111, E0112,
 E0113, E0114 (the arms of a `when` binding one alias to outputs of
 different kinds), E0204 for a knell without a cost, and E0601 to E0605 and
-E0607 for the site. E0608 is the checker's, since it needs the whole plan
-and the site together, and so it reaches the verdict. Every one of them has a golden under `tenants/_negative/`
+E0607 for the site. E0608 and E0609 are the checker's, since they need the
+whole plan and the site together, and so they reach the verdict. A code
+added after v0.1.0, the first release, ends its message with the release
+it came in and what a text written before changes to meet it -- `(new in
+v0.3.0: declare a probe that `reads` the fact, or undo it with
+`:restore`)` -- so a text that checked under an earlier release and does
+not now says why. Every one of them has a golden under `tenants/_negative/`
 with its text and its rendered diagnostics. Every other code is the
 checker's and reaches the verdict; E0109 is the renderer's.
 

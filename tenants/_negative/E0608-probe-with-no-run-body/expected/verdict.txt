@@ -1,1 +1,1 @@
-posture on db-01: refused; E0608 at step 1: probe healthy has no declaration, and is observed on db-01, reached by ssh(), which answers a probe only by running it.
+posture on db-01: refused; E0608 at step 1: probe healthy has no declaration, and is observed on db-01, reached by ssh(), which answers a probe only by running it (new in v0.2.0: declare the probe with a `run` line, or bind a hook that performs the action (`execute via: hook(:x, transport: :t)`)).

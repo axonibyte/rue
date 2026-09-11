@@ -2,17 +2,38 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -3082,12 +3082,7 @@
-                 // memory of the engine that died. An undo that acts by
-                 // name can therefore remove an object of that name the
-                 // step never made (ROADMAP Phase 5, "not proven").
+@@ -3170,32 +3170,8 @@
+                 // written before schema 3 kept nothing, and a fact that
+                 // cannot be read now shows nothing; both are undone as
+                 // before.
 -                if let Some(a) = rec.attempting.take() {
+-                    let pre = std::mem::take(&mut rec.attempting_pre);
 -                    if !rec.is_applied(a.step, a.iteration, &a.vars) {
--                        report.interrupted.push((rec.id.clone(), a.step));
--                        rec.applied.push(a);
+-                        let op = rec.op_at(a.step).and_then(|o| {
+-                            self.step_host(&rec, o)
+-                                .ok()
+-                                .and_then(|h| concrete_op(o, &h, &self.env_for(&rec, &a.vars)).ok())
+-                        });
+-                        let never_took = match &op {
+-                            Some(o) => !pre.is_empty() && self.untouched(&rec, o, &pre),
+-                            None => false,
+-                        };
+-                        if never_took {
+-                            self.log(
+-                                &rec,
+-                                J::UndoSkipped {
+-                                    step: a.step,
+-                                    reason: "the engine died inside its do, which left every fact of its footprint as it found them".into(),
+-                                },
+-                            )?;
+-                        } else {
+-                            report.interrupted.push((rec.id.clone(), a.step));
+-                            rec.applied.push(a);
+-                        }
 -                    }
 -                }
 +                rec.attempting = None;
++                rec.attempting_pre.clear();
                  rec.refusal = Some("the engine restarted while applying".into());
                  self.step(&mut rec, E::Refuse)?;
                  if rec.state == State::Held {

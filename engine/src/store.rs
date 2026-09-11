@@ -35,7 +35,11 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 /// A schema 1 record is a valid schema 2 record -- the new fields are
 /// absent when empty -- so 1 -> 2 rewrites nothing; what it changes is
 /// which builds may open the store.
-pub const SCHEMA: u32 = 2;
+///
+/// 3: the step in flight records what its facts read before `do`, so boot
+/// recovery undoes it only if its `do` took. A schema 2 record reads as one
+/// that kept nothing, and 2 -> 3 rewrites nothing either.
+pub const SCHEMA: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchemaError {
@@ -477,6 +481,17 @@ pub fn migrate(root: &Path, dry_run: bool, by: &str) -> Result<Migration, StoreE
         steps.push(
             "applied steps record their repeat variables from here on; records written \
              before carry none, and read unchanged"
+                .to_string(),
+        );
+    }
+    // 2 -> 3: the step in flight records what its facts read before `do`.
+    // A record written before kept nothing, so a step it shows in flight is
+    // undone at boot regardless, as schema 2 undid it.
+    if from < 3 {
+        steps.push(
+            "a step in flight records what its facts read before do from here on; a \
+             record written before kept nothing, and its step in flight is undone at boot \
+             as before"
                 .to_string(),
         );
     }

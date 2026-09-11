@@ -51,7 +51,7 @@ with the title, kind and status the issue itself gives.
 
 | # | Title | Kind | Status |
 |---|---|---|---|
-| 0001 | Upgrade vectors: an older release's texts and store check and migrate, or say what changed | feature | open |
+| 0001 | Upgrade vectors: an older release's texts and store check and migrate, or say what changed | feature | closed |
 | 0002 | unless_heartbeat under a real network partition | not-proven | open |
 | 0003 | Drill mode: scheduled apply-and-recant on a canary, with an attestation | feature | open |
 | 0004 | The complete simulation | feature | open |
@@ -61,7 +61,7 @@ with the title, kind and status the issue itself gives.
 | 0008 | The name sweep, and a public README | feature | open |
 | 0009 | Multi-controller: refuse, or a lock protocol over a shared fact? | question | open |
 | 0010 | Release v0.2.1 with the SDK fixes? | question | closed |
-| 0011 | A step interrupted by the engine's death is undone even if it never took | not-proven | open |
+| 0011 | A step interrupted by the engine's death is undone even if it never took | not-proven | closed |
 | 0012 | The Rust conformance hook ends at a line that is not JSON | defect | closed |
 | 0013 | Python SDK: the reply-shape check is an assert | defect | closed |
 | 0014 | Phase 3W: task 14 on a real Windows guest | feature | open |

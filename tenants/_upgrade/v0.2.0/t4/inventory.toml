@@ -1,0 +1,12 @@
+# T4 inventory as the reactive host reports it through hook(:host_world): one
+# host, itself, with no filesystem the engine may write and no scheduler.
+[[host]]
+name = "site-ctl"
+address = "127.0.0.1"
+os = "reactive-host"
+roles = ["controller"]
+reach = ["actuate"]
+filesystem = false
+
+[authenticators]
+site_operator = { human = true }

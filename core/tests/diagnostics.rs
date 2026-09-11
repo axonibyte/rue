@@ -97,3 +97,37 @@ mod front_end {
         assert_eq!(nearest("ab", ["abc", "abd"]), Some("abc".into()));
     }
 }
+
+/// The codes of v0.1.0, the first release, as that release's
+/// `core/src/diagnostics.rs` listed them.
+const IN_V0_1_0: &[&str] = &[
+    "E0101", "E0102", "E0103", "E0104", "E0105", "E0106", "E0107", "E0108", "E0109", "E0110",
+    "E0111", "E0112", "E0113", "E0114", "E0201", "E0202", "E0203", "E0204", "E0205", "E0206",
+    "E0207", "E0208", "E0209", "E0210", "E0211", "E0301", "E0302", "E0303", "E0304", "E0305",
+    "E0401", "E0402", "E0403", "E0404", "E0405", "E0406", "E0407", "E0408", "E0409", "E0410",
+    "E0411", "E0501", "E0502", "E0503", "E0504", "E0505", "E0506", "E0507", "E0508", "E0509",
+    "E0601", "E0602", "E0603", "E0604", "E0605", "E0606",
+];
+
+#[test]
+fn every_code_added_since_the_first_release_says_when_and_how_to_migrate() {
+    // A text written for an earlier release that a newer rule refuses is
+    // told that the rule is new and what to change; a code the first
+    // release already had carries no such note.
+    for c in Code::ALL {
+        let old = IN_V0_1_0.contains(&c.as_str());
+        assert_eq!(c.since().is_none(), old, "{c}: since {:?}", c.since());
+        assert_eq!(
+            c.migration().is_none(),
+            old,
+            "{c}: migration {:?}",
+            c.migration()
+        );
+        let m = c.with_migration("m".into());
+        if old {
+            assert_eq!(m, "m");
+        } else {
+            assert!(m.starts_with("m (new in v") && m.ends_with(')'), "{m}");
+        }
+    }
+}

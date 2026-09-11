@@ -1354,9 +1354,10 @@ fn a_step_whose_do_the_engine_died_inside_is_undone_on_the_way_back() {
     // The write-ahead entry exists for exactly this: the engine says what
     // it is about to do and how it would undo it, then does it. A death
     // between those two leaves a step that may have half happened and was
-    // never marked applied, and boot recovery must undo it anyway (5.9,
-    // 7.8). Undoing a step that never took is harmless; leaving one that
-    // did is not.
+    // never marked applied, and boot recovery must undo it (5.9, 7.8). This
+    // record kept nothing of what the step's facts read before `do`, as a
+    // record written before schema 3 kept nothing, so nothing shows the
+    // step never took and it is undone.
     let mut w = World::new("boot-interrupted");
     let plan = world::temp_plan(
         "p",
@@ -1397,4 +1398,88 @@ fn a_step_whose_do_the_engine_died_inside_is_undone_on_the_way_back() {
     let rec = w.engine.status(&id).unwrap().unwrap();
     assert_eq!(rec.state, State::Closed, "{rec:?}");
     assert!(rec.applied.is_empty() && rec.attempting.is_none());
+}
+
+/// A record as a death inside step 2's `do` leaves it, with what step 2's
+/// fact read before `do` kept beside the write-ahead entry (schema 3).
+fn died_inside_step_two(w: &World, id: &str, pre: &str) {
+    let mut rec = w.engine.status(id).unwrap().unwrap();
+    rec.state = State::Applying;
+    rec.applied.retain(|a| a.step == 1);
+    rec.attempting = Some(rue_engine::lifecycle::AppliedStep::new(
+        2,
+        0,
+        &BTreeMap::new(),
+    ));
+    rec.attempting_pre = BTreeMap::from([(
+        "file:/b".to_string(),
+        rue_engine::footprint::digest_of(Some(pre.as_bytes())),
+    )]);
+    w.engine.store().write_instance(id, &rec).unwrap();
+}
+
+#[test]
+fn a_step_the_engine_died_inside_whose_do_never_took_is_not_undone_on_the_way_back() {
+    // Its facts read now as they did before `do`, which the record kept:
+    // the `do` never took, and its undo -- by name -- would remove what the
+    // step never made. The rest of the plan is undone as before.
+    let mut w = World::new("boot-never-took");
+    w.ssh
+        .with(|f| f.facts.insert("file:/b".into(), b"theirs".to_vec()));
+    let plan = world::temp_plan(
+        "p",
+        vec![world::step(world::op("a")), world::step(world::op("b"))],
+    );
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    let id = out.id.clone();
+    died_inside_step_two(&w, &id, "theirs");
+
+    let mut w = w.restart();
+    let boot = w.engine.boot().unwrap();
+    assert!(boot.interrupted.is_empty(), "{boot:?}");
+    let undos: Vec<String> = w
+        .commands()
+        .into_iter()
+        .filter(|c| c.starts_with("undo "))
+        .collect();
+    assert_eq!(undos, vec!["undo a".to_string()], "step 2 never took");
+    assert!(w
+        .sink
+        .events()
+        .iter()
+        .any(|e| matches!(e, J::UndoSkipped { step: 2, .. })));
+    let rec = w.engine.status(&id).unwrap().unwrap();
+    assert_eq!(rec.state, State::Closed, "{rec:?}");
+    assert!(rec.attempting.is_none() && rec.attempting_pre.is_empty());
+}
+
+#[test]
+fn a_step_the_engine_died_inside_whose_do_took_something_is_undone_on_the_way_back() {
+    let mut w = World::new("boot-took");
+    let plan = world::temp_plan(
+        "p",
+        vec![world::step(world::op("a")), world::step(world::op("b"))],
+    );
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    let id = out.id.clone();
+    // Before `do` the file read "before"; it reads otherwise now.
+    died_inside_step_two(&w, &id, "before");
+    w.ssh
+        .with(|f| f.facts.insert("file:/b".into(), b"half".to_vec()));
+
+    let mut w = w.restart();
+    let boot = w.engine.boot().unwrap();
+    assert_eq!(boot.interrupted, vec![(id.clone(), 2)]);
+    let undos: Vec<String> = w
+        .commands()
+        .into_iter()
+        .filter(|c| c.starts_with("undo "))
+        .collect();
+    assert_eq!(undos, vec!["undo b".to_string(), "undo a".to_string()]);
 }

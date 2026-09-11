@@ -1,1 +1,1 @@
-page on db-01: refused; E0608 at step 1: op page: hook(:page) in its do body runs on the controller, reached by local(), which performs run and the fact primitives and never a hook's action.
+page on db-01: refused; E0608 at step 1: op page: hook(:page) in its do body runs on the controller, reached by local(), which performs run and the fact primitives and never a hook's action (new in v0.2.0: declare the probe with a `run` line, or bind a hook that performs the action (`execute via: hook(:x, transport: :t)`)).

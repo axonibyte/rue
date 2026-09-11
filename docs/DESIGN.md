@@ -127,8 +127,15 @@ unit. What is in place:
   repeat variables it ran with. A schema 1 record is a valid schema 2
   record, so 1 -> 2 rewrites nothing; what it cannot do is recover the
   variables of steps applied inside a repeat before it, which undo as
-  schema 1 undid them, without. `engine/tests/fixtures/store-v0.1.0` is
-  the store v0.1.0 itself wrote, the first upgrade vector of 7.13.
+  schema 1 undid them, without. Schema 3 (v0.3.0) keeps, beside the step in
+  flight, what its facts read before `do`, so boot recovery undoes it only
+  if its `do` took; a schema 2 record kept nothing and is undone as before,
+  so 2 -> 3 rewrites nothing either. `engine/tests/fixtures/store-v0.1.0`
+  and `store-v0.2.0` are the stores those releases themselves wrote, the
+  upgrade vectors of 7.13: each is migrated and driven by the current
+  engine (`engine/tests/upgrade.rs`), and the tenant texts each release
+  shipped (`tenants/_upgrade/`) must check clean or be refused only by
+  rules added since, which say so (`Code::since`, `Code::migration`).
 - **The journal** (`engine/src/journal.rs`, 7.6): entries chained by core's
   `append`, optionally signed (SSHSIG, Ed25519, namespace `rue-journal`,
   `engine/src/sign.rs`), written to the store, then delivered to every sink

@@ -110,6 +110,43 @@ codes! {
     E0609 => "a computed undo on a fact the host's executor cannot read: a fact that is no file, on a host reached by local() or ssh(), with no probe that reads it",
 }
 
+impl Code {
+    /// The release a code was added in, for every code added after v0.1.0,
+    /// the first release. A text written for an earlier release can be
+    /// refused with one of these, and is told so rather than left to wonder
+    /// what it did wrong (ROADMAP Phase 5, upgrade vectors).
+    pub fn since(self) -> Option<&'static str> {
+        match self {
+            Code::E0607 | Code::E0608 => Some("v0.2.0"),
+            Code::E0609 => Some("v0.3.0"),
+            _ => None,
+        }
+    }
+
+    /// What a text written before `since` changes to meet the rule.
+    pub fn migration(self) -> Option<&'static str> {
+        match self {
+            Code::E0607 => Some("a hook inventory is checked against a record you name"),
+            Code::E0608 => Some(
+                "declare the probe with a `run` line, or bind a hook that performs the action \
+                 (`execute via: hook(:x, transport: :t)`)",
+            ),
+            Code::E0609 => {
+                Some("declare a probe that `reads` the fact, or undo it with `:restore`")
+            }
+            _ => None,
+        }
+    }
+
+    /// A diagnostic's message, with the code's migration when it has one.
+    pub fn with_migration(self, message: String) -> String {
+        match (self.since(), self.migration()) {
+            (Some(v), Some(m)) => format!("{message} (new in {v}: {m})"),
+            _ => message,
+        }
+    }
+}
+
 impl fmt::Display for Code {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())

@@ -122,6 +122,7 @@ fn seed(ctx: Ctx, state: State, ev: E) -> InstanceRecord {
         proofs: Vec::new(),
         secret_undelivered: false,
         attempting: None,
+        attempting_pre: BTreeMap::new(),
         acks: Vec::new(),
         forced: Vec::new(),
         ledger_ids: Vec::new(),

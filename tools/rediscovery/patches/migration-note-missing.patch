@@ -1,0 +1,13 @@
+# Reverts: a code added after the first release says, in its message, the release it came in and what an older text changes to meet it; without it an upgraded text is refused with no word of why
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/diagnostics.rs
++++ b/core/src/diagnostics.rs
+@@ -141,7 +141,7 @@
+     /// A diagnostic's message, with the code's migration when it has one.
+     pub fn with_migration(self, message: String) -> String {
+         match (self.since(), self.migration()) {
+-            (Some(v), Some(m)) => format!("{message} (new in {v}: {m})"),
++            (Some(_), Some(_)) => message,
+             _ => message,
+         }
+     }

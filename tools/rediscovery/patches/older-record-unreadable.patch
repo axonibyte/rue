@@ -1,0 +1,13 @@
+# Reverts: a record an older release wrote reads under this one once migrated: a field added since (attempting_pre, schema 3) defaults when absent
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -244,7 +244,7 @@
+     /// What every fact the step in flight observes read before its `do`
+     /// (schema 3), so that boot recovery, like a failure the engine saw,
+     /// undoes it only if its `do` took. Empty in a record written before.
+-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
++    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+     pub attempting_pre: BTreeMap<String, String>,
+     /// Knells acknowledged up front (`--ack`), by step.
+     pub acks: Vec<u32>,
