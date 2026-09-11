@@ -1413,4 +1413,20 @@ fn executor_rules() {
         .probes
         .push(run_probe("fence_verdict", Locus::Target));
     pair(Code::E0608, &asked_plan, &measurable);
+
+    // A static probe is measured when the request freezes the host contract,
+    // whether or not any step names it -- so it too needs an executor that
+    // can answer it.
+    let mut frozen = temp(vec![s(owned("s"))]);
+    frozen.probes.push(ProbeDecl {
+        body: vec![],
+        static_: true,
+        ..run_probe("written", Locus::Target)
+    });
+    let mut runnable = temp(vec![s(owned("s"))]);
+    runnable.probes.push(ProbeDecl {
+        static_: true,
+        ..run_probe("written", Locus::Target)
+    });
+    pair(Code::E0608, &frozen, &runnable);
 }

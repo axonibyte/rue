@@ -145,3 +145,7 @@ imported-probe-declared-qualified.patch	1	-	cargo	an_imported_probe_is_declared_
 open-import-probe-undeclared.patch	1	-	cargo	an_open_import_s_probe_is_declared_too	-
 knell-cost-shown-by-name.patch	1	-	cargo	a_knell_asks_its_acknowledger_to_accept_the_measured_cost_not_its_name	-
 handoff-probe-unchecked.patch	1	-	cargo	executor_rules	-
+static-probe-observed-with-empty-body.patch	1	-	cargo	a_static_probe_is_frozen_where_it_runs_and_a_write_before_the_ack_refuses_it	-
+contract-change-midplan-crashes.patch	1	-	cargo	a_static_probe_is_frozen_where_it_runs_and_a_write_before_the_ack_refuses_it	-
+contract-change-while-waiting-crashes.patch	1	-	cargo	a_static_probe_that_moves_while_a_step_gate_waits_refuses_rather_than_crashing	-
+static-probe-unchecked.patch	1	-	cargo	executor_rules	-

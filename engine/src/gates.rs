@@ -19,7 +19,7 @@ use rue_core::states::State;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::executor::{ExecError, ProbeRun};
+use crate::executor::ExecError;
 use crate::lifecycle::{Engine, EngineError, InstanceRecord};
 
 /// One proof an instance has accepted.
@@ -133,21 +133,36 @@ impl Engine {
             if let Ok(v) = serde_json::to_value(&host.record) {
                 c.hosts.insert(name.clone(), v);
             }
-            if rec.rehearsal {
-                continue;
-            }
-            for p in rec.plan().probes.iter().filter(|p| p.static_) {
-                let run = ProbeRun {
-                    name: p.name.clone(),
-                    body: Vec::new(),
-                };
-                let Some(i) = self.executor_index(&host) else {
-                    continue;
-                };
-                if let Ok(o) = self.executors[i].observe(&host, &run) {
-                    c.statics.insert(format!("{name}/{}", p.name), o.text);
-                }
-            }
+        }
+        if rec.rehearsal {
+            return c;
+        }
+        // Each static probe once, where and how the engine runs any probe:
+        // its declared locus and its resolved body. This observed every
+        // static probe on every touched host with an EMPTY body and dropped
+        // whatever failed -- so on an ssh() host, which answers a probe only
+        // by running its body, and for any probe whose locus is the
+        // controller, the fact was silently left out of the contract and
+        // R0301 could never fire for it. "Measured twice" (8.2's written-
+        // bytes guard) measured it zero times. A measurement that fails is
+        // recorded as failing, not omitted: the contract then says what it
+        // could not freeze, and a later reading that can is a change.
+        let Ok(owner) = self.owner_host(rec) else {
+            return c;
+        };
+        let statics: Vec<String> = rec
+            .plan()
+            .probes
+            .iter()
+            .filter(|p| p.static_)
+            .map(|p| p.name.clone())
+            .collect();
+        for probe in statics {
+            let value = match self.observe_raw(rec, &owner, &probe) {
+                Ok(o) => o.text,
+                Err(e) => format!("unmeasured: {e}"),
+            };
+            c.statics.insert(probe, value);
         }
         c
     }
@@ -180,14 +195,39 @@ impl Engine {
         if rec.rehearsal || rec.host_contract.is_empty() {
             return Ok(false);
         }
+        // Mid-plan a changed contract is judged where the instance next
+        // acts. While it waits on a step gate or an acknowledgement nothing
+        // runs, and `walk` re-derives the contract the moment the wait ends
+        // and before any step -- so a Waiting instance is left for walk to
+        // refuse rather than given a transition of its own.
+        if rec.state == State::Waiting {
+            return Ok(false);
+        }
         let Some((expected, observed)) = self.contract_changed(rec) else {
             return Ok(false);
         };
         self.log(rec, J::HostContractChanged { expected, observed })?;
         rec.proofs.clear();
-        rec.refusal = Some(
-            "R0301: the host contract changed since the request; every proof falls with it".into(),
-        );
+        let reason =
+            "R0301: the host contract changed since the request; every proof falls with it";
+        // Before any step, the request itself is what fails: Closed. Once
+        // steps have run, it is a refusal like any other, and rule 4 says
+        // what one does during Applying -- revert, unless an earlier step
+        // holds. This called the Pending transition in every state, and the
+        // state machine has none for Applying, so the one re-derivation 5.11
+        // makes at apply could only end in WrongState. Nothing reached it
+        // while no static probe was ever frozen.
+        if rec.state == State::Applying {
+            let n = rue_core::algebra::numbered(&rec.plan().body)
+                .into_iter()
+                .map(|(n, _)| n)
+                .find(|n| !rec.applied.iter().any(|a| a.step == *n))
+                .unwrap_or(1);
+            self.refuse(rec, n, reason)?;
+            self.persist(rec)?;
+            return Ok(true);
+        }
+        rec.refusal = Some(reason.into());
         self.step(rec, rue_core::states::Event::HostContractChanged)?;
         self.log(
             rec,

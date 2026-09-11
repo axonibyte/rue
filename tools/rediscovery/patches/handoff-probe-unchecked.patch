@@ -2,12 +2,12 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/core/src/check.rs
 +++ b/core/src/check.rs
-@@ -121,9 +121,6 @@
-                                 out.push((n, c.clone()));
+@@ -124,9 +124,6 @@
+                                 out.push((Some(n), c.clone()));
                              }
                          }
 -                        if let Some(h) = &o.handoff_done {
--                            out.push((n, h.clone()));
+-                            out.push((Some(n), h.clone()));
 -                        }
                      }
                      _ => {}

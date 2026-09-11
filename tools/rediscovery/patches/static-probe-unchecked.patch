@@ -1,0 +1,13 @@
+# Reverts: E0608 counts every static probe among those the engine observes, since the request measures it to freeze the host contract; here static probes are left out, so one no executor can answer checks clean.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -137,7 +137,7 @@
+     let mut out: Vec<(Option<u32>, String)> = p
+         .probes
+         .iter()
+-        .filter(|d| d.static_)
++        .filter(|d| d.static_ && false)
+         .map(|d| (None, d.name.clone()))
+         .collect();
+     p.body.iter().for_each(|it| go(it, &mut next, &mut out));

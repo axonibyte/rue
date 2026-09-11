@@ -389,7 +389,7 @@ pub struct BootReport {
 // The engine
 
 /// How a step's walk ended.
-enum Flow {
+pub(crate) enum Flow {
     Continue,
     /// The instance left `Applying`; stop walking.
     Stop,
@@ -836,7 +836,7 @@ impl Engine {
         }
     }
 
-    fn observe_raw(
+    pub(crate) fn observe_raw(
         &mut self,
         rec: &InstanceRecord,
         host: &Host,
@@ -1183,7 +1183,7 @@ impl Engine {
         Ok(Flow::Continue)
     }
 
-    fn owner_host(&self, rec: &InstanceRecord) -> Result<Host, EngineError> {
+    pub(crate) fn owner_host(&self, rec: &InstanceRecord) -> Result<Host, EngineError> {
         self.host_of(&rec.plan().owner).ok_or_else(|| {
             EngineError::Internal(format!("no host record for owner {}", rec.plan().owner))
         })
@@ -2103,7 +2103,7 @@ impl Engine {
     }
 
     /// A refusal at step `n` before its `do` ran: rule 4.
-    fn refuse(
+    pub(crate) fn refuse(
         &mut self,
         rec: &mut InstanceRecord,
         n: u32,

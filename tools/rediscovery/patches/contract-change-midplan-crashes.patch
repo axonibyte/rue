@@ -1,0 +1,13 @@
+# Reverts: a host contract that changes once steps have run is a refusal under rule 4; here it takes the Pending transition in Applying, which the state machine does not have, so 5.11's re-derivation at apply ends in WrongState instead of refusing.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/gates.rs
++++ b/engine/src/gates.rs
+@@ -217,7 +217,7 @@
+         // state machine has none for Applying, so the one re-derivation 5.11
+         // makes at apply could only end in WrongState. Nothing reached it
+         // while no static probe was ever frozen.
+-        if rec.state == State::Applying {
++        if false && rec.state == State::Applying {
+             let n = rue_core::algebra::numbered(&rec.plan().body)
+                 .into_iter()
+                 .map(|(n, _)| n)

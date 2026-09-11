@@ -2,7 +2,7 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/gates.rs
 +++ b/engine/src/gates.rs
-@@ -183,6 +183,10 @@
+@@ -206,6 +206,10 @@
          let Some((expected, observed)) = self.contract_changed(rec) else {
              return Ok(false);
          };
@@ -12,4 +12,4 @@
 +        }
          self.log(rec, J::HostContractChanged { expected, observed })?;
          rec.proofs.clear();
-         rec.refusal = Some(
+         let reason =

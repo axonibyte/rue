@@ -567,7 +567,7 @@
         "locus": "controller",
         "name": "written_bytes_since_split",
         "produces": [],
-        "static": false
+        "static": true
       },
       {
         "body": [],

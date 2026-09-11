@@ -27,9 +27,14 @@ site do
   end
 end
 
+# Failback's written-bytes guard, "measured twice" (8.2): static, so it is
+# frozen into the host contract when the promote is requested and measured
+# again when an acknowledgement arrives and at apply. Bytes written in
+# between are R0301, which refuses rather than rolling back over them.
 defprobe :written_bytes_since_split do
   hook :written_bytes
   locus :controller
+  static true
 end
 
 defprobe :fence_verified_off do

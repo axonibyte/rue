@@ -1,0 +1,21 @@
+# Reverts: a static probe is measured where and how the engine runs any probe -- its declared locus, its resolved body; here it is asked of the owner's executor with an empty body, as it was, so a probe run on the controller or over ssh() is never actually frozen and R0301 cannot fire for it: 8.2's written-bytes guard, measured twice, is measured zero times.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/gates.rs
++++ b/engine/src/gates.rs
+@@ -158,7 +158,15 @@
+             .map(|p| p.name.clone())
+             .collect();
+         for probe in statics {
+-            let value = match self.observe_raw(rec, &owner, &probe) {
++            let empty = crate::executor::ProbeRun {
++                name: probe.clone(),
++                body: Vec::new(),
++            };
++            let value = match self
++                .executor_index(&owner)
++                .ok_or_else(|| "no executor".to_string())
++                .and_then(|i| self.executors[i].observe(&owner, &empty).map_err(|e| e.to_string()))
++            {
+                 Ok(o) => o.text,
+                 Err(e) => format!("unmeasured: {e}"),
+             };

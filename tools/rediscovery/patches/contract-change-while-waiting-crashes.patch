@@ -1,0 +1,13 @@
+# Reverts: an instance waiting on a step gate leaves a contract change for walk to refuse before any step runs; here the proof path takes the Pending transition from Waiting, which the state machine does not have, and the proof ends in WrongState.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/gates.rs
++++ b/engine/src/gates.rs
+@@ -200,7 +200,7 @@
+         // runs, and `walk` re-derives the contract the moment the wait ends
+         // and before any step -- so a Waiting instance is left for walk to
+         // refuse rather than given a transition of its own.
+-        if rec.state == State::Waiting {
++        if false && rec.state == State::Waiting {
+             return Ok(false);
+         }
+         let Some((expected, observed)) = self.contract_changed(rec) else {

@@ -542,3 +542,103 @@ fn a_knell_asks_its_acknowledger_to_accept_the_measured_cost_not_its_name() {
         "an unmeasured cost was put in front of the acknowledger anyway"
     );
 }
+
+#[test]
+fn a_static_probe_is_frozen_where_it_runs_and_a_write_before_the_ack_refuses_it() {
+    // 8.2's failback guard, "measured twice": written bytes since the split,
+    // frozen when the request is made and measured again when the
+    // acknowledgement arrives, so a write in between invalidates the ack
+    // rather than being rolled back over.
+    //
+    // The contract observed every static probe on every touched host with
+    // an empty body and dropped whatever failed. This probe runs on the
+    // controller, so it was asked of the wrong executor, failed, and was
+    // silently left out -- and no change to it could ever be noticed.
+    let (mut w, _) = world("gate-static");
+    let mut op = world::op("rollback");
+    op.undo = rue_core::model::Undo::NoUndo;
+    op.refusal = Refusal::Knell {
+        guard: None,
+        cost: Cost::NoCost("measured by the preflight".into()),
+        ack: Ack::Gate(GateExpr::Single(auth("oncall"))),
+    };
+    let mut plan = world::temp_plan("p", vec![Item::Knell(StepI::new(op))]);
+    let mut written = world::probe("written_bytes_since_split");
+    written.locus = rue_core::model::Locus::Controller;
+    written.static_ = true;
+    plan.probes.push(written);
+    w.local.observe_as(
+        "written_bytes_since_split",
+        rue_engine::executor::Observation::yes("0"),
+    );
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Waiting, "{}", out.line);
+    let id = out.id.clone();
+
+    // Somebody writes to the dataset while the acknowledgement is pending.
+    w.local.observe_as(
+        "written_bytes_since_split",
+        rue_engine::executor::Observation::yes("4096"),
+    );
+    let out = w
+        .engine
+        .ack(&id, 1, "fail back now", "token", "oncall")
+        .unwrap();
+    assert_ne!(
+        out.state,
+        State::Applied,
+        "the rollback went ahead over a write made after the request was measured"
+    );
+    assert!(
+        w.events().iter().any(|e| e.contains("HostContractChanged")),
+        "the second measurement disagreed with the first and nothing said so: {:?}",
+        w.events()
+    );
+}
+
+#[test]
+fn a_static_probe_that_moves_while_a_step_gate_waits_refuses_rather_than_crashing() {
+    // The same freeze, reached through a step gate's proof while the
+    // instance is Waiting. The contract check called the Pending transition
+    // in every state, and the state machine has none for Waiting or
+    // Applying: this ended in WrongState. A Waiting instance now leaves the
+    // judgement to walk, which re-derives the contract before any step runs.
+    let (mut w, _) = world("gate-static-step");
+    let mut plan = world::temp_plan(
+        "p",
+        vec![Item::Step(StepI {
+            gate: Some(GateExpr::Single(auth("oncall"))),
+            ..StepI::new(world::op("a"))
+        })],
+    );
+    let mut written = world::probe("written_bytes_since_split");
+    written.locus = rue_core::model::Locus::Controller;
+    written.static_ = true;
+    plan.probes.push(written);
+    w.local.observe_as(
+        "written_bytes_since_split",
+        rue_engine::executor::Observation::yes("0"),
+    );
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Waiting, "{}", out.line);
+    w.local.observe_as(
+        "written_bytes_since_split",
+        rue_engine::executor::Observation::yes("4096"),
+    );
+    let out = w
+        .engine
+        .approve_proof(&out.id, Scope::Step(1), "oncall", "token", "ops")
+        .expect("a contract change mid-plan is a refusal, never an error");
+    assert_ne!(out.state, State::Applied, "{}", out.line);
+    assert!(
+        w.commands().is_empty(),
+        "a step ran on a contract that changed since the request: {:?}",
+        w.commands()
+    );
+}

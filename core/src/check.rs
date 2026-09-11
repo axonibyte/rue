@@ -79,11 +79,14 @@ fn is_hook_transport(t: &str) -> bool {
 /// one appears (preflight, assert, a `when`'s condition, an op's pre and
 /// post, a knell's), a knell's cost when a human is asked to acknowledge it,
 /// a deferred step's `handoff_done` (the reap pass observes it), and
-/// `observe`. A `repeat over:` list is not among them: it may be a parameter
-/// supplied at apply, which nothing observes. Nor is the cost of a knell
-/// acknowledged `:none`, which nothing measures, since nobody is asked.
-fn observed_probes(p: &Plan) -> Vec<(u32, String)> {
-    fn go(it: &Item, next: &mut u32, out: &mut Vec<(u32, String)>) {
+/// `observe`, and every `static` probe, which is measured when the request
+/// freezes the host contract and again at every proof and at apply (5.11).
+/// A `repeat over:` list is not among them: it may be a parameter supplied at
+/// apply, which nothing observes. Nor is the cost of a knell acknowledged
+/// `:none`, which nothing measures, since nobody is asked. The step is `None`
+/// for a static probe: it is measured before any step, at the request.
+fn observed_probes(p: &Plan) -> Vec<(Option<u32>, String)> {
+    fn go(it: &Item, next: &mut u32, out: &mut Vec<(Option<u32>, String)>) {
         match it {
             Item::Par { children } => children.iter().for_each(|c| go(c, next, out)),
             Item::Repeat { body, .. } => body.iter().for_each(|c| go(c, next, out)),
@@ -95,7 +98,7 @@ fn observed_probes(p: &Plan) -> Vec<(u32, String)> {
             } => {
                 // A `when` is not a leaf; its condition is observed where its
                 // first leaf would run.
-                out.push((*next, guard.name.clone()));
+                out.push((Some(*next), guard.name.clone()));
                 then_.iter().for_each(|c| go(c, next, out));
                 else_.iter().for_each(|c| go(c, next, out));
             }
@@ -103,26 +106,26 @@ fn observed_probes(p: &Plan) -> Vec<(u32, String)> {
                 let n = *next;
                 *next += 1;
                 match leaf {
-                    Item::Preflight { guards } => {
-                        guards.iter().for_each(|g| out.push((n, g.name.clone())))
-                    }
-                    Item::Assert { guard, .. } => out.push((n, guard.name.clone())),
-                    Item::Observe { probe, .. } => out.push((n, probe.clone())),
+                    Item::Preflight { guards } => guards
+                        .iter()
+                        .for_each(|g| out.push((Some(n), g.name.clone()))),
+                    Item::Assert { guard, .. } => out.push((Some(n), guard.name.clone())),
+                    Item::Observe { probe, .. } => out.push((Some(n), probe.clone())),
                     Item::Step(s) | Item::Knell(s) => {
                         let o = &s.op;
                         for g in o.pre.iter().chain(o.post.iter()) {
-                            out.push((n, g.name.clone()));
+                            out.push((Some(n), g.name.clone()));
                         }
                         if let Refusal::Knell { guard, cost, ack } = &o.refusal {
                             if let Some(g) = guard {
-                                out.push((n, g.name.clone()));
+                                out.push((Some(n), g.name.clone()));
                             }
                             if let (Cost::Probe(c), Ack::Gate(_)) = (cost, ack) {
-                                out.push((n, c.clone()));
+                                out.push((Some(n), c.clone()));
                             }
                         }
                         if let Some(h) = &o.handoff_done {
-                            out.push((n, h.clone()));
+                            out.push((Some(n), h.clone()));
                         }
                     }
                     _ => {}
@@ -131,7 +134,12 @@ fn observed_probes(p: &Plan) -> Vec<(u32, String)> {
         }
     }
     let mut next = 1;
-    let mut out = Vec::new();
+    let mut out: Vec<(Option<u32>, String)> = p
+        .probes
+        .iter()
+        .filter(|d| d.static_)
+        .map(|d| (None, d.name.clone()))
+        .collect();
     p.body.iter().for_each(|it| go(it, &mut next, &mut out));
     out
 }
@@ -721,7 +729,7 @@ pub fn check(site: &Site, requester: &str, p: &Plan) -> Verdict {
             };
             diagnostics.push(d(
                 Code::E0608,
-                Some(n),
+                n,
                 format!(
                     "probe {name} {why}, and is observed on {host}, reached by {t}(), which answers a probe only by running it"
                 ),
