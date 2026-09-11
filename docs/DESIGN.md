@@ -151,19 +151,29 @@ unit. What is in place:
   `<rue_root>/lock` locally and a long-lived `lockf` (FreeBSD) or `flock`
   (Linux) over ssh; a family with neither in base has none (macOS).
 - **Footprints at runtime** (`engine/src/footprint.rs`, 4.3, 5.2, 7.7):
-  before `do`, snapshots of `Modified` and `Region` files (to the record
-  and to the instance directory); after `do`, the digest of every file
-  fact of the plan on that host outside the step's own footprint is
+  before `do`, snapshots of `Modified` and `Region` facts (to the record
+  and to the instance directory); after `do`, the digest of every
+  observable fact of the plan on that host outside the step's own
+  footprint is
   compared with its digest before, and a change is R0201 (`FootprintViolation`,
   the step undone, the plan reverted); the step's markers (`<kind> <path>
   <sha256>`) and the host's manifest of regions are written. At undo time
-  each file fact is read against its marker and decided by the artifact's
-  rule (`footprint::decide`): unchanged undoes; changed clobbers under
+  each observable fact is read against its marker and decided by the
+  artifact's rule (`footprint::decide`): unchanged undoes; changed clobbers under
   `:clobber` (`DriftClobbered`) or holds under `:defer` (`DriftHeld`, the
   instance DriftHeld, `--force=drift` to proceed); a region with damaged
   markers is restored whole from its snapshot unless another active
   instance holds a region on the file (the ledger says), in which case it
-  defers. The undo of a step with a region runs under the host lock, from
+  defers. **An observable fact is one the engine can read back through the
+  executor**, which is any `Owned` or `Modified` fact and those `Region`
+  facts that live in a file: a region is the text between two markers
+  inside a file by construction, and a region on anything else is not a
+  fact to compare. So an appliance's reported state, reached through a
+  hook, drifts and is watched exactly as a file does. `markers/<n>` on the
+  host carries the file facts alone, because its other reader is a
+  rendered artifact with no executor (below); the engine's own record
+  carries every one, and the two therefore agree wherever the artifact can
+  see and the engine sees further. The undo of a step with a region runs under the host lock, from
   the decision through the write and the marker's removal. An instance
   directory is created on a run-capable host before its first step, only
   when the host is bootstrapped (R0407); a `:target` undo on a host without
@@ -192,7 +202,18 @@ unit. What is in place:
   the flag is persisted so a crash during settle stays settling. The
   request reserves every touched host's umbra in the ledger (R0101,
   R0203); a rehearsal journals every step, calls no executor and reserves
-  nothing.
+  nothing. **A rehearsal's instance id is its own** (`<plan>.<host>.<hash>`
+  with `.rehearsal` after it), because reserving nothing is only half of
+  "a rehearsal never blocks a real plan" (7.9, D-085). The other half is
+  the instance store: an id held by a non-terminal record is R0101, and a
+  rehearsal ends `Applied`, which is not terminal -- so while the two
+  shared an id, rehearsing a plan once refused the real one for good
+  through a path no ledger rule touches, and rehearsing a running plan
+  would have overwritten its live record with one that holds nothing.
+  Separate ids also keep the journal readable: a rehearsal's only trace is
+  its entries, and while they were filed under the real plan's id nothing
+  told them apart from an apply that happened. The duplicate-instance
+  guard does not apply to a rehearsal at all, for the same reason.
 
 - **The control channel** (`engine/src/control.rs`, `engine/src/peer.rs`,
   `engine/src/pipe.rs`, docs/control-protocol.md): one channel,
@@ -436,7 +457,10 @@ its marker is left alone and the step is written to `drift`; under
 whose markers are damaged is restored whole from its snapshot unless a
 sibling instance's manifest holds a region on the file, in which case it
 defers. A non-file fact cannot be observed by a script and is undone as if
-intact.
+intact -- which is the artifact's limit and not the engine's, and the one
+place the two decide differently. §5.2 states the rule about facts; a
+shell script can only look at files, so the artifact keeps the narrower
+half of the rule and the engine keeps all of it.
 
 ## The simulation
 

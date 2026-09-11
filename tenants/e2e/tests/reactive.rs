@@ -12,6 +12,14 @@
 //! yields the same verdict whether a person checks it at a terminal or a
 //! host applies it over a channel, and a temporary plan an embedded host
 //! fired really does revert.
+//!
+//! Both drift variants of 8.4 run here, and they are the reason the
+//! footprint of this tenant is worth having: every fact in it is an
+//! appliance's reported state, read back through a hook and living in no
+//! filesystem the engine can see. The engine compared drift over file
+//! facts alone until this stage asked it to, so a hand-flipped actuator
+//! was invisible -- `:clobber` overwrote a person's change without a word
+//! and `:defer` never held anything at all.
 
 #![cfg(unix)]
 
@@ -277,5 +285,306 @@ fn the_host_is_refused_outside_its_registrar_and_outside_its_scope() {
     assert!(
         text.contains("R0504"),
         "applying a plan outside operator_for was not refused with R0504: {text}"
+    );
+}
+
+/// Somebody at the panel, moving an actuator out from under the plan. The
+/// hook reads these files, so writing one is exactly what a hand-flip is.
+fn flip(state: &std::path::Path, name: &str, value: &str) {
+    std::fs::write(state.join(name), format!("{value}\n")).expect("the panel");
+}
+
+fn journal(state: &std::path::Path) -> String {
+    std::fs::read_to_string(state.join("journal.ndjson")).unwrap_or_default()
+}
+
+/// The world every case in this file starts from: a site, a state
+/// directory, the two spawned children and a daemon.
+fn world(name: &str) -> (Site, PathBuf, Daemon) {
+    let me = rue_e2e::me();
+    let site = Site::raw(name, &site_text(&me), INVENTORY);
+    let state = site.dir.join("state");
+    std::fs::create_dir_all(&state).unwrap();
+    std::env::set_var("RUE_T4_STATE", &state);
+    let sdk = rue_e2e::elixir_with_sdk().join(" ");
+    let d = Daemon::start_with(&site, &spawned_children(&sdk));
+    (site, state, d)
+}
+
+fn applied(out: &std::process::Output) -> String {
+    let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    assert!(
+        line.ends_with("Applied"),
+        "the host did not apply: {line}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    line.split_whitespace().next().unwrap().to_string()
+}
+
+#[test]
+fn a_hand_flipped_actuator_is_clobbered_under_clobber_and_journaled() {
+    let (site, state, d) = world("t4-drift-clobber");
+    let id = applied(&host(
+        &d.socket,
+        &state,
+        &["enter", site.file.to_str().unwrap(), "shed_load"],
+    ));
+    assert_eq!(actuator(&state, "hvac-2"), "off");
+
+    // A person turns one of them back on while the override stands. This
+    // is drift on a `modified` fact that is not a file: nothing but the
+    // appliance itself can be asked what it is now.
+    flip(&state, "hvac-2", "manual");
+
+    let out = host(&d.socket, &state, &["leave", &id]);
+    assert!(
+        out.status.success(),
+        "recant: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        actuator(&state, "hvac-2"),
+        "on",
+        ":clobber restores over the change, as the plan declared"
+    );
+    assert_eq!(actuator(&state, "hvac-1"), "on", "and the rest reverts too");
+
+    // Journaled, because a value the engine overwrote is exactly the thing
+    // an operator has to be able to find afterwards.
+    let j = journal(&state);
+    assert!(
+        j.contains("drift_clobbered"),
+        "the drift was not journaled, so nobody can learn it happened: {j}"
+    );
+    assert!(
+        j.contains("actuator:state:hvac-2"),
+        "the entry does not name the fact that moved: {j}"
+    );
+}
+
+#[test]
+fn a_hand_flipped_actuator_holds_the_instance_under_defer_until_the_host_forces_it() {
+    let (site, state, d) = world("t4-drift-defer");
+    let id = applied(&host(
+        &d.socket,
+        &state,
+        &["enter", site.file.to_str().unwrap(), "shed_load_deferring"],
+    ));
+    flip(&state, "pump-1", "manual");
+
+    // The recant the host would ordinarily make does not revert: under
+    // `:defer` an unattended undo does not overrule whoever moved it. The
+    // verb succeeds and the instance lands in DriftHeld at exit 8 with
+    // R0202 -- the drift is reported, not refused. It is the NEXT plain
+    // recant that is refused (R0103), because by then the answer has been
+    // given and repeating the question changes nothing.
+    let out = host(&d.socket, &state, &["try-leave", &id]);
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let first: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or_else(|_| panic!("a recant outcome: {text}"));
+    assert_eq!(first["state"], serde_json::json!("DriftHeld"));
+    assert_eq!(first["exit"], serde_json::json!(8));
+    assert!(
+        first["line"].as_str().unwrap_or_default().contains("R0202"),
+        "the outcome does not say what was held or why: {first}"
+    );
+    let out = host(&d.socket, &state, &["try-leave", &id]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("R0103"),
+        "a second plain recant over deferred drift was not refused with R0103: {text}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        actuator(&state, "pump-1"),
+        "manual",
+        "the hand-flipped value stands"
+    );
+    assert_eq!(
+        actuator(&state, "hvac-1"),
+        "off",
+        "and nothing of the step was undone around it"
+    );
+
+    let out = host(&d.socket, &state, &["status", &id]);
+    let status: serde_json::Value = serde_json::from_slice(&out.stdout).expect("a status document");
+    assert_eq!(status["state"], serde_json::json!("DriftHeld"));
+    assert_eq!(status["drift_held"], serde_json::json!([1]));
+    assert_eq!(status["exit"], serde_json::json!(8));
+    assert!(
+        journal(&state).contains("drift_held"),
+        "{}",
+        journal(&state)
+    );
+
+    // The host forces it through over the same connection it applied on,
+    // which is what "forced by the host itself" means in 8.4: no person at
+    // a terminal, and no second channel.
+    let out = host(&d.socket, &state, &["force", &id]);
+    assert!(
+        out.status.success(),
+        "force: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(actuator(&state, "pump-1"), "on", "forced back to reported");
+    assert_eq!(actuator(&state, "hvac-1"), "on");
+    assert!(
+        journal(&state).contains("drift_clobbered"),
+        "forcing past a hold is still drift, and is still journaled: {}",
+        journal(&state)
+    );
+}
+
+#[test]
+fn a_request_journals_and_reserves_nothing() {
+    let (site, state, d) = world("t4-request");
+    let out = host(
+        &d.socket,
+        &state,
+        &["rehearse", site.file.to_str().unwrap(), "shed_load"],
+    );
+    let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
+        panic!(
+            "a rehearsal document: {}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let rehearsed = result["id"].as_str().expect("an id").to_string();
+
+    // Nothing ran: the appliance never moved.
+    assert_eq!(actuator(&state, "hvac-1"), "on");
+    assert_eq!(actuator(&state, "hvac-2"), "on");
+    assert_eq!(actuator(&state, "pump-1"), "on");
+
+    // It journaled: a request is a thing the site is entitled to a record
+    // of, and 8.4 asks for exactly that and nothing else.
+    assert!(
+        journal(&state).contains(&rehearsed),
+        "the request was not journaled under its own id: {}",
+        journal(&state)
+    );
+    let out = host(&d.socket, &state, &["status", &rehearsed]);
+    let status: serde_json::Value = serde_json::from_slice(&out.stdout).expect("a status");
+    assert_eq!(status["rehearsal"], serde_json::json!(true));
+
+    // And it reserved nothing, which is the half a journal cannot show. A
+    // real apply of the same plan over the same three actuators would be
+    // refused for contention if the rehearsal had taken an umbra; it is
+    // admitted, so it did not.
+    let id = applied(&host(
+        &d.socket,
+        &state,
+        &["enter", site.file.to_str().unwrap(), "shed_load"],
+    ));
+    assert_eq!(actuator(&state, "hvac-1"), "off");
+    let out = host(&d.socket, &state, &["leave", &id]);
+    assert!(
+        out.status.success(),
+        "recant: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// T4's text with TWO journal sinks: a file the engine writes itself and a
+/// hook that can be told to say no. 5.10 delivers to every declared sink
+/// synchronously and all of them must acknowledge, which is what makes a
+/// refusing sink stop a plan instead of merely losing an entry.
+fn two_sink_text(me: &str) -> String {
+    site_text(me)
+        .replace(
+            "journal to: hook(:host_log)",
+            "journal to: file(\"kept.ndjson\"), hook(:host_log_refusing)",
+        )
+        // A daemon-spawned child is the socket owner and registers under
+        // the registrar declared for it, so the name has to be one this
+        // host may register or the sink never comes up at all (R0505).
+        .replace(
+            "may_register: [:host_world, :host_log, :host_actuate]",
+            "may_register: [:host_world, :host_log_refusing, :host_actuate]",
+        )
+}
+
+#[test]
+fn a_sink_that_refuses_stops_the_plan_and_the_refusal_reaches_the_other_sink() {
+    let me = rue_e2e::me();
+    let site = Site::raw("t4-two-sinks", &two_sink_text(&me), INVENTORY);
+    let state = site.dir.join("state");
+    std::fs::create_dir_all(&state).unwrap();
+    std::env::set_var("RUE_T4_STATE", &state);
+    let sdk = rue_e2e::elixir_with_sdk().join(" ");
+    // The refusing hook stands in for the ordinary journal child, and is
+    // spawned before the inventory for the reason `boot_time_hooks` gives:
+    // a registration is journaled, so a sink must be there to take it.
+    let spawn: Vec<String> = ["host_world", "host_log_refusing"]
+        .iter()
+        .flat_map(|h| {
+            [
+                "--spawn".to_string(),
+                format!("{h}={sdk} {}", fixture(&format!("{h}.exs")).display()),
+            ]
+        })
+        .collect();
+    let d = Daemon::start_with(&site, &spawn);
+
+    // It was healthy at boot -- the daemon started, which is itself the
+    // proof -- and now its storage goes away underneath it.
+    let kept_before = std::fs::read_to_string(site.dir.join("kept.ndjson")).unwrap_or_default();
+    let saw_before = std::fs::read_to_string(state.join("refusing-saw.ndjson")).unwrap_or_default();
+    assert!(
+        !kept_before.is_empty() && !saw_before.is_empty(),
+        "both sinks must have taken the boot entries, or a refusal later proves \
+         nothing about delivery: file sink {} bytes, hook sink {} bytes",
+        kept_before.len(),
+        saw_before.len()
+    );
+    std::fs::write(state.join("refuse"), "").unwrap();
+
+    let out = host(
+        &d.socket,
+        &state,
+        &["enter", site.file.to_str().unwrap(), "shed_load"],
+    );
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        text.contains("R0304"),
+        "a refusing sink did not stop the plan with R0304: {text}"
+    );
+
+    // The plan did not proceed: the write-ahead entry is acknowledged
+    // before a step's `do` runs, so a refusal there means nothing ran.
+    assert_eq!(actuator(&state, "hvac-1"), "on");
+    assert_eq!(actuator(&state, "hvac-2"), "on");
+    assert_eq!(actuator(&state, "pump-1"), "on");
+
+    // The refusal reached the sink that still acknowledges. This is the
+    // half worth having: an operator reading the surviving journal learns
+    // that an entry was refused and by whom, rather than finding a plan
+    // that stopped for no recorded reason.
+    let kept = std::fs::read_to_string(site.dir.join("kept.ndjson")).expect("the file sink");
+    assert!(
+        kept.contains("R0304"),
+        "the refusal never reached the other sink: {kept}"
+    );
+    assert!(
+        kept.contains("host_log_refusing"),
+        "the refusal does not name the sink that refused: {kept}"
+    );
+
+    // And both sinks really were delivered to: the hook was asked and said
+    // no, rather than never being reached. It records every entry it is
+    // handed, whether it accepts it or refuses it, so this counts what it
+    // was sent and not what it kept.
+    let saw = std::fs::read_to_string(state.join("refusing-saw.ndjson")).expect("what it saw");
+    assert!(
+        saw.lines().count() > saw_before.lines().count(),
+        "the refusing sink was never delivered to, so the plan stopped for \
+         some other reason: {} lines before, {} after",
+        saw_before.lines().count(),
+        saw.lines().count()
     );
 }

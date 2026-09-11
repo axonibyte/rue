@@ -17,10 +17,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::region;
 
-/// One file fact of a step as `do` left it.
+/// One fact of a step as `do` left it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Marker {
     pub kind: Kind,
+    /// The fact's address: its path where it is a file, its shape where it
+    /// is not. The `markers/<n>` file an artifact reads carries the file
+    /// facts alone (7.7), so the two agree wherever the artifact can see.
     pub path: String,
     /// `missing` when the file was absent.
     pub digest: String,
@@ -101,8 +104,38 @@ pub fn parse_manifest(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Every fact of a footprint the engine can read back, with the address it
+/// is known by: its path where it is a file, its shape where it is not.
+///
+/// This is the ENGINE's view, and `file_facts` below is the ARTIFACT's. A
+/// rendered `sh` backstop can only see files, so 5.2 has it undo a non-file
+/// fact as if intact; the engine is under no such limit, because it has an
+/// executor and can ask. 5.2's drift table is written about facts and not
+/// about files -- "the fact equals its post-`do` value: restore" -- and an
+/// appliance's reported state is a `modified` fact reached through a hook.
+/// Comparing only the ones that happen to live in a filesystem left such a
+/// fact unable to drift at all: `:clobber` never journaled, `:defer` never
+/// held, and a value changed under the plan was overwritten in silence.
+///
+/// A region is exempt and stays file-only, for the reason it always was:
+/// it is the text between two markers inside a file, by construction, so a
+/// region on anything else is not a fact to compare.
+pub fn observed_facts(footprint: &[FootprintEntry]) -> Vec<(usize, &FootprintEntry, String)> {
+    footprint
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| matches!(e.kind, Kind::Owned | Kind::Region | Kind::Modified))
+        .filter_map(|(k, e)| match region::file_path(&e.shape) {
+            Some(p) => Some((k, e, p.to_string())),
+            None if e.kind == Kind::Region => None,
+            None => Some((k, e, e.shape.clone())),
+        })
+        .collect()
+}
+
 /// The file facts of a footprint with their entry index (`k` names the
-/// snapshot).
+/// snapshot): what a rendered artifact can observe, and what the marker
+/// file it reads is written from.
 pub fn file_facts(footprint: &[FootprintEntry]) -> Vec<(usize, &FootprintEntry, &str)> {
     footprint
         .iter()
@@ -161,13 +194,18 @@ pub fn decide(
     }
 }
 
-/// The plan-wide set of file facts, by path: what a step's `do` must not
-/// touch outside its own footprint (R0201). Digests before and after a
-/// `do` are compared over this set minus the step's own facts.
+/// The plan-wide set of observable facts, by shape: what a step's `do`
+/// must not touch outside its own footprint (R0201). Digests before and
+/// after a `do` are compared over this set minus the step's own facts.
+///
+/// Keyed by shape rather than by path, so that "never destroy what is not
+/// in your footprint" covers the facts that are not files. A step that
+/// moved a sibling step's appliance state went unnoticed while this was a
+/// map of paths.
 pub type Watched = BTreeMap<String, String>;
 
-/// Paths whose digests changed between two watches.
-pub fn changed_paths(before: &Watched, after: &Watched) -> Vec<String> {
+/// Facts whose digests changed between two watches, by shape.
+pub fn changed_facts(before: &Watched, after: &Watched) -> Vec<String> {
     before
         .iter()
         .filter(|(p, d)| after.get(*p) != Some(d))
@@ -252,10 +290,10 @@ mod tests {
         b.insert("/b".into(), "2".into());
         let mut a = b.clone();
         a.insert("/b".into(), "3".into());
-        assert_eq!(changed_paths(&b, &a), vec!["/b".to_string()]);
+        assert_eq!(changed_facts(&b, &a), vec!["/b".to_string()]);
         a.remove("/a");
         assert_eq!(
-            changed_paths(&b, &a),
+            changed_facts(&b, &a),
             vec!["/a".to_string(), "/b".to_string()]
         );
     }

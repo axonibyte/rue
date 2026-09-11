@@ -628,6 +628,52 @@ fn a_subscriber_receives_the_entries_of_its_plans_and_dry_run_forces_rehearsal()
 }
 
 #[test]
+fn a_recant_whose_force_is_not_a_list_of_names_is_a_protocol_refusal() {
+    // The failure this prevents is not a spelling mistake, it is a LIE. A
+    // `force` the verb could not read was dropped, so the recant ran as an
+    // ordinary one and came back R0103 -- a refusal that is right for a
+    // request nobody made, while the operator's actual request had been
+    // discarded in silence. T4's host hit exactly this: it asked to force
+    // a DriftHeld instance through and was told it could not recant.
+    let w = World::new("control-force");
+    let (d, _, _, _w) = daemon(
+        w,
+        ops(
+            vec![operator("ops", UserSpec::Name(me()), &["all"], true)],
+            vec![],
+        ),
+        false,
+    );
+    let mut c = Conn::open(&d);
+    c.hello(None);
+    let applied = c.call("apply", json!({ "ir": plan_ir("p"), "params": {} }));
+    let id = applied
+        .pointer("/result/id")
+        .and_then(Value::as_str)
+        .expect("an instance id")
+        .to_string();
+
+    // A bare string where the protocol documents a list of names.
+    let r = c.call("recant", json!({ "instance": id, "force": "drift" }));
+    assert_eq!(
+        r.pointer("/error/code"),
+        Some(&json!("protocol")),
+        "a force the verb cannot read must be refused, not ignored: {r}"
+    );
+    // A list whose members are not strings, likewise.
+    let r = c.call("recant", json!({ "instance": id, "force": [7] }));
+    assert_eq!(r.pointer("/error/code"), Some(&json!("protocol")), "{r}");
+
+    // And the shape the protocol does document still works, so the
+    // refusal above is about the argument and not about forcing at all.
+    let r = c.call("recant", json!({ "instance": id, "force": ["drift"] }));
+    assert!(
+        r.get("result").is_some(),
+        "a well-formed force was refused: {r}"
+    );
+}
+
+#[test]
 fn a_registered_hook_connection_may_also_act_as_an_operator() {
     // T4's shape: the host registers its hooks and applies its own plans
     // over the same connection.

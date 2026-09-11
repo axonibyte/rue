@@ -34,7 +34,50 @@ find . -name '*.toml' -not -path './target/*' -exec touch {} + 2> /dev/null
 echo "== binaries"
 cargo build --release --locked -p rue -p rued || exit 1
 
-echo "== tier 5"
+# Which stages this guest can run. Every file in tenants/e2e/tests runs by
+# default, so a new stage needs no edit here to be picked up; a stage may
+# be conditional only by being NAMED below, with the requirement it needs.
+# What is not run is printed, because a stage that quietly stops running on
+# every guest is indistinguishable from one that passes.
+stages=''
+withheld=''
+for f in tenants/e2e/tests/*.rs; do
+    name=${f##*/}
+    name=${name%.rs}
+    case $name in
+        reactive)
+            # T4's reactive host IS an Elixir process (8.4), and the plan
+            # of record runs T4 on the Ubuntu guest. This is not a skip
+            # around a failure: there is nothing for the stage to drive
+            # here. If elixir ever goes missing from the guest that is
+            # meant to have it, sdk/conform-all.sh fails first and loudly
+            # -- a missing interpreter is a failure there, never a skip --
+            # so T4 cannot vanish from every guest unnoticed.
+            if command -v mix > /dev/null 2>&1; then
+                stages="$stages $name"
+            else
+                withheld="$withheld $name(no elixir on this guest)"
+            fi
+            ;;
+        *) stages="$stages $name" ;;
+    esac
+done
+
+echo "== tier 5:$stages"
+if [ -n "$withheld" ]; then
+    echo "== not run here:$withheld"
+fi
+if [ -z "$stages" ]; then
+    echo "run.sh: no stage can run on this guest" >&2
+    exit 1
+fi
+
+select=''
+for name in $stages; do
+    select="$select --test $name"
+done
+
 # One test at a time: the host's state is global. RUE_E2E=1 is what the
 # harness's tests demand, and is set here and nowhere else.
-RUE_E2E=1 cargo test -p rue-e2e --release --locked -- --test-threads=1
+# shellcheck disable=SC2086
+RUE_E2E=1 cargo test -p rue-e2e --release --locked $select -- --test-threads=1

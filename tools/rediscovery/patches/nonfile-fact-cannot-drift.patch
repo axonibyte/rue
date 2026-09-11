@@ -1,0 +1,16 @@
+# Reverts: drift at undo is decided over every fact the engine can read (5.2); here only over the ones that live in a filesystem, so a `modified` fact reached through a hook can never drift -- :clobber overwrites a person's change without journaling it and :defer never holds.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2184,9 +2184,9 @@
+         let mut whole: Vec<usize> = Vec::new();
+         let has_region = op.footprint.iter().any(|e| e.kind == Kind::Region);
+         let id = rec.id.clone();
+-        let facts: Vec<(usize, FootprintEntry, String)> = footprint::observed_facts(&op.footprint)
++        let facts: Vec<(usize, FootprintEntry, String)> = footprint::file_facts(&op.footprint)
+             .into_iter()
+-            .map(|(k, e, addr)| (k, e.clone(), addr))
++            .map(|(k, e, addr)| (k, e.clone(), addr.to_string()))
+             .collect();
+         // Whether a sibling instance holds a region on each fact: the
+         // engine's own ledger, read before the host lock because nothing

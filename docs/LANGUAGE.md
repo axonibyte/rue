@@ -276,10 +276,18 @@ identity may act on; `admin: true` grants the admin verbs and nothing
 about plan scope; `subscribe:` names the plans whose journal entries the
 connection receives. The `hooks` block declares who may register which
 hook names: `registrar :name, user: ..., may_register: [:hook, ...]`,
-`user:` likewise required. `journal to: file("j.ndjson"), sign:
+`user:` likewise required. `journal to:` takes **as many sinks as the site
+wants**, in one line: `journal to: file("j.ndjson"), hook(:audit)` keeps
+both, delivers every entry to both synchronously, and requires both to
+acknowledge -- a sink that says no refuses the plan with R0304 rather than
+merely losing the entry, and the refusal is itself delivered to the sinks
+that still acknowledge. That is what a second sink is for, so a resolver
+that kept the first and dropped the rest would give a two-sink site the
+guarantees of a one-sink one while its text still read correctly.
+`journal to: file("j.ndjson"), sign:
 key("journal_ed25519")` names the Ed25519 key (OpenSSH format) the daemon
-signs every entry with; `rue journal verify --key` checks the public
-half. The checker's site is
+signs every entry with, and rides in the same declaration without being a
+sink; `rue journal verify --key` checks the public half. The checker's site is
 derived from the block and the inventory it names (a TOML file of `[[host]]` records and an
 `[authenticators]` table, Appendix C):
 

@@ -5,8 +5,9 @@
 //! one is clobbered under `:clobber` (journaled) and holds the instance
 //! under `:defer` (DriftHeld, exit 8, umbras kept, wane not reverting,
 //! `--force=drift` reverting); a damaged region is restored whole unless
-//! a sibling instance holds a region on the file; a `do` that touches a
-//! fact outside its footprint is R0201 and reverts; an unbootstrapped host
+//! a sibling instance holds a region on the file; a fact that is not a
+//! file drifts, holds and is watched exactly as one that is; a `do` that
+//! touches a fact outside its footprint is R0201 and reverts; an unbootstrapped host
 //! is R0407; a `:target` undo on a host with no filesystem is R0408; a
 //! staged file is removed after its step.
 
@@ -69,6 +70,37 @@ fn triple(drift: Option<Drift>) -> Op {
         write("file:/conf", "k=2\n"),
     ];
     o
+}
+
+/// An op whose whole footprint is an appliance's reported state: one
+/// `modified` fact that is not a file and is reached through the executor
+/// rather than through a filesystem. T4's shape, in the small.
+///
+/// The engine compared drift over file facts alone, so a fact like this
+/// one could not drift at all: `:clobber` never journaled, `:defer` never
+/// held, and a value a person had changed at the panel was overwritten
+/// without a word. It applied cleanly and reverted as if the world had
+/// stood still, which is the one outcome this project exists to prevent.
+fn appliance(drift: Option<Drift>) -> Op {
+    let mut o = Op::new(
+        "shed",
+        vec![FootprintEntry::entry(
+            Kind::Modified,
+            "actuator:state:hvac-1",
+        )],
+    );
+    o.undo = Undo::Restore;
+    o.undo_locus = UndoLocus::Controller;
+    o.drift = drift;
+    o.do_ = vec![write("actuator:state:hvac-1", "off")];
+    o
+}
+
+fn panel(w: &World, value: &str) {
+    w.ssh.with(|f| {
+        f.facts
+            .insert("actuator:state:hvac-1".into(), value.as_bytes().to_vec());
+    });
 }
 
 fn seed(w: &World) {
@@ -573,4 +605,144 @@ fn a_drift_held_instance_says_r0202_in_its_line() {
     );
     assert!(out.line.contains("R0202"), "{}", out.line);
     assert_eq!(out.exit, 8);
+}
+
+#[test]
+fn an_appliance_fact_moved_under_the_plan_is_clobbered_and_journaled() {
+    let mut w = World::new("drift-appliance-clobber");
+    panel(&w, "on");
+    let plan = world::temp_plan("p", vec![world::step(appliance(Some(Drift::Clobber)))]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Applied, "{}", out.line);
+    assert_eq!(fact(&w, "actuator:state:hvac-1").as_deref(), Some("off"));
+
+    // Somebody turns it back on at the panel, which is drift on a fact no
+    // filesystem holds.
+    panel(&w, "manual");
+    let out = w.engine.recant(&out.id, &[]).unwrap();
+    assert_eq!(out.state, State::Closed, "{}", out.line);
+    assert_eq!(
+        fact(&w, "actuator:state:hvac-1").as_deref(),
+        Some("on"),
+        "restored anyway, as :clobber says"
+    );
+    assert!(
+        w.sink.events().iter().any(|e| matches!(
+            e,
+            J::DriftClobbered { step: 1, facts }
+                if facts == &vec!["actuator:state:hvac-1".to_string()]
+        )),
+        "the drift was not journaled, so it was never seen: {:?}",
+        w.sink.events()
+    );
+}
+
+#[test]
+fn an_appliance_fact_under_defer_holds_the_instance_until_forced() {
+    let mut w = World::new("drift-appliance-defer");
+    panel(&w, "on");
+    let plan = world::temp_plan("p", vec![world::step(appliance(Some(Drift::Defer)))]);
+    let id = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap()
+        .id;
+    panel(&w, "manual");
+
+    let out = w.engine.recant(&id, &[]).unwrap();
+    assert_eq!((out.state, out.exit), (State::DriftHeld, 8), "{}", out.line);
+    assert_eq!(
+        fact(&w, "actuator:state:hvac-1").as_deref(),
+        Some("manual"),
+        "left alone: whoever moved it is not overruled by an unattended undo"
+    );
+    assert!(w.sink.events().iter().any(|e| matches!(
+        e,
+        J::DriftHeld { step: 1, facts } if facts == &vec!["actuator:state:hvac-1".to_string()]
+    )));
+    assert_eq!(w.engine.status(&id).unwrap().unwrap().drift_held, vec![1]);
+
+    // A plain recant is R0103 and only a person forcing it proceeds.
+    let err = w.engine.recant(&id, &[]).unwrap_err();
+    assert!(err.to_string().contains("R0103"), "{err}");
+    let out = w.engine.recant(&id, &[ForceName::Drift]).unwrap();
+    assert_eq!(out.state, State::Closed, "{}", out.line);
+    assert_eq!(fact(&w, "actuator:state:hvac-1").as_deref(), Some("on"));
+    assert!(w
+        .sink
+        .events()
+        .iter()
+        .any(|e| matches!(e, J::DriftClobbered { step: 1, .. })));
+}
+
+#[test]
+fn an_unchanged_appliance_fact_undoes_with_no_drift_reported() {
+    let mut w = World::new("drift-appliance-clean");
+    panel(&w, "on");
+    let plan = world::temp_plan("p", vec![world::step(appliance(Some(Drift::Defer)))]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    let out = w.engine.recant(&out.id, &[]).unwrap();
+    assert_eq!(out.state, State::Closed, "{}", out.line);
+    assert_eq!(fact(&w, "actuator:state:hvac-1").as_deref(), Some("on"));
+    assert!(
+        !w.sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, J::DriftClobbered { .. } | J::DriftHeld { .. })),
+        "nothing moved, so nothing drifted: {:?}",
+        w.sink.events()
+    );
+}
+
+#[test]
+fn a_do_that_touches_another_op_s_appliance_fact_is_r0201() {
+    let mut w = World::new("drift-r0201-appliance");
+    panel(&w, "on");
+    w.ssh.with(|f| {
+        f.facts
+            .insert("actuator:state:pump-1".into(), b"low".to_vec());
+    });
+    // Step 1 owns the pump and reaches across to the heater, which is step
+    // 2's fact and none of its business. Neither is a file, and while the
+    // watch was a map of paths this went unnoticed.
+    let mut a = world::op("a");
+    a.footprint = vec![FootprintEntry::entry(
+        Kind::Modified,
+        "actuator:state:pump-1",
+    )];
+    a.undo = Undo::Restore;
+    a.undo_locus = UndoLocus::Controller;
+    a.do_ = vec![
+        write("actuator:state:pump-1", "high"),
+        write("actuator:state:hvac-1", "not mine"),
+    ];
+    let plan = world::temp_plan(
+        "p",
+        vec![world::step(a), world::step(appliance(Some(Drift::Clobber)))],
+    );
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!((out.state, out.exit), (State::Closed, 1), "{}", out.line);
+    assert!(
+        w.sink.events().iter().any(|e| matches!(
+            e,
+            J::FootprintViolation { step: 1, facts }
+                if facts == &vec!["actuator:state:hvac-1".to_string()]
+        )),
+        "R0201 did not name the appliance fact: {:?}",
+        w.sink.events()
+    );
+    assert_eq!(
+        fact(&w, "actuator:state:pump-1").as_deref(),
+        Some("low"),
+        "the offending step was undone"
+    );
 }

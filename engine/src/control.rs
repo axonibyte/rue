@@ -852,20 +852,42 @@ fn dispatch_inner(
             let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
             let out = match verb {
                 "recant" => {
-                    let force: Vec<ForceName> = args
-                        .get("force")
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(Value::as_str)
-                                .map(|f| match f {
-                                    "drift" => ForceName::Drift,
-                                    "unknown" => ForceName::Unknown,
-                                    g => ForceName::Guard(g.to_string()),
+                    // A `force` the engine cannot read is a protocol
+                    // refusal and never an empty list. Defaulting turned
+                    // "force this through" into "recant normally", so the
+                    // caller got R0103 -- a refusal that is correct for a
+                    // request they did not make -- and nothing anywhere
+                    // said their argument had been ignored. `renew` and
+                    // `handoff_done` below refuse a malformed argument;
+                    // this was the one verb that guessed.
+                    let force: Vec<ForceName> = match args.get("force") {
+                        None => Vec::new(),
+                        Some(v) => {
+                            let names = v.as_array().ok_or_else(|| {
+                                ControlError::new(
+                                    "protocol",
+                                    "`force` is a list of names, not a single value",
+                                )
+                            })?;
+                            names
+                                .iter()
+                                .map(|n| {
+                                    n.as_str()
+                                        .ok_or_else(|| {
+                                            ControlError::new(
+                                                "protocol",
+                                                "`force` names are strings",
+                                            )
+                                        })
+                                        .map(|f| match f {
+                                            "drift" => ForceName::Drift,
+                                            "unknown" => ForceName::Unknown,
+                                            g => ForceName::Guard(g.to_string()),
+                                        })
                                 })
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                                .collect::<Result<Vec<_>, _>>()?
+                        }
+                    };
                     e.recant(id, &force)
                 }
                 "renew" => {

@@ -1,0 +1,19 @@
+# Reverts: a rehearsal takes an instance id of its own (7.9, D-085 "a rehearsal that blocks the real thing is not a rehearsal"); here it shares the real plan's, and since a rehearsal ends Applied -- which is not terminal -- rehearsing a plan once refuses the real one with R0101 for good, through a path the ledger rules never touch.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -887,12 +887,8 @@
+         let ph = hash_json(&serde_json::to_value(params).unwrap_or_default())
+             .map(|h| h.to_hex())
+             .unwrap_or_else(|_| "00000000".into());
+-        let id = format!("{}.{}.{}", ir.plan.id, ir.plan.owner, &ph[..8]);
+-        if rehearsal {
+-            format!("{id}.rehearsal")
+-        } else {
+-            id
+-        }
++        let _ = rehearsal;
++        format!("{}.{}.{}", ir.plan.id, ir.plan.owner, &ph[..8])
+     }
+ 
+     /// Check, request, approve (no gate) or hold pending (a gate), then

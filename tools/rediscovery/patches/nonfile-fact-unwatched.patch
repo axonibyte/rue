@@ -1,0 +1,13 @@
+# Reverts: R0201 watches every fact of the plan on the host (5.2, never destroy what is not in your footprint); here only the file ones, so a step that destroys a sibling step's appliance state is not noticed at all.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1781,7 +1781,7 @@
+                 if self.step_host(rec, o).map(|h| h.name() == host.name()) != Ok(true) {
+                     continue;
+                 }
+-                for (_, e, _) in footprint::observed_facts(&o.footprint) {
++                for (_, e, _) in footprint::file_facts(&o.footprint) {
+                     shapes.push(e.shape.clone());
+                 }
+             }

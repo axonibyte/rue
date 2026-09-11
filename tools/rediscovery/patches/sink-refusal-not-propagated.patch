@@ -1,0 +1,12 @@
+# Reverts: on a sink refusal the R0304 entry is delivered to the sinks that still acknowledge (5.10); here it is written to the store and to nobody, so an operator reading the surviving journal finds a plan that stopped with no recorded reason.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/journal.rs
++++ b/engine/src/journal.rs
+@@ -167,7 +167,6 @@
+         )?;
+         store.append_journal(&refused)?;
+         self.tail = Some(refused.clone());
+-        let _ = self.deliver_all(&refused);
+         Err(JournalError::SinkRefused {
+             entry: Box::new(e),
+             refusals,

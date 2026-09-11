@@ -412,6 +412,41 @@ fn the_site_is_validated() {
 // --- the site bindings a daemon reads --------------------------------------
 
 #[test]
+fn a_site_may_declare_more_than_one_journal_sink_and_keeps_all_of_them() {
+    use rue_surface::resolve::site_bindings;
+    let d = Dir::new("site-two-sinks");
+    // 5.10 delivers to every declared sink and all must acknowledge, so a
+    // second sink is redundancy a site asked for and is entitled to. While
+    // this was one binding the resolver kept the first and dropped the
+    // rest without a word, which turned a two-sink site into a one-sink
+    // site that still looked right in its own text.
+    let text = r#"rue 0
+site do
+  inventory from: file("inventory.toml")
+  journal to: file("journal.ndjson"), hook(:host_log), stdout(), sign: key("keys/journal")
+  execute via: local()
+  operators do
+    identity :ops, user: "ops", operator_for: :all, admin: true
+  end
+  hooks do
+    registrar :ops, user: "ops", may_register: [:host_log]
+  end
+end
+"#;
+    let f = d.raw("site.rue", text);
+    let sb = site_bindings(&f).unwrap();
+    let kinds: Vec<&str> = sb.decl.journal.iter().map(|b| b.kind.as_str()).collect();
+    assert_eq!(kinds, vec!["file", "hook", "stdout"], "in declared order");
+    assert_eq!(sb.decl.journal[0].arg.as_deref(), Some("journal.ndjson"));
+    assert_eq!(sb.decl.journal[1].arg.as_deref(), Some("host_log"));
+    // The signing key rides in the same declaration and is not a sink.
+    assert_eq!(
+        sb.decl.journal_sign.as_ref().map(|b| b.kind.as_str()),
+        Some("key")
+    );
+}
+
+#[test]
 fn site_bindings_carry_operators_registrars_and_the_inventory_and_refuse_an_identity_with_no_user()
 {
     use rue_surface::resolve::site_bindings;
@@ -436,11 +471,9 @@ end
     assert_eq!(sb.dir, d.0);
     assert_eq!(sb.inventory.hosts.len(), 2);
     assert_eq!(sb.inventory.contracts[0].address, "10.0.0.1");
-    assert_eq!(sb.decl.journal.as_ref().unwrap().kind, "file");
-    assert_eq!(
-        sb.decl.journal.as_ref().unwrap().arg.as_deref(),
-        Some("journal.ndjson")
-    );
+    assert_eq!(sb.decl.journal.len(), 1);
+    assert_eq!(sb.decl.journal[0].kind, "file");
+    assert_eq!(sb.decl.journal[0].arg.as_deref(), Some("journal.ndjson"));
     assert_eq!(sb.decl.execute.len(), 2);
     assert_eq!(sb.decl.max_wait.map(|d| d.seconds), Some(1200));
     let ops = &sb.decl.identities;

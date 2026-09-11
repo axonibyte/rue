@@ -75,7 +75,14 @@ pub struct Contract {
 #[derive(Debug, Default, Clone)]
 pub struct SiteDecl {
     pub inventory: Option<Binding>,
-    pub journal: Option<Binding>,
+    /// Every sink `journal to:` names, in the order it named them. More
+    /// than one is ordinary: 5.10 delivers to every declared sink and all
+    /// of them must acknowledge, which is what makes a refusing sink stop
+    /// a plan rather than merely lose an entry. Keeping only the first --
+    /// as this did while it was one binding -- silently discarded the
+    /// redundancy a site had asked for, which is the opposite of what a
+    /// second sink is for.
+    pub journal: Vec<Binding>,
     /// `journal to: ..., sign: key(path)`.
     pub journal_sign: Option<Binding>,
     pub approval: Option<Binding>,
@@ -316,7 +323,7 @@ pub fn validate(
             }
         }
     }
-    if decl.journal.is_none() {
+    if decl.journal.is_empty() {
         with(
             block.range,
             Code::E0603,
@@ -387,7 +394,7 @@ pub fn declare(block: &Block) -> SiteDecl {
                     "journal" => {
                         let (keys, sinks): (Vec<Binding>, Vec<Binding>) =
                             bs.into_iter().partition(|b| b.kind == "key");
-                        d.journal = sinks.into_iter().next();
+                        d.journal.extend(sinks);
                         d.journal_sign = keys.into_iter().next();
                     }
                     "approval" => d.approval = bs.into_iter().next(),

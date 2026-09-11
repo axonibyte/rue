@@ -2,12 +2,12 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/surface/src/resolve/site.rs
 +++ b/surface/src/resolve/site.rs
-@@ -278,7 +278,7 @@
+@@ -323,7 +323,7 @@
              }
          }
      }
--    if decl.journal.is_none() {
-+    if false && decl.journal.is_none() {
+-    if decl.journal.is_empty() {
++    if false && decl.journal.is_empty() {
          with(
              block.range,
              Code::E0603,

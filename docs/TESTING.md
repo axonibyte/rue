@@ -60,7 +60,7 @@ prototype's under one tasty suite, and both inside the gate:
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
-| 5 | Rust `tenants/e2e/tests/{smoke,firewall,recovery,breakglass}.rs` | rue against real hosts on a disposable guest: a plan applied and reverted over a real sshd, a real packet filter, a real cron and real hooks (below, "The scenarios") |
+| 5 | Rust `tenants/e2e/tests/{smoke,firewall,recovery,breakglass,reactive}.rs` | rue against real hosts on a disposable guest: a plan applied and reverted over a real sshd, a real packet filter, a real cron and real hooks (below, "The scenarios") |
 | 6 | Rust `tenants/e2e/tests/recovery.rs` | The same, with something killed: a daemon inside a step's `do`, a daemon before its backstop fires, an operator racing the target |
 | 7 | Rust `sim/tests/sim.rs` | The shadow world: seeded event lists against a real engine, the twenty invariants of the roadmap's 10.3 after every event, and a shrinker over the events that broke one (below) |
 
@@ -600,6 +600,25 @@ driving it with the real `rue`:
   no engine anywhere. The file ends the same either way, which is the
   claim behind rendering the artifact from the footprint the engine
   reverts from.
+- **The reactive host** (`reactive.rs`): T4's shape whole, and the only
+  stage where rue is embedded rather than driven. One Elixir process holds
+  one control-channel connection and is three things on it at once: the
+  hooks the engine calls back into, the declared operator issuing verbs,
+  and a subscriber to its own plans. It fires a temporary plan on entering
+  a state and recants on leaving; the verdict the daemon reaches over the
+  channel is compared with the one a person gets from `rue check` at a
+  terminal on the same text, which is the acceptance line of Phase 4. Both
+  drift variants of 8.4 run here over a footprint of appliance state --
+  facts that live in no filesystem and are read back through a hook:
+  `:clobber` restores over a hand-flipped actuator and journals
+  `DriftClobbered`, `:defer` leaves it, holds the instance at exit 8, and
+  is forced through by the host itself over the same connection it applied
+  on. A request journals and reserves nothing, proven by a real apply of
+  the same plan succeeding straight afterwards. A name outside
+  `may_register` is R0505 and a plan outside `operator_for` is R0504. And
+  a site with two journal sinks, one of them a hook that starts refusing
+  after boot, refuses the plan with R0304 before any step runs, with the
+  refusal delivered to the sink that still acknowledges.
 - **Recovery** (`recovery.rs`): a daemon killed with SIGKILL inside a
   step's `do` comes back, demotes what it was applying, and undoes both
   the steps it had marked applied and the one it was in the middle of; a

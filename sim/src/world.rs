@@ -459,6 +459,14 @@ impl Sim {
                 .effective_drift()
                 .unwrap_or(rue_core::model::Drift::Clobber);
             let mut held = false;
+            // `file_facts` and not `observed_facts`, deliberately: this
+            // models the RENDERED ARTIFACT, which has no executor and can
+            // only look at files, and it reads `markers/<n>` -- which the
+            // engine writes from the file facts alone for that reason. The
+            // engine decides drift over every fact it can read back; the
+            // artifact keeps the narrower half of 5.2's rule, and 5.2 says
+            // so. Widening this to match the engine would have the shadow
+            // world compare shapes against markers that do not carry them.
             for (k, e, path) in rue_engine::footprint::file_facts(&op.footprint) {
                 let now = self.ssh.with(|f| f.facts.get(&e.shape).cloned());
                 let digest = rue_engine::footprint::digest_of(now.as_deref());

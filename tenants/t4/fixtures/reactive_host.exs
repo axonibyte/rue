@@ -140,10 +140,37 @@ defmodule Host do
   # Leaving the state: recant.
   defp run(c, ["leave", id]), do: verb(c, "recant", %{"instance" => id})
 
+  # A recant the engine is entitled to refuse -- a `:defer` step whose fact
+  # was flipped by hand is R0103 until somebody forces it. The refusal is
+  # the answer, so it goes to stdout the way `enter`'s does, rather than
+  # into an exit status where the harness could only see that something
+  # went wrong and not what.
+  defp run(c, ["try-leave", id]) do
+    case RueHook.Client.call(c, "recant", %{"instance" => id}) do
+      {:ok, result} -> IO.puts(JSON.encode!(result))
+      {:error, e} -> IO.puts("refused " <> JSON.encode!(e))
+    end
+  end
+
+  # A request: gated and checked against the real daemon, nothing run and
+  # nothing reserved (8.4, "request dry-run journaling only").
+  defp run(c, ["rehearse", file, plan]) do
+    ir = plan_ir(file, plan)
+
+    case RueHook.Client.call(c, "apply", %{
+           "ir" => ir,
+           "params" => %{},
+           "rehearsal" => true
+         }) do
+      {:ok, result} -> IO.puts(JSON.encode!(result))
+      {:error, e} -> IO.puts("refused " <> JSON.encode!(e))
+    end
+  end
+
   # A hand-flipped actuator left the instance DriftHeld; the host forces it
   # through, over the same channel it applied on.
   defp run(c, ["force", id]),
-    do: verb(c, "recant", %{"instance" => id, "force" => "drift"})
+    do: verb(c, "recant", %{"instance" => id, "force" => ["drift"]})
 
   defp run(c, ["status", id]), do: verb(c, "status", %{"instance" => id})
 

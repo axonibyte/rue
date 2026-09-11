@@ -863,11 +863,36 @@ impl Engine {
     // --- request -----------------------------------------------------------
 
     /// The instance id: plan, owner host and the parameters' hash (5.12).
-    pub fn instance_id(ir: &PlanIr, params: &BTreeMap<String, String>) -> String {
+    /// The instance id: the plan, the host it is for, and a digest of the
+    /// parameters -- and, for a rehearsal, its own.
+    ///
+    /// A rehearsal's separate id is not cosmetic. 7.9 says a rehearsal
+    /// never blocks a real plan, and D-085 puts the reason in the
+    /// rationale column: "a rehearsal that blocks the real thing is not a
+    /// rehearsal". The ledger is only one of the two ways to block one.
+    /// The instance store is the other: an id already held by a
+    /// non-terminal record is refused R0101, and a rehearsal ends
+    /// `Applied`, which is not terminal -- so rehearsing a plan once made
+    /// the real plan unapplicable for good, through a path the ledger
+    /// rules never touch. It blocked in the other direction too, and
+    /// worse: a rehearsal of a plan already running would have overwritten
+    /// the live instance's record with one that holds nothing.
+    ///
+    /// Sharing the id also made the journal unreadable exactly where a
+    /// rehearsal is supposed to leave its only trace. A rehearsal's
+    /// entries and a real run's were the same instance, so "journaling
+    /// only" produced a record nobody could tell apart from an apply that
+    /// really happened.
+    pub fn instance_id(ir: &PlanIr, params: &BTreeMap<String, String>, rehearsal: bool) -> String {
         let ph = hash_json(&serde_json::to_value(params).unwrap_or_default())
             .map(|h| h.to_hex())
             .unwrap_or_else(|_| "00000000".into());
-        format!("{}.{}.{}", ir.plan.id, ir.plan.owner, &ph[..8])
+        let id = format!("{}.{}.{}", ir.plan.id, ir.plan.owner, &ph[..8]);
+        if rehearsal {
+            format!("{id}.rehearsal")
+        } else {
+            id
+        }
     }
 
     /// Check, request, approve (no gate) or hold pending (a gate), then
@@ -886,7 +911,7 @@ impl Engine {
             return Err(EngineError::Refused(Box::new(verdict)));
         }
         let permanent = matches!(infer_intent(&ir.plan), Some(Intent::Permanent));
-        let id = Engine::instance_id(&ir, &params);
+        let id = Engine::instance_id(&ir, &params, opts.rehearsal);
         let now = self.clock.now();
         let mut rec = InstanceRecord {
             id: id.clone(),
@@ -924,12 +949,19 @@ impl Engine {
             refusal: None,
             closed_reason: None,
         };
-        if let Some(existing) = self.store.read_instance::<InstanceRecord>(&id)? {
-            if !states::terminal(existing.state) {
-                return Err(EngineError::Ledger(
-                    LedgerCode::R0101,
-                    format!("instance {id} is already {}", existing.state),
-                ));
+        // A rehearsal claims nothing and so nothing stands in its way (7.9,
+        // "a rehearsal is never blocked"). Its id is its own, so the only
+        // record it can overwrite is an earlier rehearsal's, which held
+        // nothing either. For a real apply the guard is unchanged: an id
+        // held by a live instance is R0101.
+        if !opts.rehearsal {
+            if let Some(existing) = self.store.read_instance::<InstanceRecord>(&id)? {
+                if !states::terminal(existing.state) {
+                    return Err(EngineError::Ledger(
+                        LedgerCode::R0101,
+                        format!("instance {id} is already {}", existing.state),
+                    ));
+                }
             }
         }
         self.step(&mut rec, E::Check)?;
@@ -1597,13 +1629,13 @@ impl Engine {
                 }
                 // R0201: nothing outside the step's footprint changed.
                 let after = self.watched(rec, &host, n);
-                let changed = footprint::changed_paths(&before, &after);
+                let changed = footprint::changed_facts(&before, &after);
                 if !changed.is_empty() {
                     self.log(
                         rec,
                         J::FootprintViolation {
                             step: n,
-                            facts: changed.iter().map(|p| format!("file:{p}")).collect(),
+                            facts: changed.clone(),
                         },
                     )?;
                     rec.refusal = Some(format!(
@@ -1761,14 +1793,18 @@ impl Engine {
         Ok(Ok(()))
     }
 
-    /// Digests of every file fact of the plan on a host, except step `n`'s
-    /// own: what `do` must leave alone (R0201).
+    /// Digests of every observable fact of the plan on a host, except step
+    /// `n`'s own: what `do` must leave alone (R0201).
+    ///
+    /// By shape, not by path. "Never destroy what is not in your footprint"
+    /// is a rule about facts, and a plan whose footprint is an appliance's
+    /// state had nothing watched at all while this read files only.
     fn watched(&mut self, rec: &InstanceRecord, host: &Host, n: u32) -> Watched {
         let mut w = Watched::new();
         if rec.rehearsal {
             return w;
         }
-        let mut paths: Vec<String> = Vec::new();
+        let mut shapes: Vec<String> = Vec::new();
         for (m, it) in numbered(&rec.plan().body) {
             if m == n {
                 continue;
@@ -1777,40 +1813,43 @@ impl Engine {
                 if self.step_host(rec, o).map(|h| h.name() == host.name()) != Ok(true) {
                     continue;
                 }
-                for (_, _, p) in footprint::file_facts(&o.footprint) {
-                    paths.push(p.to_string());
+                for (_, e, _) in footprint::observed_facts(&o.footprint) {
+                    shapes.push(e.shape.clone());
                 }
             }
         }
         let own: Vec<String> = rec
             .op_at(n)
             .map(|o| {
-                footprint::file_facts(&o.footprint)
+                footprint::observed_facts(&o.footprint)
                     .into_iter()
-                    .map(|(_, _, p)| p.to_string())
+                    .map(|(_, e, _)| e.shape.clone())
                     .collect()
             })
             .unwrap_or_default();
         if let Some(ex) = self.executor_for(host) {
-            for p in paths {
-                if own.contains(&p) || w.contains_key(&p) {
+            for shape in shapes {
+                if own.contains(&shape) || w.contains_key(&shape) {
                     continue;
                 }
-                let d = footprint::digest_of(
-                    ex.read_fact(host, &format!("file:{p}"))
-                        .ok()
-                        .flatten()
-                        .as_deref(),
-                );
-                w.insert(p, d);
+                let d = footprint::digest_of(ex.read_fact(host, &shape).ok().flatten().as_deref());
+                w.insert(shape, d);
             }
         }
         w
     }
 
-    /// The markers of step `n`'s file facts as `do` left them, and the
-    /// manifest of regions held on the host, to the record and to the
-    /// instance directory.
+    /// The markers of step `n`'s facts as `do` left them, and the manifest
+    /// of regions held on the host, to the record and to the instance
+    /// directory.
+    ///
+    /// The record keeps every observable fact, because the engine decides
+    /// drift over all of them. `markers/<n>` on the host keeps the file
+    /// facts alone: its reader is a rendered artifact with no executor,
+    /// which 5.2 has undo a non-file fact as if intact, and which would
+    /// read a shape as a path and find every one of them missing. The two
+    /// therefore agree exactly where the artifact can see, and the engine
+    /// sees further. That divergence is 5.2's, not this function's.
     fn write_markers(
         &mut self,
         rec: &mut InstanceRecord,
@@ -1822,21 +1861,30 @@ impl Engine {
         let has_dir = rec.dirs.contains(&host.name().to_string());
         let mut markers = Vec::new();
         if let Some(ex) = self.executor_for(host) {
-            for (_, e, p) in footprint::file_facts(&op.footprint) {
+            for (_, e, addr) in footprint::observed_facts(&op.footprint) {
                 let d =
                     footprint::digest_of(ex.read_fact(host, &e.shape).ok().flatten().as_deref());
                 markers.push(Marker {
                     kind: e.kind,
-                    path: p.to_string(),
+                    path: addr,
                     digest: d,
                 });
             }
             if has_dir {
+                let on_host: Vec<Marker> = footprint::file_facts(&op.footprint)
+                    .into_iter()
+                    .filter_map(|(_, e, p)| {
+                        markers
+                            .iter()
+                            .find(|m| m.path == p && m.kind == e.kind)
+                            .cloned()
+                    })
+                    .collect();
                 ex.put_file(
                     host,
                     &id,
                     &format!("markers/{n}"),
-                    footprint::markers_text(&markers).as_bytes(),
+                    footprint::markers_text(&on_host).as_bytes(),
                     0o640,
                 )
                 .map_err(|e| EngineError::Internal(format!("markers on {}: {e}", host.name())))?;
@@ -2150,8 +2198,8 @@ impl Engine {
         self.persist(rec)
     }
 
-    /// Undo one step under its drift policy (5.2). Every file fact is read
-    /// against its marker; the decision per fact is the artifact's
+    /// Undo one step under its drift policy (5.2). Every observable fact is
+    /// read against its marker; the decision per fact is the artifact's
     /// (`footprint::decide`). Any fact deferred leaves the step untouched
     /// and reported `held`; otherwise the undo runs, under the host lock
     /// when the step holds a region, with a damaged region restored whole
@@ -2168,9 +2216,9 @@ impl Engine {
         let mut whole: Vec<usize> = Vec::new();
         let has_region = op.footprint.iter().any(|e| e.kind == Kind::Region);
         let id = rec.id.clone();
-        let facts: Vec<(usize, FootprintEntry, String)> = footprint::file_facts(&op.footprint)
+        let facts: Vec<(usize, FootprintEntry, String)> = footprint::observed_facts(&op.footprint)
             .into_iter()
-            .map(|(k, e, p)| (k, e.clone(), p.to_string()))
+            .map(|(k, e, addr)| (k, e.clone(), addr))
             .collect();
         // Whether a sibling instance holds a region on each fact: the
         // engine's own ledger, read before the host lock because nothing

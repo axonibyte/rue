@@ -108,7 +108,7 @@ fn sinks_of(
     subscribers: &Arc<Subscribers>,
 ) -> Result<Vec<Box<dyn Sink>>, Refusal> {
     let mut sinks: Vec<Box<dyn Sink>> = vec![Box::new(SubscriberSink(subscribers.clone()))];
-    if let Some(b) = &decl.journal {
+    for b in &decl.journal {
         match b.kind.as_str() {
             "local" => {}
             "file" => {
@@ -255,7 +255,7 @@ fn boot_time_hooks(decl: &SiteDecl) -> Vec<(&'static str, String)> {
             need.push(("inventory from", b.arg.clone().unwrap_or_default()));
         }
     }
-    if let Some(b) = &decl.journal {
+    for b in &decl.journal {
         if b.kind == "hook" {
             need.push(("journal to", b.arg.clone().unwrap_or_default()));
         }
@@ -616,21 +616,27 @@ pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
     // its hook has registered and been asked, and boot recovery needs the
     // hosts to reconcile against.
     //
-    // The one serving `journal to:` is spawned before the rest, because
+    // Those serving `journal to:` are spawned before the rest, because
     // registering any hook is itself journaled: spawn another first and its
     // registration goes to a sink that does not exist yet, and the daemon
     // refuses to start. Ordering it here rather than asking the operator to
     // get `--spawn` in the right order means there is no order to get wrong.
-    let journal_hook = sb
+    // Every one of them goes first, not just the first one: a site with two
+    // hook sinks has two entries that must be deliverable before anything
+    // else registers, and all must acknowledge (5.10).
+    let journal_hooks: Vec<String> = sb
         .decl
         .journal
-        .as_ref()
-        .and_then(|b| (b.kind == "hook").then(|| b.arg.clone().unwrap_or_default()));
+        .iter()
+        .filter(|b| b.kind == "hook")
+        .map(|b| b.arg.clone().unwrap_or_default())
+        .collect();
     let mut specs: Vec<&String> = cfg.spawn.iter().collect();
-    if let Some(first) = &journal_hook {
-        let prefix = format!("{first}=");
-        specs.sort_by_key(|spec| !spec.starts_with(&prefix));
-    }
+    specs.sort_by_key(|spec| {
+        !journal_hooks
+            .iter()
+            .any(|h| spec.starts_with(&format!("{h}=")))
+    });
     for spec in specs {
         spawn_child(spec, &daemon)?;
     }

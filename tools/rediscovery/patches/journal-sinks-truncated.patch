@@ -1,0 +1,13 @@
+# Reverts: every sink a site declares is kept (5.10, deliver to every declared sink); here all but the first are dropped in the resolver, so a site that asked for two sinks silently runs with one while its own text still reads correctly.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/site.rs
++++ b/surface/src/resolve/site.rs
+@@ -394,7 +394,7 @@
+                     "journal" => {
+                         let (keys, sinks): (Vec<Binding>, Vec<Binding>) =
+                             bs.into_iter().partition(|b| b.kind == "key");
+-                        d.journal.extend(sinks);
++                        d.journal.extend(sinks.into_iter().take(1));
+                         d.journal_sign = keys.into_iter().next();
+                     }
+                     "approval" => d.approval = bs.into_iter().next(),

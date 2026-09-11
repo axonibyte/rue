@@ -836,6 +836,65 @@ fn a_rehearsal_journals_every_step_calls_no_executor_and_reserves_nothing() {
 }
 
 #[test]
+fn a_rehearsal_neither_blocks_the_real_plan_nor_is_blocked_by_it() {
+    let mut w = World::new("rehearsal-blocks");
+    let plan = || world::temp_plan("p", vec![world::step(world::op("a"))]);
+    let rehearse = || ApplyOptions {
+        rehearsal: true,
+        ..opts()
+    };
+
+    // Rehearse, then really apply. D-085 states the rule in its own
+    // rationale -- "a rehearsal that blocks the real thing is not a
+    // rehearsal" -- and the ledger is only one of the two ways to block
+    // one. The instance store is the other: a rehearsal ends `Applied`,
+    // which is not terminal, so sharing the id made the real plan
+    // unapplicable for good the first time anybody rehearsed it.
+    let dry = w
+        .engine
+        .apply(world::ir(plan()), BTreeMap::new(), rehearse())
+        .unwrap();
+    assert_eq!(dry.state, State::Applied);
+    let real = w
+        .engine
+        .apply(world::ir(plan()), BTreeMap::new(), opts())
+        .expect("a rehearsal must not stand in the way of the real plan");
+    assert_eq!(real.state, State::Applied, "{}", real.line);
+    assert_ne!(
+        real.id, dry.id,
+        "the two runs share an id, so the journal cannot tell them apart \
+         and each overwrites the other's record"
+    );
+
+    // And the other direction, which is the worse one: rehearsing a plan
+    // that is already running must not be refused, and must not overwrite
+    // the live instance's record with one that holds nothing.
+    let again = w
+        .engine
+        .apply(world::ir(plan()), BTreeMap::new(), rehearse())
+        .expect("a rehearsal is never blocked (7.9)");
+    assert_eq!(again.id, dry.id, "a rehearsal's id is deterministic too");
+    let live = w.engine.status(&real.id).unwrap().unwrap();
+    assert_eq!(live.state, State::Applied);
+    assert!(
+        !live.rehearsal,
+        "the rehearsal overwrote the live instance's record"
+    );
+    assert!(
+        !live.ledger_ids.is_empty(),
+        "the live instance lost its reservations to a rehearsal"
+    );
+
+    // A real second apply is still refused, which is the guard doing its
+    // actual job: only the rehearsal is exempt from it.
+    let err = w
+        .engine
+        .apply(world::ir(plan()), BTreeMap::new(), opts())
+        .unwrap_err();
+    assert!(err.to_string().contains("R0101"), "{err}");
+}
+
+#[test]
 fn a_second_instance_in_a_held_exclusivity_class_is_refused_r0101() {
     let mut w = World::new("exclusive");
     let mut plan = world::temp_plan("p", vec![world::step(world::op("a"))]);
