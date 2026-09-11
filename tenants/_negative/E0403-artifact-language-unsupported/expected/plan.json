@@ -29,9 +29,7 @@
                     "lit": "New-NetFirewallRule -Name rue-mgmt -Direction Inbound -Protocol TCP -LocalPort "
                   },
                   {
-                    "ref": {
-                      "param": "port"
-                    }
+                    "lit": "8443"
                   },
                   {
                     "lit": " -Action Allow"

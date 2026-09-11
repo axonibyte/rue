@@ -25,19 +25,7 @@
             {
               "region_set": {
                 "content": {
-                  "template": [
-                    {
-                      "lit": "tcp dport "
-                    },
-                    {
-                      "ref": {
-                        "param": "port"
-                      }
-                    },
-                    {
-                      "lit": " accept"
-                    }
-                  ]
+                  "lit": "tcp dport 8443 accept"
                 },
                 "fact": {
                   "anchor": "rue-mgmt",

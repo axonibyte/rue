@@ -25,16 +25,7 @@
             {
               "region_set": {
                 "content": {
-                  "template": [
-                    {
-                      "lit": "pass in proto tcp to port "
-                    },
-                    {
-                      "ref": {
-                        "param": "port"
-                      }
-                    }
-                  ]
+                  "lit": "pass in proto tcp to port 8443"
                 },
                 "fact": {
                   "anchor": "rue-mgmt",

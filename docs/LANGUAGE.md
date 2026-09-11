@@ -337,14 +337,22 @@ pattern).
 Each step's call expands the op's clauses the same way, against the plan's
 host first and then against the host an `locus: host("...")` line names.
 The call's keyword arguments bind the op's parameters: declared ones
-(`ack: ack`, `drift: :defer`) and the free names its body uses. In the
-body, a name's origin is what the classifier records: `host.<field>` is a
-host field; `secret(:x)` is a secret; a name bound at the call to a
-`repeat` variable or to a controller probe's fact is a controller value;
-one bound to an earlier step's `alias.output` is that output; a fact a
-`:target` probe produces is a fact; everything else is a parameter the
-request binds. An output read before its step (or across a `par`
-sibling) is E0110.
+(`ack: ack`, `drift: :defer`) and the free names its body uses. An op is a
+template expanded at check time (ROADMAP 6.4), so the body reads what the
+call bound and never the op's own name for it: a literal is spliced in
+where the parameter is named, reading as it would written there (a string
+as its text, anything else as its source, so `mode: :fast` reads `:fast`);
+a name is followed to what it names at the call. In the body, a name's
+origin is what the classifier records: `host.<field>` is a host field;
+`secret(:x)` is a secret; a `repeat` variable or a controller probe's fact
+is a controller value, by its own name; an earlier step's `alias.output`
+is that output; a fact a `:target` probe produces is a fact; every other
+name is a parameter the request binds, by the name the call used, so
+`record_succession(entry: succession_entry)` is bound by a request
+setting `succession_entry`, not `entry`. A fact's instance follows the same
+rule: `slot.state(n)` with `n: item` is `slot:state:{item}`, and with
+`n: "a"` is `slot:state:a`. An output read before its step (or across a
+`par` sibling) is E0110.
 
 Fact shapes follow one rule: `file("/p")` is `file:/p`; `a.b` is `a:b`;
 `a.b(x)` is `a:b:<x>` with a literal verbatim and a runtime value as

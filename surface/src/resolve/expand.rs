@@ -24,20 +24,52 @@ pub struct Context<'a> {
 }
 
 /// How a name bound at an op's call reaches the op's body.
+///
+/// An op is a template expanded at check time (6.4), so the body sees what
+/// the call bound, never the op's own name for it: the request binds the
+/// plan's names and the engine holds the plan's repeat variables, and
+/// neither has heard of the op's parameters.
 #[derive(Debug, Clone)]
 enum Bound {
-    /// A literal: the request supplies it; the body sees a parameter.
-    Literal(Val),
-    /// A `repeat` variable or a controller probe's fact.
-    Controller,
+    /// A literal: the value the checker reasons about, and what the body
+    /// reads in its place -- the text as it would read written there, or a
+    /// template whose references are classified where the call is. `None`
+    /// only for a declared default that interpolates, which has no call
+    /// scope to classify in; the body then sees a parameter by the op's
+    /// name.
+    Literal(Val, Option<Value>),
+    /// A `repeat` variable or a controller probe's fact, by its own name.
+    Controller(String),
+    /// A `:target` probe's fact, by its own name.
+    Fact(String),
+    /// A field of the step's host.
+    Host(String),
     /// An earlier step's output.
     Output {
         step: String,
         name: String,
         secret: bool,
     },
-    /// Some other plan-level name: a parameter the request binds.
+    /// Some other plan-level name: a parameter the request binds, by the
+    /// name the request binds it under.
+    Param(String),
+    /// Something expansion cannot follow into a body (an imported name, a
+    /// keyword list): the body sees a parameter by the op's name.
     Name,
+}
+
+impl Bound {
+    /// The reference a body reads for this binding, when it is one.
+    fn as_ref(&self) -> Option<Ref> {
+        match self {
+            Bound::Controller(n) => Some(b::controller(n)),
+            Bound::Fact(n) => Some(b::fact(n)),
+            Bound::Host(f) => Some(b::host_field(f)),
+            Bound::Output { step, name, secret } => Some(b::output(step, name, *secret)),
+            Bound::Param(n) => Some(b::param(n)),
+            Bound::Literal(..) | Bound::Name => None,
+        }
+    }
 }
 
 /// What a body sees of the world around it.
@@ -53,6 +85,24 @@ struct Scope {
 
 /// The op parameters bound at one call.
 type Bindings = BTreeMap<String, Bound>;
+
+/// A string's parts as a value: plain text when nothing in it is a
+/// reference.
+fn value_of_parts(parts: Template) -> Value {
+    if parts.iter().all(|p| matches!(p, Part::Lit(_))) {
+        Value::Lit(
+            parts
+                .iter()
+                .map(|p| match p {
+                    Part::Lit(s) => s.as_str(),
+                    Part::Ref(_) => "",
+                })
+                .collect(),
+        )
+    } else {
+        Value::Template(parts)
+    }
+}
 
 fn parse_expr(s: &str) -> Option<Expr> {
     crate::parser::parse_expr(s)
@@ -1018,8 +1068,10 @@ impl<'a> Context<'a> {
     ) -> Bound {
         match value {
             Arg::Expr(Expr::Ref { path, range }) => match path.as_slice() {
-                [n] if scope.loop_vars.contains(n) => Bound::Controller,
-                [n] if scope.probes.get(n) == Some(&true) => Bound::Controller,
+                [n] if scope.loop_vars.contains(n) => Bound::Controller(n.clone()),
+                [n] if scope.probes.get(n) == Some(&true) => Bound::Controller(n.clone()),
+                [n] if scope.probes.get(n) == Some(&false) => Bound::Fact(n.clone()),
+                [h, field] if h == "host" => Bound::Host(field.clone()),
                 [alias, name] if scope.aliases.contains_key(alias) => {
                     let secret = scope.aliases[alias]
                         .iter()
@@ -1042,11 +1094,48 @@ impl<'a> Context<'a> {
                     ));
                     Bound::Name
                 }
+                [n] => Bound::Param(n.clone()),
                 _ => Bound::Name,
             },
-            Arg::Expr(e) => Bound::Literal(value::eval(e, &parse_expr)),
+            Arg::Expr(e) => Bound::Literal(
+                value::eval(e, &parse_expr),
+                Some(self.literal_value(module, e, scope, diags)),
+            ),
             Arg::Kw(_) => Bound::Name,
         }
+    }
+
+    /// What a body reads in place of a literal bound at the call: a string
+    /// as its text, its interpolations classified here, where the call is;
+    /// anything else as it reads in the source, the way a literal written
+    /// in the body itself does.
+    fn literal_value(
+        &self,
+        module: usize,
+        e: &Expr,
+        scope: &Scope,
+        diags: &mut Vec<Diagnostic>,
+    ) -> Value {
+        let Expr::Lit {
+            lit: Lit::Str(raw), ..
+        } = e
+        else {
+            return Value::Lit(self.src(module, e.range()));
+        };
+        let parts: Template = value::string_parts(raw, &parse_expr)
+            .into_iter()
+            .flat_map(|p| match p {
+                value::Part::Lit(s) => vec![Part::Lit(s)],
+                value::Part::Expr(x) => {
+                    let bound = self.bind(module, &Arg::Expr(x.clone()), scope, diags);
+                    match bound.as_ref() {
+                        Some(r) => vec![Part::Ref(r)],
+                        None => vec![Part::Lit(self.src(module, x.range()))],
+                    }
+                }
+            })
+            .collect();
+        value_of_parts(parts)
     }
 
     fn render_arg(&self, module: usize, value: &Arg) -> String {
@@ -1095,7 +1184,7 @@ impl<'a> Context<'a> {
         // Declared parameters with defaults fill what the call left unbound.
         let mut bindings = bindings.clone();
         for p in &def.params {
-            if let Some(Bound::Literal(given)) = bindings.get(&p.name) {
+            if let Some(Bound::Literal(given, _)) = bindings.get(&p.name) {
                 if let Arg::Expr(default @ Expr::Lit { .. }) = &*p.value {
                     let want = value::eval(default, &parse_expr);
                     if let (Some(w), Some(g)) = (want.kind(), given.kind()) {
@@ -1130,7 +1219,24 @@ impl<'a> Context<'a> {
                     ));
                 }
                 Arg::Expr(e) => {
-                    bindings.insert(p.name.clone(), Bound::Literal(value::eval(e, &parse_expr)));
+                    let text = match e {
+                        Expr::Lit {
+                            lit: Lit::Str(raw), ..
+                        } => {
+                            let parts = value::string_parts(raw, &parse_expr);
+                            if parts.iter().all(|p| matches!(p, value::Part::Lit(_))) {
+                                Some(Value::Lit(crate::ast::unquote(raw)))
+                            } else {
+                                None
+                            }
+                        }
+                        Expr::Lit { .. } => Some(Value::Lit(self.src(m, e.range()))),
+                        _ => None,
+                    };
+                    bindings.insert(
+                        p.name.clone(),
+                        Bound::Literal(value::eval(e, &parse_expr), text),
+                    );
                 }
                 Arg::Kw(_) => {}
             }
@@ -1383,16 +1489,16 @@ impl<'a> Context<'a> {
                 if path.len() == 1 && cx.bindings.contains_key(&path[0]) =>
             {
                 match &cx.bindings[&path[0]] {
-                    Bound::Literal(Val::Atom(a)) if a == "none" => Ack::NoAck(
+                    Bound::Literal(Val::Atom(a), _) if a == "none" => Ack::NoAck(
                         cx.bindings
                             .get("reason")
                             .and_then(|b| match b {
-                                Bound::Literal(Val::Str(s)) => Some(s.clone()),
+                                Bound::Literal(Val::Str(s), _) => Some(s.clone()),
                                 _ => None,
                             })
                             .unwrap_or_default(),
                     ),
-                    Bound::Literal(Val::Call(path, args)) => {
+                    Bound::Literal(Val::Call(path, args), _) => {
                         let e = Expr::Call {
                             range: TextRange::default(),
                             path: path.clone(),
@@ -1486,7 +1592,7 @@ impl<'a> Context<'a> {
                 }
             }
             Expr::Ref { path, .. } if path.len() == 1 => match bindings.get(&path[0]) {
-                Some(Bound::Literal(Val::Call(p, a))) => {
+                Some(Bound::Literal(Val::Call(p, a), _)) => {
                     let e = Expr::Call {
                         range: TextRange::default(),
                         path: p.clone(),
@@ -1719,10 +1825,7 @@ impl<'a> Context<'a> {
                         Value::Template(parts) => parts.clone(),
                     }
                 }
-                value::Part::Expr(e) => match self.classify_expr(cx, &e, diags) {
-                    Some(r) => vec![Part::Ref(r)],
-                    None => vec![Part::Lit(self.src(cx.module, e.range()))],
-                },
+                value::Part::Expr(e) => self.interpolated(cx, &e, diags),
             })
             .collect();
         let cargs = values
@@ -1865,39 +1968,51 @@ impl<'a> Context<'a> {
     fn template(&self, cx: &OpCx, raw: &str, diags: &mut Vec<Diagnostic>) -> Template {
         value::string_parts(raw, &parse_expr)
             .into_iter()
-            .map(|p| match p {
-                value::Part::Lit(s) => Part::Lit(s),
-                value::Part::Expr(e) => match self.classify_expr(cx, &e, diags) {
-                    Some(r) => Part::Ref(r),
-                    None => Part::Lit(self.src(cx.module, e.range())),
-                },
+            .flat_map(|p| match p {
+                value::Part::Lit(s) => vec![Part::Lit(s)],
+                value::Part::Expr(e) => self.interpolated(cx, &e, diags),
             })
             .collect()
+    }
+
+    /// One interpolation in a body string: a literal the call bound is
+    /// spliced in, anything else is the reference it classifies as.
+    fn interpolated(&self, cx: &OpCx, e: &Expr, diags: &mut Vec<Diagnostic>) -> Vec<Part> {
+        if let Some(v) = self.substituted(cx, e) {
+            return match v {
+                Value::Lit(s) => vec![Part::Lit(s)],
+                Value::Ref(r) => vec![Part::Ref(r)],
+                Value::Template(parts) => parts,
+            };
+        }
+        match self.classify_expr(cx, e, diags) {
+            Some(r) => vec![Part::Ref(r)],
+            None => vec![Part::Lit(self.src(cx.module, e.range()))],
+        }
+    }
+
+    /// What the call bound a bare name to, when that is a literal.
+    fn substituted(&self, cx: &OpCx, e: &Expr) -> Option<Value> {
+        match e {
+            Expr::Ref { path, .. } if path.len() == 1 => match cx.bindings.get(&path[0]) {
+                Some(Bound::Literal(_, Some(v))) => Some(v.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     fn value(&self, cx: &OpCx, a: &Arg, diags: &mut Vec<Diagnostic>) -> Value {
         match a {
             Arg::Expr(Expr::Lit {
                 lit: Lit::Str(s), ..
-            }) => {
-                let parts = self.template(cx, s, diags);
-                if parts.iter().all(|p| matches!(p, Part::Lit(_))) {
-                    Value::Lit(
-                        parts
-                            .iter()
-                            .map(|p| match p {
-                                Part::Lit(s) => s.as_str(),
-                                _ => "",
-                            })
-                            .collect(),
-                    )
-                } else {
-                    Value::Template(parts)
-                }
-            }
-            Arg::Expr(e) => match self.classify_expr(cx, e, diags) {
-                Some(r) => Value::Ref(r),
-                None => Value::Lit(self.src(cx.module, e.range())),
+            }) => value_of_parts(self.template(cx, s, diags)),
+            Arg::Expr(e) => match self.substituted(cx, e) {
+                Some(v) => v,
+                None => match self.classify_expr(cx, e, diags) {
+                    Some(r) => Value::Ref(r),
+                    None => Value::Lit(self.src(cx.module, e.range())),
+                },
             },
             Arg::Kw(k) => Value::Lit(self.src(cx.module, k.range)),
         }
@@ -1907,7 +2022,11 @@ impl<'a> Context<'a> {
         match a {
             Arg::Expr(Expr::Ref { path, .. }) if path.len() == 1 => match cx.bindings.get(&path[0])
             {
-                Some(Bound::Literal(v)) => v.clone(),
+                Some(Bound::Literal(v, _)) => v.clone(),
+                Some(Bound::Controller(n) | Bound::Fact(n) | Bound::Param(n)) => {
+                    Val::Ref(vec![n.clone()])
+                }
+                Some(Bound::Host(f)) => Val::Ref(vec!["host".into(), f.clone()]),
                 _ => Val::Ref(path.clone()),
             },
             other => value::eval_arg(other, &parse_expr),
@@ -1948,9 +2067,7 @@ impl<'a> Context<'a> {
         match path {
             [h, field] if h == "host" => b::host_field(field),
             [n] => match cx.bindings.get(n) {
-                Some(Bound::Controller) => b::controller(n),
-                Some(Bound::Output { step, name, secret }) => b::output(step, name, *secret),
-                Some(Bound::Literal(_)) | Some(Bound::Name) => b::param(n),
+                Some(bound) => bound.as_ref().unwrap_or_else(|| b::param(n)),
                 None => match cx.scope.probes.get(n) {
                     Some(true) => b::controller(n),
                     Some(false) => b::fact(n),
@@ -2002,7 +2119,24 @@ impl<'a> Context<'a> {
                             Part::Ref(r) => format!("{{{}}}", r.label()),
                         })
                         .collect::<String>(),
-                    Some(Expr::Ref { path: p, .. }) => format!("{{{}}}", p.join(".")),
+                    Some(e @ Expr::Ref { path: p, .. }) => match self.substituted(cx, e) {
+                        Some(Value::Lit(t)) => t,
+                        Some(Value::Ref(r)) => format!("{{{}}}", r.label()),
+                        Some(Value::Template(parts)) => parts
+                            .iter()
+                            .map(|p| match p {
+                                Part::Lit(t) => t.clone(),
+                                Part::Ref(r) => format!("{{{}}}", r.label()),
+                            })
+                            .collect(),
+                        None => match p.as_slice() {
+                            [n] => match cx.bindings.get(n).and_then(Bound::as_ref) {
+                                Some(r) => format!("{{{}}}", r.label()),
+                                None => format!("{{{n}}}"),
+                            },
+                            _ => format!("{{{}}}", p.join(".")),
+                        },
+                    },
                     Some(e) => self.src(cx.module, e.range()),
                     None => {
                         diags.push(self.err(

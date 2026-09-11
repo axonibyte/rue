@@ -18,9 +18,7 @@
             {
               "write": {
                 "content": {
-                  "ref": {
-                    "param": "posture"
-                  }
+                  "lit": "PermitRootLogin yes"
                 },
                 "fact": {
                   "anchor": null,
@@ -94,7 +92,7 @@
               "region_set": {
                 "content": {
                   "ref": {
-                    "param": "keys"
+                    "param": "requester_key"
                   }
                 },
                 "fact": {

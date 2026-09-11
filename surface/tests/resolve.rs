@@ -324,13 +324,17 @@ fn a_defprim_call_is_a_classed_run_template() {
         panic!("{:?}", s.op.do_)
     };
     assert_eq!(c.prim, "svc");
+    // `verb` is bound at the call to a literal, so the template carries the
+    // literal. This once expected a parameter named `verb` for the request
+    // to bind, which was the defect a_call_s_arguments_reach_the_body_as_
+    // what_they_were_bound_to describes.
     assert_eq!(
         c.run,
         vec![
             rue_core::body::text("service "),
             rue_core::body::text("sshd"),
             rue_core::body::text(" "),
-            rue_core::body::interp(rue_core::body::param("verb"))
+            rue_core::body::text("restart")
         ]
     );
     assert_eq!(
@@ -639,5 +643,105 @@ fn two_different_probes_with_one_bare_name_are_e0103() {
     assert!(
         matches!(cs.as_slice(), [(Code::E0103, m)] if m.contains("ready")),
         "{cs:?}"
+    );
+}
+
+// --- what a call binds -----------------------------------------------------
+
+/// A value as text, each reference marked with where it resolves.
+fn shown(v: &rue_core::body::Value) -> String {
+    use rue_core::body::{Part, Ref, Value};
+    let r = |r: &Ref| match r {
+        Ref::Param(n) => format!("{{param {n}}}"),
+        Ref::Controller(n) => format!("{{controller {n}}}"),
+        Ref::Fact(n) => format!("{{fact {n}}}"),
+        Ref::Secret(n) => format!("{{secret {n}}}"),
+        Ref::Host(f) => format!("{{host {f}}}"),
+        Ref::Output { step, name, .. } => format!("{{output {step}.{name}}}"),
+    };
+    match v {
+        Value::Lit(s) => s.clone(),
+        Value::Ref(x) => r(x),
+        Value::Template(parts) => parts
+            .iter()
+            .map(|p| match p {
+                Part::Lit(s) => s.clone(),
+                Part::Ref(x) => r(x),
+            })
+            .collect(),
+    }
+}
+
+/// The first step anywhere in a plan body, repeats included.
+fn first_step(items: &[rue_core::model::Item]) -> Option<&rue_core::model::StepI> {
+    use rue_core::model::Item;
+    items.iter().find_map(|it| match it {
+        Item::Step(s) | Item::Knell(s) => Some(s),
+        Item::Repeat { body, .. } => first_step(body),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_call_s_arguments_reach_the_body_as_what_they_were_bound_to() {
+    // 6.4: an op is a template expanded at check time, so the body uses what
+    // the call bound. It did not: every argument reached the body as a
+    // parameter named after the OP's parameter, for the request to bind. So
+    // T1's `service_posture(posture: "PermitRootLogin yes")` wrote whatever a
+    // request said, or refused, and never the text's literal; T2's
+    // `record_succession(entry: succession_entry)` refused with "nothing
+    // binds entry" however the request bound succession_entry; and a repeat
+    // variable spelled differently from the op's parameter read a controller
+    // value nothing held. Every tenant checked clean; T2 found it by running.
+    let d = Dir::new("call-bindings");
+    let f = d.file(
+        "plan.rue",
+        "defop :note, _ do\n  footprint append_only: file(\"/var/log/n\"), modified: slot.state(n), modified: slot.state(greeting)\n  \
+         do: [append(file(\"/var/log/n\"), line: \"#{greeting} #{who} #{where} #{n}\"), run(\"echo #{greeting} #{count}\"), hook(:tally, as: who, mode: mode)]\n  \
+         undo: compensate: append(file(\"/var/log/n\"), line: \"undone\")\n  undo_pre file(\"/var/log/n\")\nend\n\
+         defplan :p, %{name: \"db-01\"} do\n  wane 1h\n  repeat over: items, as item, max: 4 do\n    \
+         note(greeting: \"hello\", who: requester_name, where: host.address, n: item, count: 3, mode: :fast)\n  end\nend\n",
+    );
+    let plan = ir(&f, "db-01").plan;
+    let s = first_step(&plan.body).expect("the repeat holds the step");
+    use rue_core::body::Prim;
+    let Prim::Append(a) = &s.op.do_[0] else {
+        panic!("{:?}", s.op.do_)
+    };
+    assert_eq!(
+        shown(&a.line),
+        "hello {param requester_name} {host address} {controller item}",
+        "a literal is substituted, a plan name is the request's parameter by \
+         that name, a host field is the host's, a repeat variable is the \
+         controller's by its own name"
+    );
+    let Prim::Run(r) = &s.op.do_[1] else {
+        panic!("{:?}", s.op.do_)
+    };
+    assert_eq!(
+        shown(&rue_core::body::Value::Template(r.cmd.clone())),
+        "echo hello 3"
+    );
+    let Prim::Hook(h) = &s.op.do_[2] else {
+        panic!("{:?}", s.op.do_)
+    };
+    let args: Vec<(String, String)> = h
+        .args
+        .iter()
+        .map(|a| (a.name.clone(), shown(&a.value)))
+        .collect();
+    assert_eq!(
+        args,
+        vec![
+            ("as".to_string(), "{param requester_name}".to_string()),
+            ("mode".to_string(), ":fast".to_string()),
+        ],
+        "an atom is substituted as it would read written in place"
+    );
+    let shapes: Vec<&str> = s.op.footprint.iter().map(|e| e.shape.as_str()).collect();
+    assert_eq!(
+        shapes,
+        vec!["file:/var/log/n", "slot:state:{item}", "slot:state:hello"],
+        "a fact's instance names what the call bound, or is the literal"
     );
 }

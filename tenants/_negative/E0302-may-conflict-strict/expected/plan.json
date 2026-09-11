@@ -70,7 +70,7 @@
                 },
                 "fact": {
                   "anchor": null,
-                  "shape": "file:/etc/{name}"
+                  "shape": "file:/etc/{chosen}"
                 }
               }
             }
@@ -82,7 +82,7 @@
               "anchor": null,
               "instance": null,
               "kind": "owned",
-              "shape": "file:/etc/{name}"
+              "shape": "file:/etc/{chosen}"
             }
           ],
           "handoff_done": null,

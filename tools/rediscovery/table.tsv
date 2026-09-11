@@ -151,3 +151,4 @@ contract-change-while-waiting-crashes.patch	1	-	cargo	a_static_probe_that_moves_
 static-probe-unchecked.patch	1	-	cargo	executor_rules	-
 ack-verified-for-the-operator.patch	1	-	cargo	an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_operator	-
 ack-challenge-unobtainable.patch	1	-	cargo	an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_operator	-
+call-arguments-lost-in-the-body.patch	1	-	cargo	a_call_s_arguments_reach_the_body_as_what_they_were_bound_to	-

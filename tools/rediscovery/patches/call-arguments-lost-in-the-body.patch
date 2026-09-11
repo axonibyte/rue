@@ -1,0 +1,22 @@
+# Reverts: a call's arguments reach the op's body as what they were bound to; here every one reaches it as a parameter named after the op's own parameter, so a literal at the call is lost and a plan name binds nothing the request supplies.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/surface/src/resolve/expand.rs
++++ b/surface/src/resolve/expand.rs
+@@ -1995,7 +1995,7 @@
+     fn substituted(&self, cx: &OpCx, e: &Expr) -> Option<Value> {
+         match e {
+             Expr::Ref { path, .. } if path.len() == 1 => match cx.bindings.get(&path[0]) {
+-                Some(Bound::Literal(_, Some(v))) => Some(v.clone()),
++                Some(Bound::Literal(_, Some(_))) => None,
+                 _ => None,
+             },
+             _ => None,
+@@ -2067,7 +2067,7 @@
+         match path {
+             [h, field] if h == "host" => b::host_field(field),
+             [n] => match cx.bindings.get(n) {
+-                Some(bound) => bound.as_ref().unwrap_or_else(|| b::param(n)),
++                Some(_) => b::param(n),
+                 None => match cx.scope.probes.get(n) {
+                     Some(true) => b::controller(n),
+                     Some(false) => b::fact(n),

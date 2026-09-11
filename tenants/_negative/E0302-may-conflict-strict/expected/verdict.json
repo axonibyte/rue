@@ -73,7 +73,7 @@
       "conditional": null,
       "drift": "clobber",
       "footprint": [
-        "owned: file:/etc/{name}"
+        "owned: file:/etc/{chosen}"
       ],
       "gate": null,
       "knell": null,
@@ -81,7 +81,7 @@
       "n": 2,
       "op": "any",
       "refusal": "revert",
-      "undo": "remove file:/etc/{name}",
+      "undo": "remove file:/etc/{chosen}",
       "undo_locus": "controller"
     }
   ],

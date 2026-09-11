@@ -2,7 +2,7 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/surface/src/resolve/expand.rs
 +++ b/surface/src/resolve/expand.rs
-@@ -800,12 +800,7 @@
+@@ -1086,12 +1086,7 @@
                      Bound::Name
                  }
                  [alias, name] if alias != "host" => {
@@ -15,4 +15,4 @@
 +                    let _ = (alias, name, range);
                      Bound::Name
                  }
-                 _ => Bound::Name,
+                 [n] => Bound::Param(n.clone()),

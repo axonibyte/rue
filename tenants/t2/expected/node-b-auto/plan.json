@@ -298,7 +298,7 @@
                 },
                 "line": {
                   "ref": {
-                    "param": "entry"
+                    "param": "succession_entry"
                   }
                 }
               }
@@ -310,7 +310,7 @@
                     "name": "set",
                     "value": {
                       "ref": {
-                        "param": "entry"
+                        "param": "succession_entry"
                       }
                     }
                   }
