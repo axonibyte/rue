@@ -1,0 +1,13 @@
+# Reverts: a knell a person must acknowledge measures its cost probe where they are asked, so they accept what is destroyed; here the cost is the probe's name, and the one statement a point of no return exists to put in front of a human is a label.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -1551,7 +1551,7 @@
+                     // step: a knell is not acknowledged blind. A rehearsal
+                     // calls no executor, and states the probe by name.
+                     let cost_text = match cost {
+-                        rue_core::model::Cost::Probe(p) if !rec.rehearsal => {
++                        rue_core::model::Cost::Probe(p) if false && !rec.rehearsal => {
+                             let owner = self.owner_host(rec)?;
+                             match self.observe_text(rec, &owner, p) {
+                                 Ok(text) => format!("{p}: {}", text.trim()),

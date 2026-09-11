@@ -1540,11 +1540,35 @@ impl Engine {
                         return Ok(flow);
                     }
                 }
-                let cost_text = match cost {
-                    rue_core::model::Cost::Probe(p) => p.clone(),
-                    rue_core::model::Cost::NoCost(_) => "none".into(),
-                };
                 if matches!(ack, Ack::Gate(_)) {
+                    // What a person is asked to acknowledge is the COST, so it
+                    // is measured here, where they are asked: the probe's
+                    // output, beside its name. This carried the name alone --
+                    // "destroyed_snapshots" where 8.2 asks for a probe
+                    // "listing what is destroyed" -- so the one statement a
+                    // point of no return exists to put in front of a human
+                    // was a label. A cost that cannot be measured refuses the
+                    // step: a knell is not acknowledged blind. A rehearsal
+                    // calls no executor, and states the probe by name.
+                    let cost_text = match cost {
+                        rue_core::model::Cost::Probe(p) if !rec.rehearsal => {
+                            let owner = self.owner_host(rec)?;
+                            match self.observe_text(rec, &owner, p) {
+                                Ok(text) => format!("{p}: {}", text.trim()),
+                                Err(e) => {
+                                    return self.refuse(
+                                        rec,
+                                        n,
+                                        &format!(
+                                            "the cost of step {n}, a point of no return, could not be measured ({e}); a knell is not acknowledged blind"
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                        rue_core::model::Cost::Probe(p) => p.clone(),
+                        rue_core::model::Cost::NoCost(_) => "none".into(),
+                    };
                     if rec.acks.contains(&n) {
                         self.log(
                             rec,

@@ -143,3 +143,5 @@ hook-action-on-local-checks-clean.patch	2	-	cargo	every_negative_refuses_with_ex
 probe-without-run-body-checks-clean.patch	2	-	cargo	every_negative_refuses_with_exactly_its_code	-
 imported-probe-declared-qualified.patch	1	-	cargo	an_imported_probe_is_declared_by_the_name_every_reference_uses	-
 open-import-probe-undeclared.patch	1	-	cargo	an_open_import_s_probe_is_declared_too	-
+knell-cost-shown-by-name.patch	1	-	cargo	a_knell_asks_its_acknowledger_to_accept_the_measured_cost_not_its_name	-
+handoff-probe-unchecked.patch	1	-	cargo	executor_rules	-

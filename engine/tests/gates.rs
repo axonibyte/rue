@@ -476,3 +476,69 @@ fn an_approval_binding_that_fails_is_r0302_and_opens_nothing() {
         .to_string();
     assert!(err.contains("R0302"), "{err}");
 }
+
+#[test]
+fn a_knell_asks_its_acknowledger_to_accept_the_measured_cost_not_its_name() {
+    // What a person acknowledges at a point of no return is the cost, so the
+    // cost probe is measured where they are asked. This carried the probe's
+    // NAME -- "destroyed_snapshots" where 8.2 asks for a probe "listing what
+    // is destroyed" -- and so the one statement a knell exists to put in
+    // front of a human was a label.
+    let (mut w, _) = world("gate-cost");
+    let mut op = world::op("rollback");
+    op.undo = rue_core::model::Undo::NoUndo;
+    op.refusal = Refusal::Knell {
+        guard: None,
+        cost: Cost::Probe("destroyed_snapshots".into()),
+        ack: Ack::Gate(GateExpr::Single(auth("oncall"))),
+    };
+    let mut plan = world::temp_plan("p", vec![Item::Knell(StepI::new(op.clone()))]);
+    plan.probes.push(world::probe("destroyed_snapshots"));
+    w.ssh.observe_as(
+        "destroyed_snapshots",
+        rue_engine::executor::Observation::yes("tank/rue/a@late, tank/rue/b@late"),
+    );
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Waiting, "{}", out.line);
+    let asked = w
+        .events()
+        .into_iter()
+        .find(|e| e.contains("AckRequested"))
+        .expect("an acknowledgement is requested");
+    assert!(
+        asked.contains("tank/rue/a@late, tank/rue/b@late"),
+        "the acknowledger was shown a label, not what is destroyed: {asked}"
+    );
+
+    // A cost that cannot be measured refuses the step: nobody is asked to
+    // accept a point of no return blind.
+    // A different fact, so this instance does not wait on the first one's
+    // reservation: that one is still waiting for its acknowledgement.
+    op.footprint = vec![rue_core::model::FootprintEntry::entry(
+        rue_core::model::Kind::Owned,
+        "file:/rollback-q",
+    )];
+    let mut plan = world::temp_plan("q", vec![Item::Knell(StepI::new(op))]);
+    plan.probes.push(world::probe("unmeasurable"));
+    if let Some(Item::Knell(s)) = plan.body.first_mut() {
+        s.op.refusal = Refusal::Knell {
+            guard: None,
+            cost: Cost::Probe("unmeasurable".into()),
+            ack: Ack::Gate(GateExpr::Single(auth("oncall"))),
+        };
+    }
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Closed, "{}", out.line);
+    assert!(
+        !w.events()
+            .iter()
+            .any(|e| e.contains("AckRequested") && e.contains("unmeasurable")),
+        "an unmeasured cost was put in front of the acknowledger anyway"
+    );
+}

@@ -136,6 +136,14 @@
         "name": "destroyed_snapshots",
         "produces": [],
         "static": false
+      },
+      {
+        "body": [],
+        "equivalence": "bytes",
+        "locus": "controller",
+        "name": "heir_running_on_c",
+        "produces": [],
+        "static": false
       }
     ],
     "renew_within_s": null,

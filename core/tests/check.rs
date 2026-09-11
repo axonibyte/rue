@@ -1303,3 +1303,114 @@ fn artifact_language_rules() {
 fn e0403_on(site: &Site, p: &Plan) -> bool {
     codes_with(site, p).contains(&Code::E0403)
 }
+
+/// A probe declared with a `run` line, which is how `ssh()` and `local()`
+/// answer one.
+fn run_probe(name: &str, locus: Locus) -> ProbeDecl {
+    ProbeDecl {
+        name: name.into(),
+        locus,
+        body: vec![Prim::Run(Run {
+            cmd: vec![Part::Lit(format!("probe {name}"))],
+            env: vec![],
+            stdin: None,
+        })],
+        produces: vec![],
+        static_: false,
+        equivalence: "bytes".into(),
+    }
+}
+
+#[test]
+fn executor_rules() {
+    // E0608 mirrors what the engine will ask each executor to do: a hook's
+    // action, or a probe answered by name, goes to an executor that can.
+
+    // A hook action at the controller: local() there refuses it, and a hook
+    // bound with transport :controller takes it.
+    let fence = Op {
+        locus: Locus::Controller,
+        do_: vec![Prim::Hook(Hook {
+            name: "fence".into(),
+            args: vec![],
+        })],
+        ..owned("f")
+    };
+    let p = temp(vec![s(fence)]);
+    assert!(raises(Code::E0608, &p), "{:?}", codes_of(&p));
+    let mut with_hook = site0();
+    with_hook.transports.push("controller".into());
+    assert!(
+        !codes_with(&with_hook, &p).contains(&Code::E0608),
+        "a controller hook was bound and the action is still refused"
+    );
+
+    // A guard with no run line, over ssh(): undeclared, then declared.
+    let guarded = temp(vec![
+        Item::Assert {
+            guard: Guard::new("healthy", Tri::Yes),
+            window: None,
+            on_lapse: OnLapse::Revert,
+        },
+        s(owned("a")),
+    ]);
+    let mut declared = guarded.clone();
+    declared.probes.push(run_probe("healthy", Locus::Target));
+    pair(Code::E0608, &guarded, &declared);
+
+    // A deferred step's handoff_done is observed by the reap pass on the
+    // owner, so it is a probe like any guard -- and it was missing from the
+    // list, so T2's heir_running_on_c slipped past.
+    let heir = Op {
+        locus: Locus::Host(HostRef::Static("island".into())),
+        handoff_done: Some("heir_up".into()),
+        ..owned("h")
+    };
+    let deferred = temp(vec![s(heir)]);
+    let mut answered = deferred.clone();
+    answered.probes.push(run_probe("heir_up", Locus::Target));
+    pair(Code::E0608, &deferred, &answered);
+
+    // A step whose host nothing reaches is deferred, and the engine never
+    // acts on it -- a hook action there is not this code's.
+    let island_hook = Op {
+        locus: Locus::Host(HostRef::Static("island".into())),
+        do_: vec![Prim::Hook(Hook {
+            name: "power".into(),
+            args: vec![],
+        })],
+        ..owned("i")
+    };
+    assert!(
+        !raises(Code::E0608, &temp(vec![s(island_hook)])),
+        "a deferred step's action was judged as though the engine would run it"
+    );
+
+    // A knell's cost is measured only where a person is asked to accept it.
+    // Acknowledged :none, nothing measures it, so nothing needs to be able to.
+    let mut unasked = knell_op();
+    unasked.refusal = Refusal::Knell {
+        guard: None,
+        cost: Cost::Probe("fence_verdict".into()),
+        ack: Ack::NoAck("the driver's verdict is the evidence".into()),
+    };
+    assert!(
+        !raises(
+            Code::E0608,
+            &temp(vec![Item::Knell(StepI::new(unasked.clone()))])
+        ),
+        "a cost nobody is asked to acknowledge was required to be measurable"
+    );
+    let mut asked = unasked;
+    asked.refusal = Refusal::Knell {
+        guard: None,
+        cost: Cost::Probe("fence_verdict".into()),
+        ack: Ack::Gate(auth("oncall")),
+    };
+    let asked_plan = temp(vec![Item::Knell(StepI::new(asked))]);
+    let mut measurable = asked_plan.clone();
+    measurable
+        .probes
+        .push(run_probe("fence_verdict", Locus::Target));
+    pair(Code::E0608, &asked_plan, &measurable);
+}

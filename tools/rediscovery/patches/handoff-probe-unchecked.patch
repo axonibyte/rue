@@ -1,0 +1,14 @@
+# Reverts: E0608 counts a deferred step's handoff_done among the probes the engine observes (the reap pass asks it on the owner); here it is left out, so a handoff probe no executor can answer checks clean -- as T2's heir_running_on_c did.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/core/src/check.rs
++++ b/core/src/check.rs
+@@ -121,9 +121,6 @@
+                                 out.push((n, c.clone()));
+                             }
+                         }
+-                        if let Some(h) = &o.handoff_done {
+-                            out.push((n, h.clone()));
+-                        }
+                     }
+                     _ => {}
+                 }

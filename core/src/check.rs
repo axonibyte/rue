@@ -75,10 +75,13 @@ fn is_hook_transport(t: &str) -> bool {
 }
 
 /// Every probe the plan will observe, with the step it is observed at, in
-/// `numbered`'s numbering: a guard wherever one appears -- preflight,
-/// assert, a `when`'s condition, an op's pre and post, a knell's -- a
-/// knell's cost probe, and `observe`. A `repeat over:` list is not among
-/// them: it may be a parameter supplied at apply, which nothing observes.
+/// `numbered`'s numbering -- exactly the engine's consumers: a guard wherever
+/// one appears (preflight, assert, a `when`'s condition, an op's pre and
+/// post, a knell's), a knell's cost when a human is asked to acknowledge it,
+/// a deferred step's `handoff_done` (the reap pass observes it), and
+/// `observe`. A `repeat over:` list is not among them: it may be a parameter
+/// supplied at apply, which nothing observes. Nor is the cost of a knell
+/// acknowledged `:none`, which nothing measures, since nobody is asked.
 fn observed_probes(p: &Plan) -> Vec<(u32, String)> {
     fn go(it: &Item, next: &mut u32, out: &mut Vec<(u32, String)>) {
         match it {
@@ -110,13 +113,16 @@ fn observed_probes(p: &Plan) -> Vec<(u32, String)> {
                         for g in o.pre.iter().chain(o.post.iter()) {
                             out.push((n, g.name.clone()));
                         }
-                        if let Refusal::Knell { guard, cost, .. } = &o.refusal {
+                        if let Refusal::Knell { guard, cost, ack } = &o.refusal {
                             if let Some(g) = guard {
                                 out.push((n, g.name.clone()));
                             }
-                            if let Cost::Probe(c) = cost {
+                            if let (Cost::Probe(c), Ack::Gate(_)) = (cost, ack) {
                                 out.push((n, c.clone()));
                             }
+                        }
+                        if let Some(h) = &o.handoff_done {
+                            out.push((n, h.clone()));
                         }
                     }
                     _ => {}

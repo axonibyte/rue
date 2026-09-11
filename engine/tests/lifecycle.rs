@@ -668,7 +668,7 @@ fn a_step_on_a_host_no_transport_reaches_is_deferred_and_handoff_done_continues(
     let mut far = world::op("f");
     far = world::on(far, world::FAR);
     far.handoff_done = Some("far_done".into());
-    let plan = world::temp_plan(
+    let mut plan = world::temp_plan(
         "p",
         vec![
             world::step(world::op("a")),
@@ -676,6 +676,7 @@ fn a_step_on_a_host_no_transport_reaches_is_deferred_and_handoff_done_continues(
             world::step(world::op("b")),
         ],
     );
+    plan.probes.push(world::probe("far_done"));
     let out = w
         .engine
         .apply(world::ir(plan), BTreeMap::new(), opts())
@@ -697,7 +698,8 @@ fn a_step_on_a_host_no_transport_reaches_is_deferred_and_handoff_done_continues(
     // The handoff probe, observed yes by the reap pass, does the same.
     let mut far2 = world::on(world::op("g"), world::FAR);
     far2.handoff_done = Some("far_done".into());
-    let plan = world::temp_plan("q", vec![world::step(far2)]);
+    let mut plan = world::temp_plan("q", vec![world::step(far2)]);
+    plan.probes.push(world::probe("far_done"));
     let out = w
         .engine
         .apply(world::ir(plan), BTreeMap::new(), opts())
@@ -1162,16 +1164,18 @@ fn a_knell_waits_for_its_acknowledgement_unless_acked_up_front() {
         ],
     );
     plan.probes.push(world::probe("blast"));
+    // The cost is measured where it is asked about, so the acknowledger
+    // sees what the probe reports and not only its name.
+    w.ssh
+        .observe_as("blast", Observation::yes("two racks go dark"));
     let out = w
         .engine
         .apply(world::ir(plan), BTreeMap::new(), opts())
         .unwrap();
     assert_eq!((out.state, out.exit), (State::Waiting, 6), "{}", out.line);
-    assert!(w
-        .sink
-        .events()
-        .iter()
-        .any(|e| matches!(e, J::AckRequested { step: 2, cost } if cost == "blast")));
+    assert!(w.sink.events().iter().any(
+        |e| matches!(e, J::AckRequested { step: 2, cost } if cost == "blast: two racks go dark")
+    ));
     assert_eq!(w.commands(), vec!["do a"]);
     let mut k2 = k.clone();
     k2.id = "fence2".into();

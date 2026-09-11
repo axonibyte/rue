@@ -65,6 +65,14 @@ defprobe :destroyed_snapshots do
   locus :controller
 end
 
+# The heir's handoff: is it running on node-c yet? The reap pass asks this
+# of a deferred step, so it is a probe like the rest, and it too was named
+# without a declaration.
+defprobe :heir_running_on_c do
+  hook :cluster
+  locus :controller
+end
+
 # The fence rung: a knell. Guard is the driver's verified-off; the cost probe is
 # the fence verdict. The ack is :none under :auto (the driver's verified-off is
 # the automation's own evidence) and one human under :manual.
