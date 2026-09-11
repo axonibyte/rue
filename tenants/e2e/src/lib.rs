@@ -167,6 +167,23 @@ pub struct Site {
     pub socket: PathBuf,
 }
 
+/// The harness's key material, beside a case's site file: the site names
+/// it by relative path, as a real site would, and nothing of the invoking
+/// user's is read.
+fn copy_keys(root: &Path, dir: &Path) {
+    fs::copy(root.join("known_hosts"), dir.join("known_hosts")).expect("the harness known_hosts");
+    fs::create_dir_all(dir.join("keys")).expect("keys");
+    fs::copy(root.join("keys/id_ed25519"), dir.join("keys/id_ed25519")).expect("the harness key");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(
+            dir.join("keys/id_ed25519"),
+            fs::Permissions::from_mode(0o600),
+        );
+    }
+}
+
 impl Site {
     /// Write a site block, an inventory naming the target, and `plans`
     /// after it. The key material is the harness's, by relative path from
@@ -189,6 +206,9 @@ impl Site {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("the case directory");
         fs::write(dir.join("inventory.toml"), inventory).expect("the inventory");
+        // A raw text may reach the guest over ssh as T2's node-b does, so
+        // it gets the harness's key material under the names `with` uses.
+        copy_keys(&root, &dir);
         let file = dir.join("site.rue");
         fs::write(&file, text).expect("the site file");
         Site {
@@ -208,21 +228,7 @@ impl Site {
         let dir = root.join(format!("case-{name}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("the case directory");
-        // The key material lives one level up; the site names it by
-        // relative path, as a real site would.
-        fs::copy(root.join("known_hosts"), dir.join("known_hosts"))
-            .expect("the harness known_hosts");
-        fs::create_dir_all(dir.join("keys")).expect("keys");
-        fs::copy(root.join("keys/id_ed25519"), dir.join("keys/id_ed25519"))
-            .expect("the harness key");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(
-                dir.join("keys/id_ed25519"),
-                fs::Permissions::from_mode(0o600),
-            );
-        }
+        copy_keys(&root, &dir);
         fs::write(
             dir.join("inventory.toml"),
             format!(

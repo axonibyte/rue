@@ -1,0 +1,14 @@
+# Reverts: the channel renders the challenge an acknowledgement is proved against, in the ack scope; here it knows only the plan and step scopes, so no person can learn what to prove and a knell awaiting a human cannot be acknowledged against any binding that checks its own challenge.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/control.rs
++++ b/engine/src/control.rs
+@@ -685,9 +685,6 @@
+ /// over the digest it rendered -- which is what an approval binding is for --
+ /// a knell awaiting a human could not be acknowledged through the channel.
+ fn scope_of(args: &Value) -> Result<Scope, ControlError> {
+-    if let Some(n) = args.get("ack").and_then(Value::as_u64) {
+-        return Ok(Scope::Ack(n as u32));
+-    }
+     match args.get("step").and_then(Value::as_u64) {
+         Some(n) => Ok(Scope::Step(n as u32)),
+         None => Ok(Scope::Plan),

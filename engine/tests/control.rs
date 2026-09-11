@@ -874,15 +874,15 @@ fn an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_op
         ),
         false,
     );
+    let approval =
+        rue_engine::gates::FakeApprovalHandle::new(vec![rue_core::model::Authenticator {
+            id: "oncall".into(),
+            human: true,
+        }]);
     d.engine
         .lock()
         .unwrap()
-        .set_approval(Box::new(rue_engine::gates::FakeApprovalHandle::new(vec![
-            rue_core::model::Authenticator {
-                id: "oncall".into(),
-                human: true,
-            },
-        ])));
+        .set_approval(Box::new(approval.clone()));
     let mut op = world::op("fence");
     op.undo = rue_core::model::Undo::NoUndo;
     op.refusal = rue_core::model::Refusal::Knell {
@@ -913,6 +913,21 @@ fn an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_op
         .expect("an instance")
         .to_string();
     assert_eq!(r.pointer("/result/state"), Some(&json!("Waiting")), "{r}");
+
+    // What a person proves against is the challenge for the ACK scope. The
+    // channel could only render one for the plan or a step gate, so an
+    // acknowledgement's challenge was never obtainable -- a proof made
+    // against a plan-scope challenge verifies for the plan, not the ack.
+    let r = c.call("challenge", json!({ "instance": id, "ack": 1 }));
+    assert!(r.pointer("/result/challenge").is_some(), "{r}");
+    assert!(
+        approval
+            .calls()
+            .iter()
+            .any(|c| c.starts_with("challenge Ack(1)")),
+        "the channel rendered a challenge for another scope: {:?}",
+        approval.calls()
+    );
 
     let r = c.call(
         "ack",

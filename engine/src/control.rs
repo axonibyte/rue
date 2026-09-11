@@ -675,7 +675,19 @@ fn status_json(r: &InstanceRecord) -> Value {
 
 /// The scope a proof binds to: the plan by default, a step when one is
 /// named, the ack scope when the verb is `ack`.
+/// The scope a challenge or a proof is for: a knell's acknowledgement
+/// (`ack: n`), a step gate (`step: n`), or the plan gate.
+///
+/// The ack scope was missing, so nothing could ask for the challenge an
+/// acknowledgement is proved against: `rue ack` could submit a proof but no
+/// person could learn what to prove. Against the fake binding, which takes
+/// any token, that never showed; against any binding that checks a proof
+/// over the digest it rendered -- which is what an approval binding is for --
+/// a knell awaiting a human could not be acknowledged through the channel.
 fn scope_of(args: &Value) -> Result<Scope, ControlError> {
+    if let Some(n) = args.get("ack").and_then(Value::as_u64) {
+        return Ok(Scope::Ack(n as u32));
+    }
     match args.get("step").and_then(Value::as_u64) {
         Some(n) => Ok(Scope::Step(n as u32)),
         None => Ok(Scope::Plan),

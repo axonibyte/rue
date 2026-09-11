@@ -605,18 +605,36 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             reason,
             authenticator,
             channel,
-        } => over_channel(
-            &channel,
-            "ack",
-            serde_json::json!({
-                "instance": instance,
-                "step": step,
-                "reason": reason,
-                "authenticator": authenticator,
-                "proof": read_stdin()?.trim(),
-            }),
-            out,
-        ),
+        } => {
+            // As `approve` does: with nothing on stdin, the challenge the
+            // acknowledgement must be proved against is printed and nothing
+            // is submitted. Without it no person could learn what to prove.
+            let proof = read_stdin()?;
+            if proof.trim().is_empty() {
+                return over_channel(
+                    &channel,
+                    "challenge",
+                    serde_json::json!({
+                        "instance": instance,
+                        "ack": step,
+                        "context": reason,
+                    }),
+                    out,
+                );
+            }
+            over_channel(
+                &channel,
+                "ack",
+                serde_json::json!({
+                    "instance": instance,
+                    "step": step,
+                    "reason": reason,
+                    "authenticator": authenticator,
+                    "proof": proof.trim(),
+                }),
+                out,
+            )
+        }
         Verb::Renew {
             instance,
             wane,
