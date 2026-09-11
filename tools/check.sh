@@ -264,6 +264,7 @@ phase rcodes           sh tools/lint-rcodes.sh
 phase hook-ops         sh tools/lint-hook-ops.sh
 phase hook-proto-frozen sh tools/lint-hook-proto-frozen.sh
 phase sdk-docs         sh tools/lint-sdk-docs.sh
+phase issues           sh tools/lint-issues.sh
 phase golden-hygiene   sh tools/lint-goldens.sh
 phase rediscovery-patches sh tools/rediscovery/check-patches.sh
 phase darwin-deps      sh tools/lint-darwin-deps.sh

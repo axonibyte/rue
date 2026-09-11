@@ -215,6 +215,7 @@ on both registered guests. Validate the manifest with
 |---|---|
 | `docs/ROADMAP.md` | The plan of record: claim, model, surface, engine, tenants, phases, tests |
 | `docs/prior-art.md` | The falsification sweep of 2026-09-06: every candidate, what was checked, the delta or the narrowing |
+| `docs/issues/` | The issue tracker: a file per issue, and an index the gate keeps honest (`tools/lint-issues.sh`) |
 | `docs/TESTING.md` | The gate's phases, the tiers, goldens, canonical JSON, negatives, mutation checks, rediscovery, and what green does not prove |
 | `docs/verdict-schema.json` | The structured verdict's schema, version 1; every golden validates and every declared field is produced |
 | `docs/state-transitions.tsv` | The runtime state machine's full transition table, generated from its five rules |
