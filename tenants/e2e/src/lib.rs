@@ -401,6 +401,38 @@ pub fn rue(socket: &Path, args: &[&str]) -> std::process::Output {
         .expect("rue")
 }
 
+/// `rue` with text on its standard input: a proof for `approve` or `ack`,
+/// which read the token from stdin so it never appears in an argv.
+pub fn rue_with_stdin(socket: &Path, args: &[&str], stdin: &str) -> std::process::Output {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut child = Command::new(bin("rue"))
+        .args(args)
+        .arg("--socket")
+        .arg(socket)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("rue");
+    if let Some(mut w) = child.stdin.take() {
+        let _ = w.write_all(stdin.as_bytes());
+    }
+    child.wait_with_output().expect("rue")
+}
+
+/// The token an approval stub accepts: the digest prefix a challenge
+/// shows between its last brackets.
+pub fn token_from(challenge: &str) -> String {
+    challenge
+        .rsplit('[')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(']')
+        .trim()
+        .to_string()
+}
+
 /// The verdict line: the last line a verb printed. Every verb that acts
 /// on the world ends in one (section 6.8), on stdout when it ran and on
 /// stderr when the call itself was refused.

@@ -166,7 +166,39 @@ apply() {
     : > "$rue_root/lock"
     chown root:rue "$rue_root/lock"
     chmod 0664 "$rue_root/lock"
+    if [ "$os" = FreeBSD ]; then
+        t2_cluster || exit 2
+    fi
     echo "provisioned: mgmt=$mgmt alias=$alias_addr root=$root rue_root=$rue_root"
+}
+
+# T2's pseudo-cluster (docs/ROADMAP.md 8.2, Phase 4 unit G): FreeBSD only,
+# because jail(8) is what makes a guest's state a real kernel object.
+#
+# The guests are jails the PLAN starts and stops -- empty and persistent, so
+# `jls` sees them and nothing runs in them -- and provisioning's part is only
+# a clean slate: no jail left over from an earlier run. The rollback knell
+# acts on a real ZFS dataset with an @split snapshot, beneath the guest's own
+# state dataset so the disposable guest owns it outright; its name goes to
+# $root/t2-dataset for the harness to write into the plan.
+t2_cluster() {
+    for j in $(jls -N name 2> /dev/null | grep '^rue-t2-'); do
+        jail -r "$j" || return 1
+    done
+    state_ds=$(zfs list -H -o name "${REAPER_STATE:-/nonexistent}" 2> /dev/null)
+    if [ -z "$state_ds" ]; then
+        echo "provision: REAPER_STATE is not a ZFS dataset; T2's rollback knell needs one and will not pretend" >&2
+        return 1
+    fi
+    ds=$state_ds/rue-t2
+    if zfs list -H "$ds" > /dev/null 2>&1; then
+        zfs destroy -r "$ds" || return 1
+    fi
+    zfs create "$ds" || return 1
+    mnt=$(zfs get -H -o value mountpoint "$ds") || return 1
+    echo "the data as it stood when the cluster split" > "$mnt/placement" || return 1
+    zfs snapshot "$ds@split" || return 1
+    echo "$ds" > "$root/t2-dataset" || return 1
 }
 
 # Remove every `# rue-region <id> begin`..`end` block from the scheduler's
@@ -206,6 +238,9 @@ pf_enabled() { pfctl -s info 2> /dev/null | grep -q 'Status: Enabled'; }
 pf_skips_mgmt() { pfctl -s Interfaces -v 2> /dev/null | grep -q "^$mgmt (skip)"; }
 nft_table_present() { nft list table inet rue; }
 nft_input_accepts() { nft list chain inet rue input 2> /dev/null | grep -q 'policy accept'; }
+t2_dataset_split() {
+    ds=$(cat "$root/t2-dataset" 2> /dev/null) && [ -n "$ds" ] && zfs list -H -t snapshot "$ds@split"
+}
 group_rue_exists() {
     case $os in
         FreeBSD) pw groupshow rue ;;
@@ -225,6 +260,11 @@ check() {
             chk "loopback alias $alias_addr" alias_present
             chk "pf enabled" pf_enabled
             chk "pf skips $mgmt (a plan's rule can never sever reaper's transport)" pf_skips_mgmt
+            # The dataset and its @split survive every stage, the rollback
+            # knell's included (rollback -r keeps the snapshot it rolls back
+            # to). The jails are not checked: a committed promote leaves its
+            # guests running, which is the point of committing.
+            chk "T2's dataset has its @split snapshot" t2_dataset_split
             ;;
         Linux)
             chk "nftables table inet rue present" nft_table_present

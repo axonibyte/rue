@@ -59,6 +59,17 @@ for f in tenants/e2e/tests/*.rs; do
                 withheld="$withheld $name(no elixir on this guest)"
             fi
             ;;
+        succession)
+            # T2's guests are jails and its rollback knell acts on ZFS: the
+            # stage needs jail(8), which is FreeBSD's. Nothing here is
+            # simulated on a host without it -- a jail stood in for by
+            # something else would prove the stand-in.
+            if [ "$(uname -s)" = FreeBSD ] && command -v jls > /dev/null 2>&1; then
+                stages="$stages $name"
+            else
+                withheld="$withheld $name(no jail(8) on this guest)"
+            fi
+            ;;
         *) stages="$stages $name" ;;
     esac
 done

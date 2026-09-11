@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use rue_e2e::{
     e2e_root, expect_exit, instance_of, must, python, repo_root, require_provisioned_host, rue,
-    target_read, Daemon, Site,
+    rue_with_stdin, target_read, token_from, Daemon, Site,
 };
 
 /// The plan: T1's shape, with the parts a guest can carry.
@@ -70,18 +70,6 @@ const HOSTS: &str = concat!(
 
 fn hooks_py() -> PathBuf {
     repo_root().join("tenants/t1/fixtures/hooks.py")
-}
-
-/// The digest a proof must match: the challenge the binding rendered
-/// carries it, and this stub accepts the first bytes of it as the token.
-fn token_from(challenge: &str) -> String {
-    challenge
-        .rsplit('[')
-        .next()
-        .unwrap_or_default()
-        .trim_end_matches(']')
-        .trim()
-        .to_string()
 }
 
 #[test]
@@ -183,23 +171,4 @@ fn a_break_glass_plan_opens_on_two_proofs_escrows_its_secret_and_reverts() {
         ""
     );
     d.stop();
-}
-
-/// `rue` with a token on its standard input.
-fn rue_with_stdin(socket: &std::path::Path, args: &[&str], stdin: &str) -> std::process::Output {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-    let mut child = Command::new(rue_e2e::bin("rue"))
-        .args(args)
-        .arg("--socket")
-        .arg(socket)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("rue");
-    if let Some(mut w) = child.stdin.take() {
-        let _ = w.write_all(stdin.as_bytes());
-    }
-    child.wait_with_output().expect("rue")
 }
