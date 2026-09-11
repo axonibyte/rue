@@ -1,0 +1,13 @@
+# Reverts: the refusal being scoped to a live commitment: here any foreign directory, spent or not, closes the host
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2080,7 +2080,7 @@
+         match ex.instance_dir_list(host) {
+             Ok(dirs) => {
+                 for d in dirs {
+-                    if d.instance == id || !d.armed || d.fired {
++                    if d.instance == id {
+                         continue;
+                     }
+                     if let Some(other) =

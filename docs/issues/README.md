@@ -59,7 +59,7 @@ with the title, kind and status the issue itself gives.
 | 0006 | A language server: diagnostics and hover | feature | open |
 | 0007 | rue explain --html | feature | open |
 | 0008 | The name sweep, and a public README | feature | open |
-| 0009 | Multi-controller: refuse, or a lock protocol over a shared fact? | question | open |
+| 0009 | Multi-controller: refuse, or a lock protocol over a shared fact? | question | closed |
 | 0010 | Release v0.2.1 with the SDK fixes? | question | closed |
 | 0011 | A step interrupted by the engine's death is undone even if it never took | not-proven | closed |
 | 0012 | The Rust conformance hook ends at a line that is not JSON | defect | closed |

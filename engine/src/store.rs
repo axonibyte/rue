@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! <store>/schema             the schema version, as text
+//! <store>/controller         this controller's id, written once at create
 //! <store>/lock               held exclusively by the daemon that owns the store
 //! <store>/instances/<id>.json  one canonical-JSON record per instance
 //! <store>/ledger.json        the cross-plan reservations (section 5.12)
@@ -39,6 +40,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 /// 3: the step in flight records what its facts read before `do`, so boot
 /// recovery undoes it only if its `do` took. A schema 2 record reads as one
 /// that kept nothing, and 2 -> 3 rewrites nothing either.
+/// The store also names its controller (`<store>/controller`), which is
+/// what an instance directory on a target is stamped with; a store opened
+/// without one is given one, so 2 -> 3 rewrites nothing here either.
 pub const SCHEMA: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -248,10 +252,20 @@ impl LedgerRecord {
     }
 }
 
+/// A controller's id: sixteen random bytes, hex. Not a secret and not a
+/// name; what it is for is telling one controller's instance directories
+/// from another's on a host they both reach.
+fn new_controller_id() -> String {
+    let mut b = [0u8; 16];
+    getrandom::fill(&mut b).expect("the platform CSPRNG");
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
 /// An open store: the lock is held until it is dropped.
 #[derive(Debug)]
 pub struct Store {
     root: PathBuf,
+    controller: String,
     _lock: File,
 }
 
@@ -288,10 +302,30 @@ impl Store {
             return Err(StoreError::Locked(root.to_path_buf()));
         }
         fs::create_dir_all(root.join("instances")).map_err(io)?;
+        // This store's controller, named once and kept: it is what an
+        // instance directory on a target is stamped with, so a second
+        // controller can be told from this one (ROADMAP 11, v0 is
+        // single-controller per host). A store migrated from an earlier
+        // schema has none until here.
+        let path = root.join("controller");
+        let controller = match fs::read_to_string(&path) {
+            Ok(s) if !s.trim().is_empty() => s.trim().to_string(),
+            _ => {
+                let id = new_controller_id();
+                write_atomic(&path, format!("{id}\n").as_bytes())?;
+                id
+            }
+        };
         Ok(Store {
             root: root.to_path_buf(),
+            controller,
             _lock: lock,
         })
+    }
+
+    /// The id of the controller this store belongs to.
+    pub fn controller(&self) -> &str {
+        &self.controller
     }
 
     pub fn root(&self) -> &Path {
@@ -492,6 +526,10 @@ pub fn migrate(root: &Path, dry_run: bool, by: &str) -> Result<Migration, StoreE
             "a step in flight records what its facts read before do from here on; a \
              record written before kept nothing, and its step in flight is undone at boot \
              as before"
+                .to_string(),
+        );
+        steps.push(
+            "the store names its controller at its next open, and stamps it into the              instance directories it creates from here on; directories created before              carry no stamp and are read as this controller's"
                 .to_string(),
         );
     }

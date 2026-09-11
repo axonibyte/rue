@@ -253,3 +253,34 @@ fn a_v0_1_0_store_is_refused_until_migrated_and_its_instance_then_reverts() {
     assert_eq!(out.state, rue_core::states::State::Closed, "{}", out.line);
     assert_eq!(w.commands(), vec!["undo b", "undo b", "undo a"]);
 }
+
+/// A store names its controller once (7.7, 11): the id is written at
+/// create, kept across opens, and never shared with another store. A store
+/// migrated from an earlier schema is given one at its next open, so an
+/// upgraded controller is as identifiable as a new one.
+#[test]
+fn a_store_names_its_controller_once_and_keeps_it() {
+    let d = common::TempDir::new("store-controller");
+    let root = d.join("store");
+    let s = Store::create(&root).unwrap();
+    let id = s.controller().to_string();
+    assert_eq!(id.len(), 32, "sixteen random bytes in hex: {id}");
+    assert!(id.chars().all(|c| c.is_ascii_hexdigit()), "{id}");
+    assert_eq!(
+        fs::read_to_string(root.join("controller")).unwrap().trim(),
+        id
+    );
+    drop(s);
+    assert_eq!(Store::open(&root).unwrap().controller(), id);
+
+    let other = Store::create(&d.join("other")).unwrap();
+    assert_ne!(other.controller(), id, "two stores, two controllers");
+
+    // A store whose file was lost is named again rather than refusing to
+    // open: the id tells directories apart, it does not authorize anything.
+    drop(other);
+    fs::remove_file(root.join("controller")).unwrap();
+    let again = Store::open(&root).unwrap().controller().to_string();
+    assert_ne!(again, id);
+    assert_eq!(again.len(), 32);
+}

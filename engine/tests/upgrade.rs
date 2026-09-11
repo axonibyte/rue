@@ -56,6 +56,13 @@ fn a_released_store_migrates_and_drives(release: &str, schema: u32, id: &str) {
     assert_eq!(schema_of(&root), Ok(SCHEMA));
 
     let mut w = World::over(dir);
+    // A release that predates controller ids is named one on this open,
+    // and stamps it into the instance directories it makes from here on.
+    assert_eq!(
+        w.engine.store().controller().len(),
+        32,
+        "{release}'s store was not named a controller"
+    );
     w.engine.boot().unwrap();
     let rec = w
         .engine

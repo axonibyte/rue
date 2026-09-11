@@ -692,11 +692,13 @@ pub fn run_until(cfg: Config, stop: Arc<AtomicBool>) -> Result<(), Refusal> {
             .map(|(f, t)| format!(", migrated {f} -> {t}"))
             .unwrap_or_default()
     );
-    if !boot.orphaned.is_empty() || !boot.reclaimed.is_empty() {
+    if !boot.orphaned.is_empty() || !boot.reclaimed.is_empty() || !boot.foreign.is_empty() {
         eprintln!(
-            "rued: reconciled: {} armed instance directories left in place, {} reclaimed",
+            "rued: reconciled: {} armed instance directories left in place, {} reclaimed, \
+             {} held by another controller",
             boot.orphaned.len(),
-            boot.reclaimed.len()
+            boot.reclaimed.len(),
+            boot.foreign.len()
         );
     }
     // The reap thread.

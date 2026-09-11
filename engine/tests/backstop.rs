@@ -591,3 +591,55 @@ fn abandon_disarms_where_it_can_and_says_what_it_left_armed() {
         "{events:?}"
     );
 }
+
+/// Reconciliation and another controller (7.7, 11): a directory stamped by
+/// another controller is not this store's to reclaim, however it looks.
+/// It is left exactly as it is, journaled, and reported apart from the
+/// orphans, which are this store's own business.
+#[test]
+fn boot_leaves_another_controllers_directory_exactly_as_it_is() {
+    let mut w = World::new("bs-foreign");
+    w.ssh.with(|f| {
+        // Fired, so this store would reclaim it were it its own.
+        f.dirs.insert((OWNER.into(), "i-theirs".into()));
+        f.files.insert(
+            (OWNER.into(), "i-theirs".into(), "artifact.sh".into()),
+            b"#!/bin/sh\n".to_vec(),
+        );
+        f.files.insert(
+            (OWNER.into(), "i-theirs".into(), "fired".into()),
+            b"".to_vec(),
+        );
+        f.files.insert(
+            (OWNER.into(), "i-theirs".into(), "controller".into()),
+            b"0123456789abcdef0123456789abcdef".to_vec(),
+        );
+    });
+    let report = w.engine.boot().unwrap();
+    assert!(report.reclaimed.is_empty(), "{report:?}");
+    assert!(report.orphaned.is_empty(), "{report:?}");
+    assert_eq!(
+        report.foreign,
+        vec![(OWNER.to_string(), "i-theirs".to_string())]
+    );
+    let files = w.ssh.with(|f| f.files.clone());
+    assert!(w
+        .ssh
+        .with(|f| f.dirs.contains(&(OWNER.into(), "i-theirs".into()))));
+    assert!(files.contains_key(&(OWNER.into(), "i-theirs".into(), "artifact.sh".into())));
+    let events = w.events();
+    assert!(
+        events
+            .iter()
+            .any(|e| e.contains("InstanceDirForeign") && e.contains("i-theirs")),
+        "{events:?}"
+    );
+    // And `rue doctor` says the same thing, apart from the orphans.
+    let r = w.engine.doctor().unwrap();
+    assert_eq!(
+        r.foreign,
+        vec![(OWNER.to_string(), "i-theirs".to_string())],
+        "{r:?}"
+    );
+    assert!(r.orphans.is_empty(), "{r:?}");
+}

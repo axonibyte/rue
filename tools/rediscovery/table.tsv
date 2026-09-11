@@ -195,3 +195,6 @@ sdk-rust-conform-hook-bad-line.patch	1	-	cargo	the_conformance_hook_skips	-
 boot-undoes-a-step-that-never-took.patch	1	-	cargo	whose_do_never_took_is_not_undone_on_the_way_back	-
 migration-note-missing.patch	1	-	cargo	a_released_text_checks_clean_or_is_told	-
 older-record-unreadable.patch	1	-	cargo	store_migrates_and_its_instance_is_driven	-
+second-controller-not-refused.patch	1	-	cargo	a_host_holding_another_controllers_armed_instance_directory_is_r0409	-
+foreign-instance-dir-reclaimed.patch	1	-	cargo	boot_leaves_another_controllers_directory_exactly_as_it_is	-
+spent-foreign-dir-blocks-the-host.patch	1	-	cargo	another_controllers_spent_directory_does_not_refuse_the_apply	-

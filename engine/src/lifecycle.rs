@@ -439,6 +439,9 @@ pub struct BootReport {
     /// Instance directories the store does not know that hold an armed,
     /// unfired artifact: left where they are (7.7).
     pub orphaned: Vec<(String, String)>,
+    /// Instance directories stamped by another controller: left exactly as
+    /// they are (7.7, 11).
+    pub foreign: Vec<(String, String)>,
     /// Directories with no artifact or a fired marker, removed.
     pub reclaimed: Vec<(String, String)>,
     /// Held secrets a restart dropped: none survives it (5.13).
@@ -527,6 +530,11 @@ pub struct DoctorReport {
     /// artifact: left in place by reconciliation, reclaimed by hand.
     #[serde(default)]
     pub orphans: Vec<(String, String)>,
+    /// Instance directories stamped by another controller: none of this
+    /// store's business, listed so an operator can see that a second
+    /// controller is acting on the host (7.7, 11).
+    #[serde(default)]
+    pub foreign: Vec<(String, String)>,
     pub sinks: Vec<String>,
     pub signed: bool,
     pub settling: bool,
@@ -2030,6 +2038,7 @@ impl Engine {
             return Ok(Ok(()));
         }
         let id = rec.id.clone();
+        let controller = self.store.controller().to_string();
         let ex = match self.executor_for(host) {
             Some(ex) => ex,
             None => return Ok(Ok(())),
@@ -2050,8 +2059,58 @@ impl Engine {
             }
             Err(e) => return Ok(Err(format!("R0407: {}: {e}", host.name()))),
         }
+        // One controller per host (ROADMAP 11). An instance directory is
+        // stamped with the controller that created it, and one carrying
+        // another controller's id with an armed, unfired artifact is a
+        // live commitment by that controller: its backstop will undo work
+        // on this host on its own schedule, and nothing here may reconcile,
+        // undo or reclaim under it. That is the case this refuses (R0409),
+        // and it is the case a target can decide on its own.
+        //
+        // What it does not refuse is another controller's spent leavings:
+        // a fired or unarmed directory commits nothing further, and hosts
+        // do accumulate them -- a killed controller leaves its directory
+        // where it fired. Those are left where they are and reported
+        // (`InstanceDirForeign`), never reclaimed and never in the way.
+        // Two controllers acting at once with nothing armed between them
+        // is what a lock protocol over a shared fact would decide, and
+        // that is still undesigned (11); this claims no more than it can
+        // see. A directory with no stamp at all was created before stores
+        // named controllers and is read as this one's.
+        match ex.instance_dir_list(host) {
+            Ok(dirs) => {
+                for d in dirs {
+                    if d.instance == id || !d.armed || d.fired {
+                        continue;
+                    }
+                    if let Some(other) =
+                        foreign_controller(ex.as_mut(), host, &d.instance, &controller)
+                    {
+                        return Ok(Err(format!(
+                            "R0409: {} holds instance {} of controller {other}, armed and \
+                             not fired; rue is single-controller per host. Its backstop is \
+                             live: read it, then `rue reclaim {} {} --force --reason ...` \
+                             if it is spent",
+                            host.name(),
+                            d.instance,
+                            host.name(),
+                            d.instance
+                        )));
+                    }
+                }
+            }
+            Err(e) => {
+                return Ok(Err(format!(
+                    "the instance directories on {}: {e}",
+                    host.name()
+                )))
+            }
+        }
         if let Err(e) = ex.instance_dir_create(host, &id) {
             return Ok(Err(format!("instance directory on {}: {e}", host.name())));
+        }
+        if let Err(e) = ex.put_file(host, &id, "controller", controller.as_bytes(), 0o640) {
+            return Ok(Err(format!("the controller stamp on {}: {e}", host.name())));
         }
         rec.dirs.push(host.name().to_string());
         self.persist(rec)?;
@@ -2711,10 +2770,11 @@ impl Engine {
                 scheduler_bound,
             });
         }
-        let orphans = self.orphans()?;
+        let (orphans, foreign) = self.orphans()?;
         Ok(DoctorReport {
             hosts,
             orphans,
+            foreign,
             sinks: self.journal.sink_names(),
             signed: self.journal.signed(),
             settling: self.settling,
@@ -3275,9 +3335,10 @@ impl Engine {
             }
         }
         report.secrets_dropped = self.drop_secrets_at_boot()?;
-        let (orphaned, reclaimed) = self.reconcile()?;
+        let (orphaned, reclaimed, foreign) = self.reconcile()?;
         report.orphaned = orphaned;
         report.reclaimed = reclaimed;
+        report.foreign = foreign;
         self.set_settling(false)?;
         Ok(report)
     }
@@ -3378,4 +3439,24 @@ pub fn restore_body(
 /// The steps a record has applied, for tests and `rue status`.
 pub fn applied_steps(rec: &InstanceRecord) -> BTreeSet<u32> {
     rec.applied.iter().map(|a| a.step).collect()
+}
+
+/// The controller that stamped an instance directory, when it is not
+/// `ours`. `None` is our own stamp, no stamp at all (a directory from
+/// before stores named controllers), or a stamp that cannot be read --
+/// none of which is evidence of a second controller, and a refusal on
+/// unreadable evidence would be a refusal on an unreachable host.
+pub(crate) fn foreign_controller(
+    ex: &mut dyn Executor,
+    host: &Host,
+    instance: &str,
+    ours: &str,
+) -> Option<String> {
+    let bytes = ex.get_file(host, instance, "controller").ok()?;
+    let id = String::from_utf8(bytes).ok()?;
+    let id = id.trim();
+    if id.is_empty() || id == ours {
+        return None;
+    }
+    Some(id.to_string())
 }

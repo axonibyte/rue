@@ -180,6 +180,7 @@ events! {
     SecretDropped { label: String, reason: String } => "secret_dropped",
     StagedRemoved { step: u32, reason: String } => "staged_removed",
     InstanceDirOrphaned { host: String, instance: String, armed: bool } => "instance_dir_orphaned",
+    InstanceDirForeign { host: String, instance: String, controller: String } => "instance_dir_foreign",
     Reclaimed { host: String, instance: String, forced: bool, reason: String } => "reclaimed",
     Abandoned { steps_not_reverted: Vec<u32>, artifacts_left_armed: Vec<String>, by: String, reason: String } => "abandoned",
     InventoryListed { hook: String, hosts: Vec<String> } => "inventory_listed",

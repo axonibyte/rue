@@ -95,10 +95,18 @@ strips and writes back exactly; each iteration of a repeat, nested or not,
 touches, snapshots and restores the fact its own variables name and is
 undone with them; a rehearsal calls no executor and reserves
 nothing; a held exclusivity class is R0101 and an overlapping umbra R0203;
+the instance directory the engine creates carries the id of the controller
+that made it, a host holding another controller's armed and unfired
+directory refuses the apply (R0409) and runs nothing, a spent foreign
+directory -- fired, or with no artifact -- refuses nobody and is left where
+it is, and a directory with no stamp is read as this controller's, so an
+upgrade refuses no host it already holds;
 boot demotes an instance left applying; during settle no wane fires and
 held resources are reestablished first, and the settle flag survives a
-crash; a migrated store is journaled once. `engine/tests/store.rs` opens
-the store v0.1.0 wrote (`engine/tests/fixtures/store-v0.1.0`, an instance
+crash; a migrated store is journaled once. `engine/tests/store.rs` requires
+a store to name its controller once -- written at create, kept across
+opens, never shared with another store, and named again if the file is lost
+-- and opens the store v0.1.0 wrote (`engine/tests/fixtures/store-v0.1.0`, an instance
 applied across a repeat): it is refused until migrated, and its instance
 then reverts under this build. `engine/tests/upgrade.rs` does the same for
 every release's store (v0.2.0's, `store-v0.2.0`, was written by v0.2.0's
@@ -271,7 +279,10 @@ heartbeat beside its `after:`, and the beat is written at arm and then at
 its interval; a `fired` marker is read on the next reap and journaled
 `BackstopFired` per step the target undid, which are no longer applied;
 boot leaves an armed orphan where it is (`InstanceDirOrphaned`) and
-reclaims a fired one; `rue reclaim` is refused while the artifact is armed
+reclaims a fired one; a directory stamped by another controller is left
+exactly as it is however it looks -- fired and reclaimable, were it this
+store's -- journaled `InstanceDirForeign` and reported by `rue doctor`
+apart from the orphans; `rue reclaim` is refused while the artifact is armed
 with its entry present (R0405), refused when forced without a reason, and
 journaled `Reclaimed{forced: true}` when both are given; `abandon` names
 what it could not disarm.

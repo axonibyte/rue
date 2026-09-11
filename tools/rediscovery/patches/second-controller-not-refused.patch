@@ -1,0 +1,31 @@
+# Reverts: the refusal of a second controller on one host (R0409)
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2079,25 +2079,7 @@
+         // named controllers and is read as this one's.
+         match ex.instance_dir_list(host) {
+             Ok(dirs) => {
+-                for d in dirs {
+-                    if d.instance == id || !d.armed || d.fired {
+-                        continue;
+-                    }
+-                    if let Some(other) =
+-                        foreign_controller(ex.as_mut(), host, &d.instance, &controller)
+-                    {
+-                        return Ok(Err(format!(
+-                            "R0409: {} holds instance {} of controller {other}, armed and \
+-                             not fired; rue is single-controller per host. Its backstop is \
+-                             live: read it, then `rue reclaim {} {} --force --reason ...` \
+-                             if it is spent",
+-                            host.name(),
+-                            d.instance,
+-                            host.name(),
+-                            d.instance
+-                        )));
+-                    }
+-                }
++                let _ = dirs;
+             }
+             Err(e) => {
+                 return Ok(Err(format!(

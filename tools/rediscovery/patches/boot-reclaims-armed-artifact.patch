@@ -2,8 +2,8 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/backstop.rs
 +++ b/engine/src/backstop.rs
-@@ -674,14 +674,8 @@
-                 if known.contains(&d.instance) {
+@@ -786,14 +786,8 @@
+                     foreign.push((host.name().to_string(), d.instance));
                      continue;
                  }
 -                if d.armed && !d.fired {

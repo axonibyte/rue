@@ -1,0 +1,25 @@
+# Reverts: reconciliation leaving another controller's instance directory alone
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/backstop.rs
++++ b/engine/src/backstop.rs
+@@ -770,20 +770,6 @@
+             let ours = self.store.controller().to_string();
+             for d in dirs {
+                 if known.contains(&d.instance) {
+-                    continue;
+-                }
+-                if let Some(other) = crate::lifecycle::foreign_controller(
+-                    self.executors[i].as_mut(),
+-                    &host,
+-                    &d.instance,
+-                    &ours,
+-                ) {
+-                    self.journal_site_event(J::InstanceDirForeign {
+-                        host: host.name().to_string(),
+-                        instance: d.instance.clone(),
+-                        controller: other,
+-                    })?;
+-                    foreign.push((host.name().to_string(), d.instance));
+                     continue;
+                 }
+                 if d.armed && !d.fired {

@@ -345,9 +345,31 @@ unit. What is in place:
   undelivered` and exit 7. Nothing about a secret reaches the store or a
   journal entry but its label, and a secret in a hook message other than
   the two that may carry one is dropped at the seam (R0305).
+- **One controller per host** (`engine/src/lifecycle.rs`, 7.7, 11): a store
+  names its controller once (`<store>/controller`, sixteen random bytes in
+  hex) and stamps it into every instance directory it creates. A host
+  carrying a directory stamped by another controller whose artifact is
+  armed and unfired has that controller's live commitment on it -- the
+  backstop will undo work there on its own schedule -- and the apply is
+  refused, R0409, before anything is created; the refusal names the
+  directory, which `rue reclaim --force --reason` can take once an operator
+  has read it. A foreign directory that is spent -- fired, or with no
+  artifact at all -- refuses nobody: hosts accumulate them, a killed
+  controller leaving its directory where it fired, and none of them commits
+  anything further. What is never done to a foreign directory, spent or
+  not, is reclaiming it: it is another controller's evidence, left where it
+  is and reported.
+  A directory with no stamp was made before stores named controllers and is
+  read as this one's. This is the whole of v0's answer to two controllers on
+  one host, and it claims only what a target can decide: two engines acting
+  at once with nothing armed between them is what a lock protocol over a
+  fact both can read would decide, and that is a design of its own -- a
+  lock nothing takes would be worse than none.
 - **Reconciliation and reclaim** (`engine/src/backstop.rs`, 7.7): at boot
   every instance directory on every reachable host is compared with the
-  store; one the store does not know that holds an armed, unfired artifact
+  store; one stamped by another controller is left untouched and journaled
+  `InstanceDirForeign`, being no business of this store's; one the store
+  does not know that holds an armed, unfired artifact
   is left where it is and journaled `InstanceDirOrphaned{armed: true}`;
   one with no artifact or a `fired` marker is removed and journaled
   `Reclaimed`. `rue doctor` lists what was left in place, and `rue doctor
@@ -490,6 +512,7 @@ writes the last line. Paths are relative to
 | `markers/<n>` | engine, when step `n` completes | one line `<kind> <path> <sha256>` per file fact of the step, as `do` left it |
 | `snapshots/<n>/<k>` | engine, before step `n` | the whole file for footprint entry `k` (`Modified` and `Region` entries) |
 | `manifest` | engine | one line `region <path> <anchor>` per region this instance holds on the host |
+| `controller` | engine, at create | the id of the controller that made this directory (7.7, 11); read by another controller's engine, by nothing on the target |
 | `artifact.sh` / `.ps1` / `.py` | engine, at install | the rendered artifact |
 | `fired`, `drift`, `clobbered` | the artifact | `fired` once it has run; a step number per line as its policy decided |
 | `<rue_root>/lock` | bootstrap | the host lock (7.7): `flock` for the engine, `lockf`/`flock` for a fired `sh` artifact, `fcntl.flock` for Python, an exclusive open for PowerShell; held for the whole of an artifact's run and across the engine's region undo |

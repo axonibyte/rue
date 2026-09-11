@@ -1483,3 +1483,125 @@ fn a_step_the_engine_died_inside_whose_do_took_something_is_undone_on_the_way_ba
         .collect();
     assert_eq!(undos, vec!["undo b".to_string(), "undo a".to_string()]);
 }
+
+/// One controller per host (7.7, 11). The engine stamps its store's
+/// controller id into every instance directory it creates, so a second
+/// controller's directory can be told from its own.
+#[test]
+fn the_instance_directory_carries_the_controllers_stamp() {
+    let mut w = World::new("stamp");
+    let plan = world::temp_plan("p", vec![world::step(world::op("a"))]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Applied, "{}", out.line);
+    let id = w.engine.store().controller().to_string();
+    assert_eq!(id.len(), 32, "sixteen random bytes in hex: {id}");
+    let stamp = w.ssh.with(|f| {
+        f.files
+            .get(&(OWNER.into(), out.id.clone(), "controller".into()))
+            .cloned()
+    });
+    assert_eq!(stamp, Some(id.into_bytes()), "the stamp on the host");
+}
+
+/// A host holding another controller's armed, unfired artifact refuses the
+/// apply, R0409: that backstop will undo work on this host on its own
+/// schedule, and nothing here may reconcile, undo or reclaim under it.
+#[test]
+fn a_host_holding_another_controllers_armed_instance_directory_is_r0409() {
+    let mut w = World::new("second-controller");
+    w.ssh.with(|f| {
+        f.dirs.insert((OWNER.into(), "i-theirs".into()));
+        f.files.insert(
+            (OWNER.into(), "i-theirs".into(), "artifact.sh".into()),
+            b"#!/bin/sh\n".to_vec(),
+        );
+        f.files.insert(
+            (OWNER.into(), "i-theirs".into(), "controller".into()),
+            b"0123456789abcdef0123456789abcdef".to_vec(),
+        );
+    });
+    let plan = world::temp_plan("p", vec![world::step(world::op("a"))]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!(out.state, State::Closed, "{}", out.line);
+    assert!(
+        w.sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, J::Refused { reason }
+            if reason.contains("R0409") && reason.contains("i-theirs"))),
+        "{:?}",
+        w.sink.events()
+    );
+    assert!(w.commands().is_empty(), "nothing ran");
+    let dirs = w.ssh.with(|f| f.dirs.clone());
+    assert!(
+        dirs.contains(&(OWNER.into(), "i-theirs".into())),
+        "the other controller's directory is untouched"
+    );
+}
+
+/// Another controller's spent leavings are not in the way. A host keeps
+/// the directory a killed controller's artifact fired in -- reported, never
+/// reclaimed -- and it commits nothing further, so it refuses nobody. The
+/// e2e guests found this: every stage is a store of its own, and a fired
+/// directory from a stage before it would otherwise close the host for
+/// good.
+#[test]
+fn another_controllers_spent_directory_does_not_refuse_the_apply() {
+    let mut w = World::new("spent-foreign");
+    w.ssh.with(|f| {
+        for (dir, fired) in [("i-fired", true), ("i-unarmed", false)] {
+            f.dirs.insert((OWNER.into(), dir.into()));
+            f.files.insert(
+                (OWNER.into(), dir.into(), "controller".into()),
+                b"0123456789abcdef0123456789abcdef".to_vec(),
+            );
+            if fired {
+                f.files.insert(
+                    (OWNER.into(), dir.into(), "artifact.sh".into()),
+                    b"#!/bin/sh\n".to_vec(),
+                );
+                f.files
+                    .insert((OWNER.into(), dir.into(), "fired".into()), b"".to_vec());
+            }
+        }
+    });
+    let plan = world::temp_plan("p", vec![world::step(world::op("a"))]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!((out.state, out.exit), (State::Applied, 0), "{}", out.line);
+    assert_eq!(w.commands(), vec!["do a"]);
+    let dirs = w.ssh.with(|f| f.dirs.clone());
+    for dir in ["i-fired", "i-unarmed"] {
+        assert!(
+            dirs.contains(&(OWNER.into(), dir.into())),
+            "{dir} is still there"
+        );
+    }
+}
+
+/// A directory with no stamp was made before stores named controllers. It
+/// is read as this controller's, so an upgrade does not refuse every host
+/// it already holds.
+#[test]
+fn an_unstamped_instance_directory_is_not_a_second_controller() {
+    let mut w = World::new("legacy-dir");
+    w.ssh.with(|f| {
+        f.dirs.insert((OWNER.into(), "i-old".into()));
+    });
+    let plan = world::temp_plan("p", vec![world::step(world::op("a"))]);
+    let out = w
+        .engine
+        .apply(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert_eq!((out.state, out.exit), (State::Applied, 0), "{}", out.line);
+    assert_eq!(w.commands(), vec!["do a"]);
+}

@@ -83,8 +83,17 @@ pub fn schedule(triggers: &[Trigger], now: Instant, wane: Option<Instant>) -> Sc
 }
 
 /// What reconciliation found: instance directories left in place because
-/// they hold an armed artifact, and directories reclaimed.
-pub type Reconciled = (Vec<(String, String)>, Vec<(String, String)>);
+/// they hold an armed artifact, directories reclaimed, and directories
+/// left alone because another controller stamped them.
+pub type Reconciled = (
+    Vec<(String, String)>,
+    Vec<(String, String)>,
+    Vec<(String, String)>,
+);
+
+/// What `rue doctor` finds among the instance directories: armed orphans,
+/// and directories another controller stamped.
+pub type Unclaimed = (Vec<(String, String)>, Vec<(String, String)>);
 
 /// The distance between two clocks, in seconds, whichever is ahead.
 pub fn skew(a: Instant, b: Instant) -> u64 {
@@ -527,7 +536,7 @@ impl Engine {
 
     /// Instance directories a host holds that the store does not know and
     /// that are armed: what reconciliation left in place, for `rue doctor`.
-    pub(crate) fn orphans(&mut self) -> Result<Vec<(String, String)>, EngineError> {
+    pub(crate) fn orphans(&mut self) -> Result<Unclaimed, EngineError> {
         let known: Vec<String> = self
             .instances()?
             .into_iter()
@@ -535,7 +544,9 @@ impl Engine {
             .map(|r| r.id)
             .collect();
         let hosts: Vec<Host> = self.hosts.values().cloned().collect();
+        let ours = self.store.controller().to_string();
         let mut v = Vec::new();
+        let mut foreign = Vec::new();
         for host in hosts {
             let Some(i) = self.executor_index(&host) else {
                 continue;
@@ -544,12 +555,26 @@ impl Engine {
                 continue;
             };
             for d in dirs {
-                if !known.contains(&d.instance) && d.armed && !d.fired {
+                if known.contains(&d.instance) {
+                    continue;
+                }
+                if crate::lifecycle::foreign_controller(
+                    self.executors[i].as_mut(),
+                    &host,
+                    &d.instance,
+                    &ours,
+                )
+                .is_some()
+                {
+                    foreign.push((host.name().to_string(), d.instance));
+                    continue;
+                }
+                if d.armed && !d.fired {
                     v.push((host.name().to_string(), d.instance));
                 }
             }
         }
-        Ok(v)
+        Ok((v, foreign))
     }
 
     /// One heartbeat pass: every armed instance whose interval has elapsed
@@ -713,10 +738,14 @@ impl Engine {
     }
 
     /// Reconciliation at boot (7.7): every instance directory on every
-    /// reachable host against the store. A directory the store does not
-    /// know is left where it holds an armed, unfired artifact, journaled
-    /// `InstanceDirOrphaned{armed: true}` and listed by `rue doctor`; one
-    /// with no artifact or with a fired marker is reclaimed.
+    /// reachable host against the store. A directory stamped by another
+    /// controller is left exactly as it is and journaled
+    /// `InstanceDirForeign`: it is not this store's to reclaim, and the
+    /// instance it belongs to is live elsewhere. Of the rest, a directory
+    /// the store does not know is left where it holds an armed, unfired
+    /// artifact, journaled `InstanceDirOrphaned{armed: true}` and listed by
+    /// `rue doctor`; one with no artifact or with a fired marker is
+    /// reclaimed.
     pub fn reconcile(&mut self) -> Result<Reconciled, EngineError> {
         let known: Vec<String> = self
             .instances()?
@@ -727,6 +756,7 @@ impl Engine {
         let hosts: Vec<Host> = self.hosts.values().cloned().collect();
         let mut orphaned = Vec::new();
         let mut reclaimed = Vec::new();
+        let mut foreign = Vec::new();
         for host in hosts {
             let Some(i) = self.executor_index(&host) else {
                 continue;
@@ -737,8 +767,23 @@ impl Engine {
             let Ok(dirs) = self.executors[i].instance_dir_list(&host) else {
                 continue;
             };
+            let ours = self.store.controller().to_string();
             for d in dirs {
                 if known.contains(&d.instance) {
+                    continue;
+                }
+                if let Some(other) = crate::lifecycle::foreign_controller(
+                    self.executors[i].as_mut(),
+                    &host,
+                    &d.instance,
+                    &ours,
+                ) {
+                    self.journal_site_event(J::InstanceDirForeign {
+                        host: host.name().to_string(),
+                        instance: d.instance.clone(),
+                        controller: other,
+                    })?;
+                    foreign.push((host.name().to_string(), d.instance));
                     continue;
                 }
                 if d.armed && !d.fired {
@@ -767,7 +812,7 @@ impl Engine {
                 }
             }
         }
-        Ok((orphaned, reclaimed))
+        Ok((orphaned, reclaimed, foreign))
     }
 
     /// `rue reclaim`: remove an orphaned instance directory. Refused while
