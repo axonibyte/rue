@@ -332,6 +332,27 @@ still fails (`tests/tier3/t_conform_all.sh`); the four steps together name
 all four. The Java step also builds the jar with maven, which is what
 proves the POM, and the .NET step packs the NuGet package.
 
+Conformance judges an SDK from the far end of the wire, which is what
+makes the five comparable; each non-Rust SDK also has a suite of its own,
+in its package's idiom, for what the wire cannot show: Python's `unittest`
+(`sdk/python/tests`), Elixir's ExUnit (`sdk/elixir/test`), JUnit 6 for
+Java (`sdk/java/src/test`, test scope only, so the published artifact
+keeps no dependency), and xUnit for .NET (`sdk/dotnet/tests/RueHook.Tests`,
+a project beside the package that nothing packed references). They hold
+the codec to inputs no conformance case sends; a line that is not one JSON
+object, or is nested past any protocol frame's depth, skipped rather than
+ending the loop; an unknown op or kind refused by name; the handler budget;
+the secret rule -- a resolved secret formatted, interpolated or serialized
+by accident reads `<secret>`, and only `expose` gives its text; and a reply
+the SDK cannot write refused by name rather than ending the loop.
+`sh sdk/test-all.sh [python|elixir|java|dotnet ...]` runs them, with
+`conform-all.sh`'s selection and its rule that a missing toolchain fails
+(`tests/tier3/t_test_all.sh`). The Ubuntu reaper guest runs all four after
+conformance, and each pipeline step runs its SDK's suite before judging it.
+The JUnit and xUnit suites fetch their frameworks from Maven Central and
+NuGet, which the conformance runs never need; on the guest both land in
+caches.
+
 The acceptance line of the phase -- the same text checks identically
 standalone and embedded -- is held for every tenant case and negative by
 `cli/tests/cli.rs`: the IR `rue check --ir` hands a host, deserialized as
@@ -568,17 +589,23 @@ mutants. The rediscovery table makes the most important of these permanent.
 `tools/rediscovery/table.tsv` has one row per protection the project has
 paid for: a patch under `tools/rediscovery/patches/` that reverts it, the
 tier, the suite the selector runs in (`cabal` for the prototype, `cargo` for
-the workspace), and the selector that must then fail (a tasty `-p` pattern or
-a cargo test-name filter). A protection the Rust crates carry has a `-core`
+the workspace, and `python`, `mix`, `maven` or `dotnet` for a non-Rust SDK's
+own suite), and the selector that must then fail (a tasty `-p` pattern, a
+cargo test-name filter, or the SDK runner's own: a unittest `-k` pattern, an
+ExUnit test file, a surefire `-Dtest` pattern, a `dotnet test --filter`). A protection the Rust crates carry has a `-core`
 row of its own beside the Haskell one, since each is a separate check that
 can rot separately.
 `sh tools/rediscovery/run.sh --tier N` copies the tree to a scratch
 directory per row, runs the selector there (it must pass and select at
 least one test), applies the patch without fuzz, requires the patched tree
 to compile, and requires the selector to fail with "tests failed". It prints
-`N rediscovered, M not` and exits 0 only when M is 0. Run it before a
-milestone is trusted; it takes a full build per row and nothing runs it
-automatically. The gate's `rediscovery-patches` phase is the cheap half:
+`N rediscovered, M not` and exits 0 only when M is 0. Every toolchain the
+selected rows need must be on PATH or the run refuses before it starts, and
+no one machine carries them all: the workstation runs the `cabal` and
+`cargo` rows, the Ubuntu reaper guest the SDK rows, each half named with
+`--suite`, which (like `--row`) says in the summary that it narrowed the
+run. Run it before a milestone is trusted; it takes a full build per row
+and nothing runs it automatically. The gate's `rediscovery-patches` phase is the cheap half:
 every patch must still apply, so a refactor that moves a protected check is
 caught at once rather than when someone remembers the battery.
 

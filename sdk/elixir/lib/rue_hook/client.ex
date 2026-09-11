@@ -27,6 +27,7 @@ defmodule RueHook.Client do
           {:socket, String.t()}
           | {:identity, String.t() | nil}
           | {:events_to, pid() | nil}
+          | {:budget_ms, pos_integer() | nil}
           | {:name, GenServer.name()}
 
   @spec start_link([option]) :: GenServer.on_start()
@@ -53,6 +54,7 @@ defmodule RueHook.Client do
     path = Keyword.fetch!(opts, :socket)
     identity = Keyword.get(opts, :identity)
     events_to = Keyword.get(opts, :events_to)
+    budget_ms = Keyword.get(opts, :budget_ms)
 
     case :gen_tcp.connect({:local, path}, 0, [:binary, active: false, packet: :line]) do
       {:ok, sock} ->
@@ -60,6 +62,8 @@ defmodule RueHook.Client do
           sock: sock,
           identity: identity,
           events_to: events_to,
+          # a handler over this many ms answers no (RueHook.Hooks.answer_within/3)
+          budget_ms: budget_ms,
           # id -> from, for verbs awaiting a reply
           pending: %{},
           # name -> hooks, for requests the engine sends us
@@ -163,13 +167,8 @@ defmodule RueHook.Client do
   # wire: the engine sends what it asked of the name it looked up, and a
   # connection holding several answers from whichever serves that kind.
   defp route(%{"kind" => kind} = request, state) do
-    hooks =
-      state.hooks
-      |> Map.values()
-      |> Enum.find(fn h -> Map.get(h, String.to_existing_atom(kind)) != nil end)
-
     reply =
-      case hooks do
+      case hook_for(state.hooks, kind) do
         nil ->
           %{
             "id" => Map.get(request, "id"),
@@ -178,7 +177,7 @@ defmodule RueHook.Client do
           }
 
         h ->
-          Hooks.answer(h, request)
+          Hooks.answer_within(h, request, state.budget_ms)
       end
 
     send_frame(state.sock, reply)
@@ -206,5 +205,17 @@ defmodule RueHook.Client do
 
   defp route(_frame, state), do: state
 
-  defp send_frame(sock, frame), do: :gen_tcp.send(sock, JSON.encode!(frame) <> "\n")
+  @doc """
+  The registered hook that serves `kind`, or nil. By string, never by
+  atom: `String.to_existing_atom/1` raised on a kind that was never an
+  atom, and that ended this GenServer and the host's connection with it.
+  """
+  def hook_for(hooks, kind) do
+    if kind in RueHook.Proto.kinds() do
+      field = String.to_existing_atom(kind)
+      hooks |> Map.values() |> Enum.find(fn h -> Map.get(h, field) != nil end)
+    end
+  end
+
+  defp send_frame(sock, frame), do: :gen_tcp.send(sock, Serve.encode(frame) <> "\n")
 end

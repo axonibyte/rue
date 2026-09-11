@@ -1,0 +1,20 @@
+# Reverts: a \u escape with fewer than four hex digits left, or a non-hex one, is refused as the codec documents (IllegalArgumentException) rather than as a StringIndexOutOfBoundsException
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/java/src/main/java/dev/rue/hook/Json.java
++++ b/sdk/java/src/main/java/dev/rue/hook/Json.java
+@@ -251,15 +251,7 @@
+                     case 'r' -> b.append('\r');
+                     case 't' -> b.append('\t');
+                     case 'u' -> {
+-                        if (i + 4 > s.length()) {
+-                            throw new IllegalArgumentException("truncated \\u escape at " + i);
+-                        }
+                         String hex = s.substring(i, i + 4);
+-                        for (int k = 0; k < 4; k++) {
+-                            if (Character.digit(hex.charAt(k), 16) < 0) {
+-                                throw new IllegalArgumentException("bad \\u escape at " + i);
+-                            }
+-                        }
+                         b.append((char) Integer.parseInt(hex, 16));
+                         i += 4;
+                     }

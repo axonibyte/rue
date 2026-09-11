@@ -1,0 +1,16 @@
+# Reverts: a NaN or an infinity is refused rather than written as the bare NaN or Infinity, a line the engine cannot parse
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/java/src/main/java/dev/rue/hook/Json.java
++++ b/sdk/java/src/main/java/dev/rue/hook/Json.java
+@@ -35,11 +35,6 @@
+         } else if (v instanceof Boolean || v instanceof Integer || v instanceof Long) {
+             b.append(v);
+         } else if (v instanceof Double d) {
+-            if (d.isNaN() || d.isInfinite()) {
+-                // JSON has no spelling for these; "NaN" would be a line the
+-                // engine cannot parse, which reads as a silence.
+-                throw new IllegalArgumentException("JSON cannot carry " + d);
+-            }
+             // An integral double is written without its fractional part, so
+             // a value that arrived as an integer leaves as one -- when it
+             // fits a long. Casting 1e20 to a long gives Long.MAX_VALUE, a

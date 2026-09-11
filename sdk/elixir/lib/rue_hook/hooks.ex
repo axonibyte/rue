@@ -13,7 +13,7 @@ defmodule RueHook.Hooks do
   tells the operator nothing about why.
   """
 
-  alias RueHook.Proto
+  alias RueHook.{Proto, Resolved}
 
   defstruct journal: nil,
             inventory: nil,
@@ -48,11 +48,48 @@ defmodule RueHook.Hooks do
 
       row ->
         case dispatch(h, row, request) do
-          {:ok, fields} -> built(id, row, fields)
-          {:refuse, why} -> refusal(id, why)
+          {:ok, fields} when is_map(fields) ->
+            built(id, row, fields)
+
+          {:refuse, why} ->
+            refusal(id, why)
+
+          _ ->
+            # Neither {:ok, value} nor {:refuse, reason}: a CaseClauseError
+            # here ended the serve loop, or the embedding host's connection.
+            # The value is not quoted, since it may hold a secret.
+            refusal(id, "the #{row.kind}.#{row.op} handler answered neither {:ok, value} nor {:refuse, reason}")
         end
     end
   end
+
+  @doc """
+  As `answer/2`, within a budget in milliseconds. The engine's deadline
+  (`rued run --hook-deadline`) is not on the wire, so an SDK cannot see it;
+  what it can do is keep its own slowness from arriving as a silence. A
+  handler that overruns the budget answers `ok: false` naming the overrun,
+  because a refusal with a reason is worth more to the operator than a
+  timeout. `nil` leaves a slow handler to the engine's deadline. The Rust,
+  Python and Java SDKs do the same.
+  """
+  def answer_within(%__MODULE__{} = h, request, nil), do: answer(h, request)
+
+  def answer_within(%__MODULE__{} = h, request, budget_ms) when is_integer(budget_ms) do
+    {took_us, reply} = :timer.tc(fn -> answer(h, request) end)
+    took_ms = div(took_us, 1000)
+
+    if took_ms > budget_ms and reply["ok"] == true do
+      refusal(
+        Map.get(request, "id"),
+        "the handler took #{took_ms}ms, over its #{budget_ms}ms budget; answering late is worse than answering no"
+      )
+    else
+      reply
+    end
+  end
+
+  @doc false
+  def refusal_for(id, why), do: refusal(id, why)
 
   defp built(id, row, fields) do
     reply = Map.merge(%{"id" => id, "ok" => true}, fields)
@@ -144,8 +181,10 @@ defmodule RueHook.Hooks do
     |> nofields()
   end
 
+  # Every resolved value arrives as a Resolved, so a secret in the body
+  # cannot be formatted onto a command line or into a log by accident (7.11).
   defp call(mod, %{kind: "execute", op: "run"}, r),
-    do: mod.run(s(r, "host"), s(r, "instance"), Map.get(r, "body") || []) |> field("output")
+    do: mod.run(s(r, "host"), s(r, "instance"), Resolved.body(Map.get(r, "body") || [])) |> field("output")
 
   defp call(mod, %{kind: "execute", op: "read_fact"}, r) do
     case mod.read_fact(s(r, "host"), s(r, "shape")) do

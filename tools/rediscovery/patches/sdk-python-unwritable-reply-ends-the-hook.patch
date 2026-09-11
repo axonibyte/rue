@@ -1,0 +1,19 @@
+# Reverts: a reply json cannot write is answered with a refusal naming why, rather than a TypeError that ends the serve loop
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/python/rue_hook/serve.py
++++ b/sdk/python/rue_hook/serve.py
+@@ -79,13 +79,7 @@
+                     "budget; answering late is worse than answering no"
+                 ),
+             }
+-        try:
+-            _write(writer, reply)
+-        except (TypeError, ValueError) as e:
+-            # A reply json cannot write -- a set, a NaN a handler put in it --
+-            # is refused by name rather than ending the loop.
+-            _write(writer, {"id": frame.get("id"), "ok": False,
+-                            "error": f"the reply could not be written: {e}"})
++        _write(writer, reply)
+ 
+ 
+ def serve_stdio(name: str, hooks: Hooks, budget: Optional[float] = None) -> None:

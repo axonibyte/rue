@@ -1,0 +1,20 @@
+# Reverts: a reply the codec cannot write is answered with a refusal naming why, rather than an exception that ends the serve loop
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/java/src/main/java/dev/rue/hook/Serve.java
++++ b/sdk/java/src/main/java/dev/rue/hook/Serve.java
+@@ -93,14 +93,7 @@
+                 reply = refusal(frame.get("id"), "the handler took " + took.toMillis() + "ms, over its "
+                         + budget.toMillis() + "ms budget; answering late is worse than answering no");
+             }
+-            String text;
+-            try {
+-                text = Json.write(reply);
+-            } catch (RuntimeException e) {
+-                // A reply the codec cannot write -- a NaN a handler put in
+-                // it -- is refused by name rather than ending the loop.
+-                text = Json.write(refusal(frame.get("id"), "the reply could not be written: " + e.getMessage()));
+-            }
++            String text = Json.write(reply);
+             // println on an autoflushing stream: an unflushed reply is a
+             // silence, and a silence is a refusal with nothing to say.
+             out.println(text);

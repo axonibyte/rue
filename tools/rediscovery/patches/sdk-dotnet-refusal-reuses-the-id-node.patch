@@ -1,0 +1,31 @@
+# Reverts: each frame gets its own copy of the request id; one node attached to the half-built reply and then to the refusal threw "the node already has a parent" out of Answer, ending the loop, on every reply missing a required field
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/dotnet/src/RueHook/Hooks.cs
++++ b/sdk/dotnet/src/RueHook/Hooks.cs
+@@ -181,7 +181,7 @@
+     public JsonObject Answer(JsonObject request)
+     {
+         // A node has one parent, so each frame gets its own copy of the id.
+-        var id = request["id"];
++        var id = request["id"]?.DeepClone();
+         var kind = Str(request, "kind");
+         var opName = Str(request, "op");
+         var row = Op.Find(kind, opName);
+@@ -197,7 +197,7 @@
+             // Serialized inside the try: a value the serializer refuses -- a
+             // NaN a handler put in its answer -- threw out of Answer and
+             // ended the loop that called it.
+-            reply = new JsonObject { ["id"] = id?.DeepClone(), ["ok"] = true };
++            reply = new JsonObject { ["id"] = id, ["ok"] = true };
+             foreach (var (k, v) in fields)
+             {
+                 reply[k] = JsonSerializer.SerializeToNode(v);
+@@ -226,7 +226,7 @@
+     }
+ 
+     internal static JsonObject RefusalFrame(JsonNode? id, string why) =>
+-        new() { ["id"] = id?.DeepClone(), ["ok"] = false, ["error"] = why };
++        new() { ["id"] = id, ["ok"] = false, ["error"] = why };
+ 
+     private static string Str(JsonObject o, string k) =>
+         o[k] is { } n && n.GetValueKind() == JsonValueKind.String ? n.GetValue<string>() : "";

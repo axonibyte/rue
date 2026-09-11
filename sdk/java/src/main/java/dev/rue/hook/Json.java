@@ -35,9 +35,16 @@ public final class Json {
         } else if (v instanceof Boolean || v instanceof Integer || v instanceof Long) {
             b.append(v);
         } else if (v instanceof Double d) {
+            if (d.isNaN() || d.isInfinite()) {
+                // JSON has no spelling for these; "NaN" would be a line the
+                // engine cannot parse, which reads as a silence.
+                throw new IllegalArgumentException("JSON cannot carry " + d);
+            }
             // An integral double is written without its fractional part, so
-            // a value that arrived as an integer leaves as one.
-            if (d == Math.rint(d) && !d.isInfinite()) {
+            // a value that arrived as an integer leaves as one -- when it
+            // fits a long. Casting 1e20 to a long gives Long.MAX_VALUE, a
+            // different number, so a larger one is written as itself.
+            if (d == Math.rint(d) && Math.abs(d) < 0x1p63) {
                 b.append((long) (double) d);
             } else {
                 b.append(d);
@@ -113,9 +120,16 @@ public final class Json {
         return (Map<String, Object>) v;
     }
 
+    /** Deeper than this is refused: the reader recurses, and a
+     * StackOverflowError is an Error, which the serve loop does not catch --
+     * one line of brackets would otherwise end the hook. The protocol's
+     * deepest frame is a handful of levels. */
+    static final int MAX_DEPTH = 512;
+
     private static final class Reader {
         private final String s;
         private int i;
+        private int depth;
 
         Reader(String s) {
             this.s = s;
@@ -142,14 +156,22 @@ public final class Json {
             }
             char c = s.charAt(i);
             return switch (c) {
-                case '{' -> object();
-                case '[' -> array();
+                case '{', '[' -> nested(c);
                 case '"' -> string();
                 case 't' -> literal("true", Boolean.TRUE);
                 case 'f' -> literal("false", Boolean.FALSE);
                 case 'n' -> literal("null", null);
                 default -> number();
             };
+        }
+
+        Object nested(char open) {
+            if (++depth > MAX_DEPTH) {
+                throw new IllegalArgumentException("nested deeper than " + MAX_DEPTH + " at " + i);
+            }
+            Object v = open == '{' ? object() : array();
+            depth--;
+            return v;
         }
 
         Object literal(String word, Object v) {
@@ -229,7 +251,16 @@ public final class Json {
                     case 'r' -> b.append('\r');
                     case 't' -> b.append('\t');
                     case 'u' -> {
-                        b.append((char) Integer.parseInt(s.substring(i, i + 4), 16));
+                        if (i + 4 > s.length()) {
+                            throw new IllegalArgumentException("truncated \\u escape at " + i);
+                        }
+                        String hex = s.substring(i, i + 4);
+                        for (int k = 0; k < 4; k++) {
+                            if (Character.digit(hex.charAt(k), 16) < 0) {
+                                throw new IllegalArgumentException("bad \\u escape at " + i);
+                            }
+                        }
+                        b.append((char) Integer.parseInt(hex, 16));
                         i += 4;
                     }
                     default -> throw new IllegalArgumentException("bad escape at " + i);

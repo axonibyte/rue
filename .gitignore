@@ -15,6 +15,14 @@
 # Python's bytecode cache, written beside any module that is imported: the
 # Python SDK, the tenants' hook fixtures. Build output, never source.
 __pycache__/
+# The non-Rust SDKs' own build output: mix's, javac's (sdk/conform-all.sh
+# compiles into build/), maven's, and dotnet's.
+/sdk/elixir/_build/
+/sdk/elixir/deps/
+/sdk/java/build/
+/sdk/java/target/
+/sdk/dotnet/**/bin/
+/sdk/dotnet/**/obj/
 
 ### reaper ###
 # reaper pulls session results into out/ at the tree root.

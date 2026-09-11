@@ -19,7 +19,8 @@ defmodule RueHook do
 
   Secrets cross this boundary in exactly four messages (7.5). An
   `execute.run` hands its handler the resolved body with its secrets
-  intact; `expose/1` is how a value is read, named so that using one is a
+  intact, each value a `RueHook.Resolved` that formats as `"<secret>"`;
+  `expose/1` is how a value is read, named so that using one is a
   visible act in the code that does it.
   """
 
@@ -30,10 +31,11 @@ defmodule RueHook do
   @doc """
   The text of a resolved value.
 
-  Named rather than reached through the map so that reading a secret is a
-  visible act. `inspect/1` on a body shows a secret's text like any other
-  map value, so do not log one.
+  Named rather than reached through the value so that reading a secret is
+  a visible act: inspecting, interpolating or encoding a
+  `RueHook.Resolved` secret gives its redaction, never its text.
   """
+  def expose(%RueHook.Resolved{text: text}), do: text
   def expose(%{"text" => text}), do: text
   def expose(other) when is_binary(other), do: other
 
@@ -42,8 +44,10 @@ defmodule RueHook do
     prim
     |> Map.values()
     |> Enum.any?(fn
+      %RueHook.Resolved{secret: true} -> true
       %{"secret" => true} -> true
-      list when is_list(list) -> Enum.any?(list, &match?([_, %{"secret" => true}], &1))
+      list when is_list(list) ->
+        Enum.any?(list, &(match?([_, %{"secret" => true}], &1) or match?([_, %RueHook.Resolved{secret: true}], &1)))
       _ -> false
     end)
   end

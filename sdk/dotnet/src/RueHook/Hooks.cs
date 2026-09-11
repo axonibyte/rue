@@ -161,9 +161,16 @@ public sealed class Hooks
         new Dictionary<string, object?> { ["stdout"] = stdout, ["outputs"] = outputs };
 
     /// The text of a resolved value. Named rather than reached through the
-    /// node so that reading a secret is a visible act in the code that does it.
-    public static string Expose(JsonNode? resolved) =>
-        resolved?["text"]?.GetValue<string>() ?? string.Empty;
+    /// node so that reading a secret is a visible act in the code that does
+    /// it: formatting or serializing a <see cref="Resolved"/> secret gives its
+    /// redaction, never its text.
+    public static string Expose(JsonNode? resolved) => resolved switch
+    {
+        JsonValue v when v.TryGetValue<Resolved>(out var r) => r.Text,
+        JsonValue v when v.TryGetValue<string>(out var s) => s,
+        JsonObject o => o["text"]?.GetValue<string>() ?? string.Empty,
+        _ => string.Empty,
+    };
 
     /// <summary>
     /// Answer one request frame. The reply always carries the request's id,
@@ -173,7 +180,8 @@ public sealed class Hooks
     /// </summary>
     public JsonObject Answer(JsonObject request)
     {
-        var id = request["id"]?.DeepClone();
+        // A node has one parent, so each frame gets its own copy of the id.
+        var id = request["id"];
         var kind = Str(request, "kind");
         var opName = Str(request, "op");
         var row = Op.Find(kind, opName);
@@ -182,10 +190,18 @@ public sealed class Hooks
             return RefusalFrame(id, $"{kind}.{opName} is not an op of this protocol");
         }
 
-        Dictionary<string, object?> fields;
+        JsonObject reply;
         try
         {
-            fields = Dispatch(row, request);
+            var fields = Dispatch(row, request);
+            // Serialized inside the try: a value the serializer refuses -- a
+            // NaN a handler put in its answer -- threw out of Answer and
+            // ended the loop that called it.
+            reply = new JsonObject { ["id"] = id?.DeepClone(), ["ok"] = true };
+            foreach (var (k, v) in fields)
+            {
+                reply[k] = JsonSerializer.SerializeToNode(v);
+            }
         }
         catch (Refusal why)
         {
@@ -194,12 +210,6 @@ public sealed class Hooks
         catch (Exception e)
         {
             return RefusalFrame(id, $"{e.GetType().Name}: {e.Message}");
-        }
-
-        var reply = new JsonObject { ["id"] = id, ["ok"] = true };
-        foreach (var (k, v) in fields)
-        {
-            reply[k] = JsonSerializer.SerializeToNode(v);
         }
 
         foreach (var f in row.RequiredReply)
@@ -215,8 +225,8 @@ public sealed class Hooks
         return reply;
     }
 
-    private static JsonObject RefusalFrame(JsonNode? id, string why) =>
-        new() { ["id"] = id, ["ok"] = false, ["error"] = why };
+    internal static JsonObject RefusalFrame(JsonNode? id, string why) =>
+        new() { ["id"] = id?.DeepClone(), ["ok"] = false, ["error"] = why };
 
     private static string Str(JsonObject o, string k) =>
         o[k] is { } n && n.GetValueKind() == JsonValueKind.String ? n.GetValue<string>() : "";
@@ -293,8 +303,11 @@ public sealed class Hooks
                     {
                         case "run":
                             {
-                                var body = r["body"] as JsonArray ?? new JsonArray();
-                                return One("output", h.Run(host, inst, body.ToList()));
+                                // Every resolved value arrives as a Resolved, so a
+                                // secret in the body cannot be formatted onto a
+                                // command line or into a log by accident (7.11).
+                                var body = Resolved.Body(r["body"] as JsonArray ?? new JsonArray());
+                                return One("output", h.Run(host, inst, body));
                             }
                         case "read_fact":
                             {

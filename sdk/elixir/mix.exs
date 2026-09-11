@@ -17,7 +17,9 @@ defmodule RueHook.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: [],
       description:
-        "A conformance-tested client of rue's hook protocol (docs/hook-protocol.md v1)."
+        "A conformance-tested client of rue's hook protocol (docs/hook-protocol.md v1).",
+      # Hex will not publish a package that declares no license.
+      package: [licenses: ["BSD-2-Clause"]]
     ]
   end
 

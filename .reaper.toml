@@ -105,7 +105,7 @@ bash ci/test-windows.sh"""
 # and not on the guest's small root disk. Caches are given to every verb;
 # the host run has its own toolchain and target caches since the container's
 # were built under other paths.
-cache = ["cabal", "build-dir", "ghcup", "cargo", "target", "uv", "rustup-host", "cargo-host", "target-host", "dotnet"]
+cache = ["cabal", "build-dir", "ghcup", "cargo", "target", "uv", "rustup-host", "cargo-host", "target-host", "dotnet", "maven"]
 
 [[guests]]
 name = "freebsd-15.1"
@@ -133,17 +133,20 @@ RUE_CHECK_SKIP_OK=bash-syntax,shellcheck,cabal-build,cabal-test sh tools/check.s
 sh tenants/e2e/run.sh"""
 
 # The run every guest inherits unless it overrides the key (FreeBSD does):
-# host execution, the SDK conformance runs, then the tier 5 and 6 harness
-# on the guest itself.
+# host execution, the SDK conformance runs and the SDKs' own suites, then
+# the tier 5 and 6 harness on the guest itself.
 #
 # The non-Rust SDKs are judged here and not on FreeBSD, and not in the
 # local gate: the workstation is a base FreeBSD box with no Elixir, JDK or
 # .NET, and its python is `python3.12` rather than `python3` (a Phase 3
 # discovery). Elixir is apt's (1.18 on OTP 27), which ships `JSON` in the
 # standard library, so the SDK needs no Hex dependency and the guest needs
-# no Hex fetch. Java is a JDK only: sdk/conform-all.sh compiles with javac
-# through an @argfile, so nothing here resolves a maven plugin over the
-# network, and the POM is proven by the pipeline's maven step instead.
+# no Hex fetch. Java's conformance compiles with javac through an @argfile
+# and resolves nothing over the network; its JUnit suite (sdk/test-all.sh)
+# runs under apt's maven, which fetches JUnit and its plugins from Maven
+# Central into the maven cache, and the POM's packaging is proven by the
+# pipeline's maven step. The .NET suite restores xUnit from NuGet into the
+# dotnet cache the same way.
 # .NET is not in Ubuntu's index at all, so it comes from Microsoft's
 # install script into a cache -- the same fetch-to-a-file-then-run idiom
 # ghcup and rustup already use here, and into /tank because the SDK is most
@@ -156,7 +159,7 @@ exec = "host"
 cmd = """
 apt-get -qq update && \
 apt-get -qq install -y --no-install-recommends cron nftables curl gcc python3 elixir \
-openjdk-21-jdk-headless && \
+openjdk-21-jdk-headless maven && \
 mkdir -p $REAPER_CACHE_RUSTUP_HOST && \
 { test -x $REAPER_CACHE_CARGO_HOST/bin/cargo || { \
     curl -sSf https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init -o $REAPER_CACHE_RUSTUP_HOST/rustup-init && \
@@ -171,9 +174,11 @@ mkdir -p $REAPER_CACHE_DOTNET && \
     chmod 0755 $REAPER_CACHE_DOTNET/dotnet-install.sh && \
     $REAPER_CACHE_DOTNET/dotnet-install.sh --channel 8.0 --install-dir $REAPER_CACHE_DOTNET --no-path; }; } && \
 export DOTNET_ROOT=$REAPER_CACHE_DOTNET DOTNET_CLI_HOME=$REAPER_CACHE_DOTNET/home \
-PATH=$REAPER_CACHE_DOTNET:$PATH DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 && \
+PATH=$REAPER_CACHE_DOTNET:$PATH DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
+NUGET_PACKAGES=$REAPER_CACHE_DOTNET/nuget MAVEN_ARGS=-Dmaven.repo.local=$REAPER_CACHE_MAVEN && \
 cargo build --release --locked -p rue && \
 sh sdk/conform-all.sh && \
+sh sdk/test-all.sh && \
 sh tenants/e2e/run.sh"""
 
 [sync]

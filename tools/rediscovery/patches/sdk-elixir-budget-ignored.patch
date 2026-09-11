@@ -1,0 +1,23 @@
+# Reverts: a handler over its budget answers ok:false naming the overrun (the deadline handling of 7.11) rather than arriving late or as a silence
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/elixir/lib/rue_hook/hooks.ex
++++ b/sdk/elixir/lib/rue_hook/hooks.ex
+@@ -75,17 +75,7 @@
+   def answer_within(%__MODULE__{} = h, request, nil), do: answer(h, request)
+ 
+   def answer_within(%__MODULE__{} = h, request, budget_ms) when is_integer(budget_ms) do
+-    {took_us, reply} = :timer.tc(fn -> answer(h, request) end)
+-    took_ms = div(took_us, 1000)
+-
+-    if took_ms > budget_ms and reply["ok"] == true do
+-      refusal(
+-        Map.get(request, "id"),
+-        "the handler took #{took_ms}ms, over its #{budget_ms}ms budget; answering late is worse than answering no"
+-      )
+-    else
+-      reply
+-    end
++    answer(h, request)
+   end
+ 
+   @doc false

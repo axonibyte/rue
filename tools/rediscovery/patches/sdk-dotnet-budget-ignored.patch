@@ -1,0 +1,18 @@
+# Reverts: a handler over its budget answers ok:false naming the overrun (the deadline handling of 7.11) rather than arriving late or as a silence
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/dotnet/src/RueHook/Serve.cs
++++ b/sdk/dotnet/src/RueHook/Serve.cs
+@@ -102,13 +102,6 @@
+             var clock = Stopwatch.StartNew();
+             var reply = hooks.Answer(frame);
+             clock.Stop();
+-            if (budget is { } b && clock.Elapsed > b && reply["ok"] is JsonValue ok && ok.GetValue<bool>())
+-            {
+-                reply = Hooks.RefusalFrame(frame["id"],
+-                    $"the handler took {(long)clock.Elapsed.TotalMilliseconds}ms, over its " +
+-                    $"{(long)b.TotalMilliseconds}ms budget; answering late is worse than answering no");
+-            }
+-
+             Write(output, reply, frame["id"]);
+         }
+     }

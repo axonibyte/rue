@@ -1,0 +1,13 @@
+# Reverts: a line nested too deep for json is skipped like any other unparseable line; json raises RecursionError, which is not a ValueError, and it ended the serve loop
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/python/rue_hook/serve.py
++++ b/sdk/python/rue_hook/serve.py
+@@ -58,7 +58,7 @@
+             continue
+         try:
+             frame = json.loads(line)
+-        except (ValueError, RecursionError):
++        except ValueError:
+             # RecursionError is what json raises on deep nesting, and it is
+             # not a ValueError: one line of brackets ended the hook.
+             continue

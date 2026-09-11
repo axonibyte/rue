@@ -1,0 +1,38 @@
+# Reverts: a reply the serializer refuses (a NaN a handler put in it) is answered with a refusal naming why; serialized outside the handler's try, it threw out of Answer and ended the loop
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/dotnet/src/RueHook/Hooks.cs
++++ b/sdk/dotnet/src/RueHook/Hooks.cs
+@@ -190,18 +190,10 @@
+             return RefusalFrame(id, $"{kind}.{opName} is not an op of this protocol");
+         }
+ 
+-        JsonObject reply;
++        Dictionary<string, object?> fields;
+         try
+         {
+-            var fields = Dispatch(row, request);
+-            // Serialized inside the try: a value the serializer refuses -- a
+-            // NaN a handler put in its answer -- threw out of Answer and
+-            // ended the loop that called it.
+-            reply = new JsonObject { ["id"] = id?.DeepClone(), ["ok"] = true };
+-            foreach (var (k, v) in fields)
+-            {
+-                reply[k] = JsonSerializer.SerializeToNode(v);
+-            }
++            fields = Dispatch(row, request);
+         }
+         catch (Refusal why)
+         {
+@@ -212,6 +204,12 @@
+             return RefusalFrame(id, $"{e.GetType().Name}: {e.Message}");
+         }
+ 
++        var reply = new JsonObject { ["id"] = id?.DeepClone(), ["ok"] = true };
++        foreach (var (k, v) in fields)
++        {
++            reply[k] = JsonSerializer.SerializeToNode(v);
++        }
++
+         foreach (var f in row.RequiredReply)
+         {
+             if (reply[f] is null)

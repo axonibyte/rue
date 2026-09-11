@@ -272,7 +272,12 @@ unit. What is in place:
   `docs/hook-protocol-v1.json`; each SDK of 7.11 carries a transcription
   of it that `tools/lint-hook-ops.sh` binds to `OPS`, and `rue sdk-conform`
   judges any of them against the scripted world of docs/sdk-conformance.md.
-  `rue check --ir` gives an embedder the IR a terminal check produces, and
+  Every SDK hands an `execute.run` handler its resolved values as a type
+  that formats and serializes a secret as `<secret>` and gives its text
+  only through `expose` (7.11's "without ever placing them on a command
+  line"), and bounds a handler by an optional budget, answering `ok: false`
+  with the overrun when it is spent, because the engine's deadline is not
+  on the wire for an SDK to see. `rue check --ir` gives an embedder the IR a terminal check produces, and
   the verdict the daemon reaches for an embedded apply is the one
   `rue check` gives on the same text. A hook may stand in for the
   controller: `hook(:x, transport: :controller)` puts the controller's

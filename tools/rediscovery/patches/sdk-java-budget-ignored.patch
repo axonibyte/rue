@@ -1,0 +1,15 @@
+# Reverts: a handler over its budget answers ok:false naming the overrun (the deadline handling of 7.11) rather than arriving late or as a silence
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/java/src/main/java/dev/rue/hook/Serve.java
++++ b/sdk/java/src/main/java/dev/rue/hook/Serve.java
+@@ -89,10 +89,6 @@
+             long started = System.nanoTime();
+             Map<String, Object> reply = hooks.answer(frame);
+             Duration took = Duration.ofNanos(System.nanoTime() - started);
+-            if (budget != null && took.compareTo(budget) > 0 && Boolean.TRUE.equals(reply.get("ok"))) {
+-                reply = refusal(frame.get("id"), "the handler took " + took.toMillis() + "ms, over its "
+-                        + budget.toMillis() + "ms budget; answering late is worse than answering no");
+-            }
+             String text;
+             try {
+                 text = Json.write(reply);

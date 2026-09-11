@@ -14,6 +14,7 @@
     <LangVersion>latest</LangVersion>
     <PackageId>Rue.Hook</PackageId>
     <Version>0.2.0</Version>
+    <PackageLicenseExpression>BSD-2-Clause</PackageLicenseExpression>
     <Description>A conformance-tested client of rue's hook protocol (docs/hook-protocol.md v1).</Description>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>

@@ -16,7 +16,7 @@ import time
 from typing import Optional
 
 from .hooks import Hooks
-from .proto import HOOK_PROTOCOL
+from .proto import HOOK_PROTOCOL, Resolved
 
 
 def registration(name: str, hooks: Hooks) -> dict:
@@ -29,10 +29,25 @@ def registration(name: str, hooks: Hooks) -> dict:
     }
 
 
+def _encode(v: object) -> str:
+    # A Resolved a handler put in its reply is written as it formats: a
+    # secret as its redaction, never its text. Anything else json cannot
+    # write is the handler's mistake, refused by name in _pump.
+    if isinstance(v, Resolved):
+        return str(v)
+    raise TypeError(f"Object of type {type(v).__name__} is not JSON serializable")
+
+
 def _write(out, frame: dict) -> None:
-    # Flushed every time: an unflushed reply is a silence, and silence is
-    # a refusal of the step with nothing to tell the operator.
-    out.write(json.dumps(frame) + "\n")
+    # Serialized before anything is written, so a frame that cannot be
+    # written leaves no half line behind. allow_nan=False because json
+    # otherwise spells a NaN or an infinity as a bare NaN or Infinity, which
+    # is not JSON: the engine cannot parse the line, and a reply it cannot
+    # parse reads as a silence. Flushed every time: an unflushed reply is a
+    # silence, and silence is a refusal of the step with nothing to tell the
+    # operator.
+    text = json.dumps(frame, default=_encode, allow_nan=False)
+    out.write(text + "\n")
     out.flush()
 
 
@@ -43,7 +58,9 @@ def _pump(reader, writer, hooks: Hooks, budget: Optional[float]) -> None:
             continue
         try:
             frame = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
+            # RecursionError is what json raises on deep nesting, and it is
+            # not a ValueError: one line of brackets ended the hook.
             continue
         if not isinstance(frame, dict) or "event" in frame or "kind" not in frame:
             continue
@@ -62,7 +79,13 @@ def _pump(reader, writer, hooks: Hooks, budget: Optional[float]) -> None:
                     "budget; answering late is worse than answering no"
                 ),
             }
-        _write(writer, reply)
+        try:
+            _write(writer, reply)
+        except (TypeError, ValueError) as e:
+            # A reply json cannot write -- a set, a NaN a handler put in it --
+            # is refused by name rather than ending the loop.
+            _write(writer, {"id": frame.get("id"), "ok": False,
+                            "error": f"the reply could not be written: {e}"})
 
 
 def serve_stdio(name: str, hooks: Hooks, budget: Optional[float] = None) -> None:

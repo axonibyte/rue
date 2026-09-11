@@ -1,0 +1,13 @@
+# Reverts: an integral double is written as a long only when it fits one; 1e20 cast to a long is Long.MAX_VALUE, a different number
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/java/src/main/java/dev/rue/hook/Json.java
++++ b/sdk/java/src/main/java/dev/rue/hook/Json.java
+@@ -44,7 +44,7 @@
+             // a value that arrived as an integer leaves as one -- when it
+             // fits a long. Casting 1e20 to a long gives Long.MAX_VALUE, a
+             // different number, so a larger one is written as itself.
+-            if (d == Math.rint(d) && Math.abs(d) < 0x1p63) {
++            if (d == Math.rint(d) && !d.isInfinite()) {
+                 b.append((long) (double) d);
+             } else {
+                 b.append(d);

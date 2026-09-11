@@ -116,8 +116,8 @@ while IFS="$tab" read -r c1 c2 c3 c4 c5 c6 extra; do
         continue
     fi
     case $c4 in
-        cabal|cargo) ;;
-        *) echo "check-patches: $c1: suite '$c4' is neither cabal nor cargo" >&2; rc=1 ;;
+        cabal|cargo|python|mix|maven|dotnet) ;;
+        *) echo "check-patches: $c1: suite '$c4' is not one of cabal, cargo, python, mix, maven, dotnet" >&2; rc=1 ;;
     esac
     case $c2 in
         *[!0-9]*|'') echo "check-patches: $c1: tier '$c2' is not a number" >&2; rc=1 ;;

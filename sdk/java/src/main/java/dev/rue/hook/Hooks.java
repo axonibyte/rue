@@ -159,9 +159,14 @@ public final class Hooks {
     }
 
     /** The text of a resolved value. Named rather than reached through the
-     * map so that reading a secret is a visible act in the code that does it. */
+     * value so that reading a secret is a visible act in the code that does
+     * it: formatting a {@link Resolved} secret gives its redaction, never
+     * its text. */
     @SuppressWarnings("unchecked")
     public static String expose(Object resolved) {
+        if (resolved instanceof Resolved r) {
+            return r.text();
+        }
         if (resolved instanceof Map<?, ?> m) {
             return String.valueOf(((Map<String, Object>) m).get("text"));
         }
@@ -311,7 +316,10 @@ public final class Hooks {
                 if (execute == null) throw Refusal.unserved(row.kind(), row.op());
                 switch (row.op()) {
                     case "run" -> {
-                        List<Object> body = (List<Object>) r.getOrDefault("body", List.of());
+                        // Every resolved value arrives as a Resolved, so a
+                        // secret in the body cannot be formatted onto a
+                        // command line or into a log by accident (7.11).
+                        List<Object> body = Resolved.body((List<Object>) r.getOrDefault("body", List.of()));
                         return one("output", execute.run(host, inst, body));
                     }
                     case "read_fact" -> {

@@ -1,0 +1,17 @@
+# Reverts: a request of a kind that was never an atom is refused as unserved; String.to_existing_atom raised on it and ended the Client GenServer and the host's connection
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sdk/elixir/lib/rue_hook/client.ex
++++ b/sdk/elixir/lib/rue_hook/client.ex
+@@ -211,10 +211,8 @@
+   atom, and that ended this GenServer and the host's connection with it.
+   """
+   def hook_for(hooks, kind) do
+-    if kind in RueHook.Proto.kinds() do
+-      field = String.to_existing_atom(kind)
+-      hooks |> Map.values() |> Enum.find(fn h -> Map.get(h, field) != nil end)
+-    end
++    field = String.to_existing_atom(kind)
++    hooks |> Map.values() |> Enum.find(fn h -> Map.get(h, field) != nil end)
+   end
+ 
+   defp send_frame(sock, frame), do: :gen_tcp.send(sock, Serve.encode(frame) <> "\n")

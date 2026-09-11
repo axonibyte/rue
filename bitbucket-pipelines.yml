@@ -156,12 +156,13 @@ definitions:
         script:
           - bash ci/build-target.sh x86_64-pc-windows-gnu
 
-    # The SDKs of ROADMAP.md 7.11 that are not Rust, each judged against
-    # `rue sdk-conform` in the image that carries its toolchain, using the rue
-    # buildLinuxAmd64 just built (ci/sdk-conform.sh). The Rust SDK and the
-    # shim are workspace crates, so doFetchAndTest already judges them. These
-    # run after the builds and before a deploy, so no tag publishes binaries
-    # whose SDKs were not judged against them.
+    # The SDKs of ROADMAP.md 7.11 that are not Rust, each in the image that
+    # carries its toolchain: first its own suite (sdk/test-all.sh), then
+    # judged against `rue sdk-conform` using the rue buildLinuxAmd64 just
+    # built (ci/sdk-conform.sh). The Rust SDK and the shim are workspace
+    # crates, so doFetchAndTest already covers them. These run after the
+    # builds and before a deploy, so no tag publishes binaries whose SDKs
+    # were not tested and judged against them.
     #
     # Every image is glibc 2.39 or later, because the binary is: built on
     # trixie, its std links pidfd_spawnp and pidfd_getpid at GLIBC_2.39. A
@@ -170,27 +171,32 @@ definitions:
     # to a trixie and a noble variant. ci/sdk-conform.sh runs `rue --version`
     # first, so an image that cannot load the binary fails there, by name.
     - step: &conformPython
-        name: SDK conformance (Python)
+        name: SDK suite and conformance (Python)
         image: python:3.12-slim-trixie
         script:
+          - sh sdk/test-all.sh python
           - sh ci/sdk-conform.sh python
 
     - step: &conformElixir
-        # sdk/conform-all.sh compiles the package with mix before judging it.
-        name: SDK conformance (Elixir)
+        # The ExUnit suite compiles with warnings as errors; sdk/conform-all.sh
+        # compiles the package with mix before judging it.
+        name: SDK suite and conformance (Elixir)
         image: hexpm/elixir:1.18.4-erlang-27.3.4.16-debian-trixie-20260824-slim
         script:
+          - sh sdk/test-all.sh elixir
           - sh ci/sdk-conform.sh elixir
 
     - step: &conformJava
-        # The conformance run compiles with javac and needs no network; this
-        # step also builds the jar with maven, which is what proves the POM
-        # (the Ubuntu reaper guest carries a JDK and no maven).
-        name: SDK conformance (Java)
+        # The JUnit suite first (`mvn test`, through sdk/test-all.sh); the
+        # jar is then built with maven, which is what proves the POM, and
+        # runs the suite again on its way. The conformance run compiles with
+        # javac and needs no network.
+        name: SDK suite and conformance (Java)
         image: maven:3.9.16-eclipse-temurin-21-noble
         caches:
           - maven
         script:
+          - sh sdk/test-all.sh java
           - mvn -B -q -f sdk/java/pom.xml package
           - sh ci/sdk-conform.sh java
 
@@ -198,13 +204,14 @@ definitions:
         # On Linux: 7.11 pairs .NET with the Windows guest, which Phase 3W
         # still owns (ROADMAP.md, Phase 4, "not proven"). The pack proves the
         # NuGet package builds, with warnings as errors.
-        name: SDK conformance (.NET)
+        name: SDK suite and conformance (.NET)
         image: mcr.microsoft.com/dotnet/sdk:8.0-noble
         caches:
           - dotnetcore
         script:
           - export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
           - dotnet pack sdk/dotnet/src/RueHook -c Release -o dist-nuget
+          - sh sdk/test-all.sh dotnet
           - sh ci/sdk-conform.sh dotnet
 
     - step: &doDeploy
