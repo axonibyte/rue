@@ -22,6 +22,7 @@ failure, and exits 0 only if every phase ran and passed:
 | `ecodes` | `Rue.Proto.Diagnostics` and the roadmap's section 6.7 table name the same codes, and no `"E0xxx"` literal exists elsewhere |
 | `rcodes` | Every R-code of Appendix D is raised somewhere and asserted by a test, and no `"R0xxx"` literal exists outside the enumerations |
 | `hook-ops` | The ops table of `docs/hook-protocol.md` and `OPS` in `rue-hook-proto` name the same 26 ops, in both directions |
+| `hook-proto-frozen` | Every released hook protocol document (`docs/hook-protocol-v<N>.json`) still has the digest pinned when it was released, and the current `HOOK_PROTOCOL` has a document |
 | `golden-hygiene` | Every expected file has no CR, no trailing whitespace, exactly one trailing LF; JSON begins with `{` |
 | `rediscovery-patches` | Every row of the rediscovery table names a patch that still applies to the tree, and every patch is listed |
 | `darwin-deps` | No crate in the darwin dependency graph (`cargo tree --target *-apple-darwin`) is in `tools/darwin-denylist.txt`: the darwin binaries cross-link with zig and no macOS SDK, which a framework-linking crate would break |
@@ -335,6 +336,19 @@ Three enumerations are bound together so none can drift: `tools/lint-hook-ops.sh
 `sdk/rust/tests/conform.rs` ties `OPS` to the cases the suite actually
 drove. An op that gains a row fails the gate until it is documented and
 fails the tests until it is driven.
+
+And the whole of it is frozen, which is a fourth binding and the only one
+that runs across time rather than across files. `docs/hook-protocol-v1.json`
+is a golden like any other -- `rue-goldens` writes it from `OPS`, and the
+suite compares it byte for byte -- but a golden alone freezes nothing: change
+an op, regenerate, and v1 means something new with every test green. So
+`tools/lint-hook-proto-frozen.sh` (the `hook-proto-frozen` phase) pins each
+released version's digest, and the two halves are only useful together: the
+golden catches an op changing without the document, the pin catches the
+document changing at all. The way through both is to bump `HOOK_PROTOCOL`,
+which moves the generated path to `-v2.json` and leaves v1 alone.
+`tests/tier3/t_hook_proto_frozen.sh` checks that every in-place change is
+refused and that that one path still passes.
 
 ## Goldens
 

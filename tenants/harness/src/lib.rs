@@ -580,6 +580,58 @@ impl NegativeCase {
 /// The path of the generated transition table.
 pub const STATE_TABLE: &str = "docs/state-transitions.tsv";
 
+/// The frozen document for the hook protocol version this tree speaks:
+/// `docs/hook-protocol-v1.json` while `HOOK_PROTOCOL` is 1.
+///
+/// "Frozen" is enforced in two halves that are useless apart. This golden
+/// is compared byte for byte like every other, so an op, a field or a kind
+/// that changes without the document changing fails the suite. But a
+/// golden can be regenerated, and a regenerated v1 is exactly the silent
+/// protocol change the freeze exists to prevent -- so
+/// `tools/lint-hook-proto-frozen.sh` pins the v1 document's digest, and
+/// regenerating it fails the gate. The only way through both is to bump
+/// `HOOK_PROTOCOL`, which moves this path to `-v2.json` and leaves v1's
+/// bytes where they are for anybody still speaking it.
+pub fn hook_protocol_path() -> String {
+    format!("docs/hook-protocol-v{}.json", rue_hook_proto::HOOK_PROTOCOL)
+}
+
+/// The protocol as data: its version, its kinds, and every op with the
+/// fields it sends and the fields a reply must and may carry. Taken from
+/// `rue_hook_proto`'s tables -- the one source the engine, every SDK's
+/// guard and the conformance runner already agree with -- so the frozen
+/// document cannot describe a protocol nothing implements.
+pub fn hook_protocol_document() -> serde_json::Value {
+    use rue_hook_proto::op::{Direction, HOOK_PROTOCOL, KINDS, OPS};
+    let ops: Vec<serde_json::Value> = OPS
+        .iter()
+        .map(|o| {
+            serde_json::json!({
+                "kind": o.kind,
+                "op": o.op,
+                "request": o.request,
+                "required_reply": o.required_reply,
+                "optional_reply": o.optional_reply,
+                "secret": o.secret.map(|d| match d {
+                    Direction::ToHook => "to_hook",
+                    Direction::ToEngine => "to_engine",
+                }),
+                "optional": o.optional,
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "protocol": HOOK_PROTOCOL,
+        "frozen": format!(
+            "hook protocol v{HOOK_PROTOCOL}, generated from rue-hook-proto by rue-goldens. \
+             Never edited: any change to an op, a field or a kind is a new protocol \
+             version, with a new document beside this one (docs/ROADMAP.md, Phase 4)."
+        ),
+        "kinds": KINDS,
+        "ops": ops,
+    })
+}
+
 /// A case: its directory, the plan IR resolved from its text, and whether
 /// it has an explain golden (tenant cases do; negatives do not).
 #[derive(Debug, Clone)]
@@ -751,6 +803,10 @@ pub fn artifacts() -> Vec<Artifact> {
     out.push(Artifact {
         path: STATE_TABLE.to_string(),
         bytes: Ok(render_table().into_bytes()),
+    });
+    out.push(Artifact {
+        path: hook_protocol_path(),
+        bytes: canonical::encode(&hook_protocol_document()).map_err(|e| e.to_string()),
     });
     out
 }

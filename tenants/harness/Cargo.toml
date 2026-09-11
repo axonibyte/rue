@@ -18,6 +18,8 @@ path = "src/bin/rue-goldens.rs"
 # directory and nothing else may.
 [dependencies]
 rue-core = { path = "../../core" }
+# The hook protocol's own tables, rendered to the frozen v1 document.
+rue-hook-proto = { path = "../../hook-proto" }
 rue-render = { path = "../../render" }
 rue-surface = { path = "../../surface" }
 serde.workspace = true

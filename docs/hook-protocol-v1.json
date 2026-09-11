@@ -1,0 +1,372 @@
+{
+  "frozen": "hook protocol v1, generated from rue-hook-proto by rue-goldens. Never edited: any change to an op, a field or a kind is a new protocol version, with a new document beside this one (docs/ROADMAP.md, Phase 4).",
+  "kinds": [
+    "journal",
+    "inventory",
+    "execute",
+    "probe",
+    "approval",
+    "secrets",
+    "notify",
+    "scheduler"
+  ],
+  "ops": [
+    {
+      "kind": "journal",
+      "op": "append",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "entry"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "inventory",
+      "op": "list",
+      "optional": false,
+      "optional_reply": [],
+      "request": [],
+      "required_reply": [
+        "hosts"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "run",
+      "optional": false,
+      "optional_reply": [
+        "facts"
+      ],
+      "request": [
+        "host",
+        "instance",
+        "body",
+        "env",
+        "secrets"
+      ],
+      "required_reply": [
+        "output"
+      ],
+      "secret": "to_hook"
+    },
+    {
+      "kind": "execute",
+      "op": "read_fact",
+      "optional": false,
+      "optional_reply": [
+        "content"
+      ],
+      "request": [
+        "host",
+        "shape"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "bootstrap_state",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host"
+      ],
+      "required_reply": [
+        "state"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "clock",
+      "optional": true,
+      "optional_reply": [],
+      "request": [
+        "host"
+      ],
+      "required_reply": [
+        "epoch_s"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "instance_dir_create",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "instance"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "instance_dir_remove",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "instance"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "instance_dir_list",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host"
+      ],
+      "required_reply": [
+        "dirs"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "put_file",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "instance",
+        "rel",
+        "content",
+        "mode"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "replace_file",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "instance",
+        "rel",
+        "content"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "get_file",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "instance",
+        "rel"
+      ],
+      "required_reply": [
+        "content"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "remove_file",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "instance",
+        "rel"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "execute",
+      "op": "host_lock",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "probe",
+      "op": "observe",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "probe"
+      ],
+      "required_reply": [
+        "fact"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "approval",
+      "op": "authenticators",
+      "optional": false,
+      "optional_reply": [],
+      "request": [],
+      "required_reply": [
+        "authenticators"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "approval",
+      "op": "challenge",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "instance",
+        "digest",
+        "scope",
+        "context"
+      ],
+      "required_reply": [
+        "challenge"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "approval",
+      "op": "verify",
+      "optional": false,
+      "optional_reply": [
+        "reason"
+      ],
+      "request": [
+        "instance",
+        "digest",
+        "scope",
+        "authenticator",
+        "proof"
+      ],
+      "required_reply": [
+        "verified"
+      ],
+      "secret": null
+    },
+    {
+      "kind": "secrets",
+      "op": "resolve",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "ref"
+      ],
+      "required_reply": [
+        "value"
+      ],
+      "secret": "to_engine"
+    },
+    {
+      "kind": "secrets",
+      "op": "deliver",
+      "optional": false,
+      "optional_reply": [
+        "receipt"
+      ],
+      "request": [
+        "instance",
+        "label",
+        "value"
+      ],
+      "required_reply": [
+        "accepted"
+      ],
+      "secret": "to_hook"
+    },
+    {
+      "kind": "notify",
+      "op": "deliver",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "level",
+        "subject",
+        "body"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "scheduler",
+      "op": "install",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "artifact",
+        "deadline"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "scheduler",
+      "op": "arm",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "artifact",
+        "deadline"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "scheduler",
+      "op": "rearm",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "artifact",
+        "deadline"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "scheduler",
+      "op": "disarm",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "artifact",
+        "deadline"
+      ],
+      "required_reply": [],
+      "secret": null
+    },
+    {
+      "kind": "scheduler",
+      "op": "present",
+      "optional": false,
+      "optional_reply": [],
+      "request": [
+        "host",
+        "artifact",
+        "deadline"
+      ],
+      "required_reply": [
+        "present"
+      ],
+      "secret": null
+    }
+  ],
+  "protocol": 1
+}

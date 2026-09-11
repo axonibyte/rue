@@ -137,3 +137,4 @@ nonfile-fact-cannot-drift.patch	1	-	cargo	an_appliance_fact_moved_under_the_plan
 nonfile-fact-unwatched.patch	1	-	cargo	a_do_that_touches_another_op_s_appliance_fact_is_r0201	-
 journal-sinks-truncated.patch	1	-	cargo	a_site_may_declare_more_than_one_journal_sink_and_keeps_all_of_them	-
 rehearsal-blocks-the-real-plan.patch	1	-	cargo	a_rehearsal_neither_blocks_the_real_plan_nor_is_blocked_by_it	-
+hook-protocol-changes-silently.patch	2	-	cargo	every_artifact_matches_its_expected_file	-

@@ -32,6 +32,9 @@ for d in tenants docs; do
     find "$d" -type d -name expected -exec find {} -type f \; >> "$tmp/list"
 done
 [ -f docs/state-transitions.tsv ] && echo docs/state-transitions.tsv >> "$tmp/list"
+for f in docs/hook-protocol-v*.json; do
+    [ -f "$f" ] && echo "$f" >> "$tmp/list"
+done
 
 if [ ! -s "$tmp/list" ]; then
     echo "lint-goldens: no golden files under $root; nothing checked" >&2

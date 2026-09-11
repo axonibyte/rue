@@ -915,6 +915,7 @@ name = "rue-tenants"
 version = "0.1.0"
 dependencies = [
  "rue-core",
+ "rue-hook-proto",
  "rue-render",
  "rue-surface",
  "serde",

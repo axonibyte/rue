@@ -1,0 +1,13 @@
+# Reverts: hook protocol v1 is frozen and its tables are a golden (docs/hook-protocol-v1.json); here inventory.list stops requiring `hosts`, so a hook answering ok:true with no hosts is no longer R0303 -- a real protocol change made in place, which every hook written against v1 would inherit without being told.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/hook-proto/src/op.rs
++++ b/hook-proto/src/op.rs
+@@ -96,7 +96,7 @@
+         kind: "inventory",
+         op: "list",
+         request: &[],
+-        required_reply: &["hosts"],
++        required_reply: &[],
+         optional_reply: &[],
+         secret: None,
+         optional: false,

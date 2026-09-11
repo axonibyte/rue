@@ -6,6 +6,18 @@ on the control socket after `hello` and `register`
 The engine sends requests; the hook answers each by id. A hook serves the
 kinds it registered.
 
+**Version 1 is frozen.** `docs/hook-protocol-v1.json` is this protocol as
+data -- every kind, every op, the fields each request sends and each reply
+must and may carry, and which four messages may carry a secret -- generated
+from `rue-hook-proto`'s tables, the same ones the engine, every SDK's guard
+and the conformance runner read. Its digest is pinned in
+`tools/lint-hook-proto-frozen.sh`, so the document cannot be regenerated in
+place: a change to an op, a field or a kind is a new protocol version, with
+`HOOK_PROTOCOL` bumped, a `-v2.json` beside this one, and v1's bytes left
+where they are for anything still speaking it. A hook written against this
+page today keeps working until something says, in a new document, that it
+will not.
+
 ```
 engine → hook: {"id": 7, "kind": "<kind>", "op": "<op>", ...}
 hook → engine: {"id": 7, "ok": true, ...}

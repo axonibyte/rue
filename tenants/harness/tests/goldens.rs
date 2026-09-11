@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rue_tenants::golden::{actual_path, compare_bytes, render_mismatch, repo_root};
-use rue_tenants::{artifacts, STATE_TABLE};
+use rue_tenants::{artifacts, hook_protocol_path, STATE_TABLE};
 
 #[test]
 fn every_artifact_matches_its_expected_file() {
@@ -87,6 +87,17 @@ fn expected_files(root: &Path) -> Vec<String> {
         .collect();
     if root.join(STATE_TABLE).is_file() {
         out.push(STATE_TABLE.to_string());
+    }
+    // Only the CURRENT protocol version's document is this walk's business.
+    // rue-goldens writes it from the tables as they stand, so it is declared
+    // and found like any golden. A released earlier version is not generated
+    // from anything any more -- that is what it means to be frozen -- and is
+    // guarded by tools/lint-hook-proto-frozen.sh instead. Walking every
+    // `-v<N>.json` here would make v1 an orphan the day v2 exists, and so
+    // refuse the one path the freeze is built to leave open.
+    let current = hook_protocol_path();
+    if root.join(&current).is_file() {
+        out.push(current);
     }
     out.sort();
     out
