@@ -8,11 +8,18 @@
 //! `:controller` probe's fact, a `repeat over:` variable); a `secrets from:`
 //! binding from the secret source; a fact from the last observation of it.
 //! A reference nothing binds is `Unbound`, which is a refusal, not a guess.
+//!
+//! A fact's shape is resolved too. The front end writes a runtime value in
+//! a shape as `{name}` (`guest.state(g)` is `guest:state:{g}`), and the
+//! engine reads, writes, snapshots and undoes the fact that value names --
+//! never a file called `{g}`, and never one fact for every iteration of a
+//! repeat.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
 use rue_core::body::{Body, Part, Prim, Ref, Template, Value};
+use rue_core::model::{Op, Undo};
 
 use crate::executor::{RPrim, Resolved};
 use crate::host::Host;
@@ -62,6 +69,63 @@ fn resolve_ref(r: &Ref, host: &Host, env: &Env) -> Result<Resolved, Unbound> {
     .ok_or_else(unbound)
 }
 
+/// A value by the label the front end wrote in a shape: a host field as
+/// `host.<field>`, an output as `<step>.<name>`, otherwise a controller
+/// value (a repeat variable shadows a parameter of its name, as it does in
+/// a body), a parameter, or an observed fact.
+fn by_label(label: &str, host: &Host, env: &Env) -> Option<String> {
+    if let Some(f) = label.strip_prefix("host.") {
+        return host.field(f);
+    }
+    env.controller
+        .get(label)
+        .or_else(|| env.outputs.get(label))
+        .or_else(|| env.params.get(label))
+        .or_else(|| env.facts.get(label))
+        .cloned()
+}
+
+/// A shape with every `{label}` in it replaced by the value it names. A
+/// shape with none is returned as it is.
+pub fn instantiate(shape: &str, host: &Host, env: &Env) -> Result<String, Unbound> {
+    if !shape.contains('{') {
+        return Ok(shape.to_string());
+    }
+    let mut out = String::new();
+    let mut rest = shape;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            out.push_str(&rest[open..]);
+            return Ok(out);
+        };
+        let label = &after[..close];
+        out.push_str(&by_label(label, host, env).ok_or_else(|| Unbound {
+            name: label.to_string(),
+        })?);
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// An op with its footprint and undo preconditions instantiated: the facts
+/// one application of it touches. Bodies are instantiated as they are
+/// resolved, by `resolve_body`.
+pub fn concrete_op(op: &Op, host: &Host, env: &Env) -> Result<Op, Unbound> {
+    let mut o = op.clone();
+    for e in o.footprint.iter_mut() {
+        e.shape = instantiate(&e.shape, host, env)?;
+    }
+    if let Undo::Computed { undo_pre, .. } | Undo::Compensate { undo_pre, .. } = &mut o.undo {
+        for s in undo_pre.iter_mut() {
+            *s = instantiate(s, host, env)?;
+        }
+    }
+    Ok(o)
+}
+
 pub fn resolve_template(t: &Template, host: &Host, env: &Env) -> Result<Resolved, Unbound> {
     let mut text = String::new();
     let mut secret = false;
@@ -105,23 +169,23 @@ fn resolve_prim(p: &Prim, host: &Host, env: &Env) -> Result<RPrim, Unbound> {
             },
         },
         Prim::Write(w) => RPrim::Write {
-            shape: w.fact.shape.clone(),
+            shape: instantiate(&w.fact.shape, host, env)?,
             content: resolve_value(&w.content, host, env)?,
         },
         Prim::Remove(r) => RPrim::Remove {
-            shape: r.fact.shape.clone(),
+            shape: instantiate(&r.fact.shape, host, env)?,
         },
         Prim::Append(a) => RPrim::Append {
-            shape: a.fact.shape.clone(),
+            shape: instantiate(&a.fact.shape, host, env)?,
             line: resolve_value(&a.line, host, env)?,
         },
         Prim::RegionSet(r) => RPrim::RegionSet {
-            shape: r.fact.shape.clone(),
+            shape: instantiate(&r.fact.shape, host, env)?,
             anchor: r.fact.anchor.clone(),
             content: resolve_value(&r.content, host, env)?,
         },
         Prim::RegionClear(r) => RPrim::RegionClear {
-            shape: r.fact.shape.clone(),
+            shape: instantiate(&r.fact.shape, host, env)?,
             anchor: r.fact.anchor.clone(),
         },
         Prim::Stage(s) => RPrim::Stage {

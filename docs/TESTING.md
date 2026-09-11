@@ -89,11 +89,16 @@ lapses fail-closed; an unknown guard waits, a yes continues, a no refuses,
 a lapsed bound reverts, a forced name passes; a refusal after a holding
 step holds and resume retries; a step no transport reaches is deferred and
 `handoff-done` (verb or probe) continues; a `:restore` undo removes,
-strips and writes back exactly; a rehearsal calls no executor and reserves
+strips and writes back exactly; each iteration of a repeat, nested or not,
+touches, snapshots and restores the fact its own variables name and is
+undone with them; a rehearsal calls no executor and reserves
 nothing; a held exclusivity class is R0101 and an overlapping umbra R0203;
 boot demotes an instance left applying; during settle no wane fires and
 held resources are reestablished first, and the settle flag survives a
-crash; a migrated store is journaled once.
+crash; a migrated store is journaled once. `engine/tests/store.rs` opens
+the store v0.1.0 wrote (`engine/tests/fixtures/store-v0.1.0`, an instance
+applied across a repeat): it is refused until migrated, and its instance
+then reverts under this build.
 
 `engine/tests/table.rs` is tier 4 through the driver: every applicable
 row of the generated transition table (`docs/state-transitions.tsv`, 664

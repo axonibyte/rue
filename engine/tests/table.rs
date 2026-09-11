@@ -83,10 +83,7 @@ fn plan_for(ctx: Ctx, ev: E) -> rue_core::model::Plan {
 fn applied(steps: &[u32]) -> Vec<AppliedStep> {
     steps
         .iter()
-        .map(|s| AppliedStep {
-            step: *s,
-            iteration: 0,
-        })
+        .map(|s| AppliedStep::new(*s, 0, &BTreeMap::new()))
         .collect()
 }
 
@@ -157,6 +154,8 @@ fn seed(ctx: Ctx, state: State, ev: E) -> InstanceRecord {
             rec.deferred = Some(DeferredAt {
                 step: 2,
                 handoff: "far_done".into(),
+                iteration: 0,
+                vars: BTreeMap::new(),
             });
         }
         State::Held => {

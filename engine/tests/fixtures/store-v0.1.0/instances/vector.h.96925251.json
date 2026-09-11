@@ -1,0 +1,285 @@
+{
+  "acks": [],
+  "applied": [
+    {
+      "iteration": 0,
+      "step": 1
+    },
+    {
+      "iteration": 0,
+      "step": 2
+    },
+    {
+      "iteration": 1,
+      "step": 2
+    }
+  ],
+  "approval_deadline": null,
+  "approved_at": 1000000,
+  "attempting": null,
+  "backstop": null,
+  "choices": {},
+  "closed_reason": null,
+  "deadline": 1003600,
+  "deferred": null,
+  "dirs": [
+    "h"
+  ],
+  "drift_held": [],
+  "force_drift": false,
+  "forced": [],
+  "held_at": null,
+  "host_contract": "d8e1cb6e6c14dcbc501e2d1c0c635b737c4470417cda202eb19e424b1cf37d4b",
+  "id": "vector.h.96925251",
+  "ir": {
+    "ir_version": 4,
+    "plan": {
+      "backstop": null,
+      "body": [
+        {
+          "alias": null,
+          "args": [],
+          "direction": "forward",
+          "force": [],
+          "gate": null,
+          "item": "step",
+          "on_lapse": "revert",
+          "op": {
+            "do": [
+              {
+                "run": {
+                  "cmd": [
+                    {
+                      "lit": "do a"
+                    }
+                  ],
+                  "env": [],
+                  "stdin": null
+                }
+              }
+            ],
+            "drift": null,
+            "exclusivity": null,
+            "footprint": [
+              {
+                "anchor": null,
+                "instance": null,
+                "kind": "owned",
+                "shape": "file:/a"
+              }
+            ],
+            "handoff_done": null,
+            "id": "a",
+            "locus": "target",
+            "outputs": [],
+            "post": [],
+            "pre": [],
+            "reach": [],
+            "reestablish": null,
+            "refusal": "revert",
+            "suspend": null,
+            "undo": {
+              "computed": {
+                "body": [
+                  {
+                    "run": {
+                      "cmd": [
+                        {
+                          "lit": "undo a"
+                        }
+                      ],
+                      "env": [],
+                      "stdin": null
+                    }
+                  }
+                ],
+                "undo_pre": [
+                  "file:/a"
+                ]
+              }
+            },
+            "undo_idempotent": true,
+            "undo_locus": "controller"
+          },
+          "window_s": null
+        },
+        {
+          "body": [
+            {
+              "alias": null,
+              "args": [],
+              "direction": "forward",
+              "force": [],
+              "gate": null,
+              "item": "step",
+              "on_lapse": "revert",
+              "op": {
+                "do": [
+                  {
+                    "run": {
+                      "cmd": [
+                        {
+                          "lit": "do b"
+                        }
+                      ],
+                      "env": [],
+                      "stdin": null
+                    }
+                  }
+                ],
+                "drift": null,
+                "exclusivity": null,
+                "footprint": [
+                  {
+                    "anchor": null,
+                    "instance": null,
+                    "kind": "owned",
+                    "shape": "file:/b"
+                  }
+                ],
+                "handoff_done": null,
+                "id": "b",
+                "locus": "target",
+                "outputs": [],
+                "post": [],
+                "pre": [],
+                "reach": [],
+                "reestablish": null,
+                "refusal": "revert",
+                "suspend": null,
+                "undo": {
+                  "computed": {
+                    "body": [
+                      {
+                        "run": {
+                          "cmd": [
+                            {
+                              "lit": "undo b"
+                            }
+                          ],
+                          "env": [],
+                          "stdin": null
+                        }
+                      }
+                    ],
+                    "undo_pre": [
+                      "file:/b"
+                    ]
+                  }
+                },
+                "undo_idempotent": true,
+                "undo_locus": "controller"
+              },
+              "window_s": null
+            }
+          ],
+          "form": {
+            "over": {
+              "list": "guests",
+              "max": 3,
+              "set_valued": true
+            }
+          },
+          "item": "repeat",
+          "var": "g"
+        }
+      ],
+      "exclusivity": null,
+      "fires_by_construction": false,
+      "gate": null,
+      "id": "vector",
+      "mode": "manual",
+      "owner": "h",
+      "probes": [],
+      "renew_within_s": 600,
+      "require_journal": null,
+      "strictness": "strict",
+      "wane_s": 3600
+    },
+    "requester": "ops",
+    "site": {
+      "authenticators": [
+        {
+          "human": true,
+          "id": "oncall"
+        },
+        {
+          "human": true,
+          "id": "alice"
+        },
+        {
+          "human": false,
+          "id": "driver"
+        }
+      ],
+      "hosts": [
+        {
+          "artifact": null,
+          "filesystem": true,
+          "name": "h",
+          "os": "freebsd",
+          "reach": [
+            "ssh"
+          ],
+          "stdin_preamble": true
+        },
+        {
+          "artifact": null,
+          "filesystem": true,
+          "name": "far",
+          "os": "freebsd",
+          "reach": [
+            "carrier-pigeon"
+          ],
+          "stdin_preamble": true
+        }
+      ],
+      "max_wait_s": 600,
+      "scheduler_present": [
+        "h"
+      ],
+      "secrets_deliver_to": [
+        "requester",
+        "hold"
+      ],
+      "transports": [
+        "ssh"
+      ]
+    }
+  },
+  "ledger_ids": [
+    "vector.h.96925251@h"
+  ],
+  "markers": {
+    "1": [
+      {
+        "digest": "missing",
+        "kind": "owned",
+        "path": "/a"
+      }
+    ],
+    "2": [
+      {
+        "digest": "missing",
+        "kind": "owned",
+        "path": "/b"
+      }
+    ]
+  },
+  "nonce": "f91bd03071505277131a6112a3eb94583267d91378aab4c2436e93e8b2fa23b8",
+  "outputs": {},
+  "params": {
+    "guests": "g1, g2"
+  },
+  "permanent": false,
+  "proofs": [],
+  "refusal": null,
+  "rehearsal": false,
+  "requested_at": 1000000,
+  "secret_undelivered": false,
+  "snapshots": {},
+  "staged": [],
+  "state": "Applied",
+  "stuck": [],
+  "waiting": null
+}

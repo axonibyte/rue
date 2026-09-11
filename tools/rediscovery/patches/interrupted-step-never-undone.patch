@@ -2,12 +2,12 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -2725,12 +2725,7 @@
+@@ -2964,12 +2964,7 @@
                  // it is undone with the rest (5.9). An undo of a step that
                  // never took is harmless: that is what makes an undo an
                  // undo.
 -                if let Some(a) = rec.attempting.take() {
--                    if !rec.is_applied(a.step, a.iteration) {
+-                    if !rec.is_applied(a.step, a.iteration, &a.vars) {
 -                        report.interrupted.push((rec.id.clone(), a.step));
 -                        rec.applied.push(a);
 -                    }

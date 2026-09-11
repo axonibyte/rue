@@ -222,6 +222,38 @@ impl World {
         }
     }
 
+    /// A world whose engine opens the store already at `dir/store` -- one
+    /// another build wrote -- with fresh fakes around it.
+    pub fn over(dir: TempDir) -> World {
+        let store = Store::open(&dir.join("store")).unwrap();
+        let sink = MemorySink::new("mem");
+        let sinks: Vec<Box<dyn Sink>> = vec![Box::new(sink.clone())];
+        let journal = Journal::open(&store, sinks, None).unwrap();
+        let clock = Arc::new(FakeClock::at(rue_core::model::Instant::new(T0)));
+        let ssh = FakeExecutor::new(LocusKind::Ssh).shared();
+        let local = FakeExecutor::new(LocusKind::Local).shared();
+        let execs: Vec<Box<dyn Executor>> = vec![Box::new(ssh.clone()), Box::new(local.clone())];
+        let mut engine = Engine::open(
+            store,
+            journal,
+            clock.clone(),
+            execs,
+            vec![host(OWNER, &["ssh"]), host(FAR, &["carrier-pigeon"])],
+        )
+        .unwrap();
+        let sched = FakeSchedulerHandle::new();
+        engine.add_scheduler(Box::new(sched.clone()));
+        World {
+            dir,
+            engine,
+            ssh,
+            local,
+            sink,
+            clock,
+            sched,
+        }
+    }
+
     /// Reopen the engine over the same store (a restart), executors, sink
     /// and scheduler carried over.
     pub fn restart(self) -> World {

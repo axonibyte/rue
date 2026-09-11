@@ -2,24 +2,28 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1488,6 +1488,7 @@
+@@ -1649,6 +1649,8 @@
                  }
              }
          }
++        let at = AppliedStep::new(n, iteration, vars);
 +        if rec.rehearsal {
          // Write-ahead: the entry is acknowledged and the record persisted in
          // Applying before anything runs.
          self.log(
-@@ -1502,7 +1503,7 @@
+@@ -1661,10 +1663,9 @@
+         // From here until the step ends, the record says which step is
+         // in flight: an engine that dies now must undo it on the way back
          // even though it was never marked applied.
-         rec.attempting = Some(AppliedStep { step: n, iteration });
+-        let at = AppliedStep::new(n, iteration, vars);
+         rec.attempting = Some(at.clone());
          self.persist(rec)?;
 -        if rec.rehearsal {
 +
              self.log(rec, J::StepDone { step: n })?;
-             return self.after_step(rec, n, iteration, &op, vars);
+             return self.after_step(rec, &at, &op);
          }
-@@ -1523,6 +1524,21 @@
+@@ -1696,6 +1697,21 @@
                  .ok_or_else(|| EngineError::Internal("executor vanished".into()))?;
              ex.run(&host, &id, &body)
          };
@@ -35,7 +39,7 @@
 +        // From here until the step ends, the record says which step is
 +        // in flight: an engine that dies now must undo it on the way back
 +        // even though it was never marked applied.
-+        rec.attempting = Some(AppliedStep { step: n, iteration });
++        rec.attempting = Some(at.clone());
 +        self.persist(rec)?;
 +
          match result {

@@ -1145,6 +1145,147 @@ fn a_when_chooses_its_arm_once_and_a_repeat_runs_its_body_per_item() {
 }
 
 #[test]
+fn a_repeat_s_steps_are_undone_each_with_its_own_item() {
+    // Each iteration of a repeat is its own applied step, with its own
+    // value of the variable: its undo must name the guest IT started. The
+    // undo ran with no controller values at all, so an undo reading the
+    // variable -- T2's `jail -r rue-t2-#{g}` -- could not resolve, and a
+    // recant of a promote that had started any guest left it Stuck. Nothing
+    // had ever reverted a repeat whose undo said which item it was undoing.
+    let mut w = World::new("repeat-undo");
+    let item = |verb: &str| {
+        vec![rue_core::body::Prim::Run(rue_core::body::Run {
+            cmd: vec![
+                rue_core::body::Part::Lit(format!("{verb} b on ")),
+                rue_core::body::Part::Ref(rue_core::body::controller("g")),
+            ],
+            env: vec![],
+            stdin: None,
+        })]
+    };
+    let mut b_op = world::op("b");
+    b_op.do_ = item("do");
+    b_op.undo = Undo::Computed {
+        body: item("undo"),
+        undo_pre: vec!["file:/b".into()],
+    };
+    let plan = world::temp_plan(
+        "p",
+        vec![
+            world::step(world::op("a")),
+            Item::Repeat {
+                form: rue_core::model::RepeatForm::Over {
+                    list: "guests".into(),
+                    max: 3,
+                    set_valued: true,
+                },
+                var: "g".into(),
+                body: vec![world::step(b_op)],
+            },
+        ],
+    );
+    let mut params = BTreeMap::new();
+    params.insert("guests".to_string(), "g1, g2".to_string());
+    let out = w.engine.apply(world::ir(plan), params, opts()).unwrap();
+    assert_eq!(out.state, State::Applied, "{}", out.line);
+    assert_eq!(w.commands(), vec!["do a", "do b on g1", "do b on g2"]);
+    let out = w.engine.recant(&out.id, &[]).unwrap();
+    assert_eq!(out.state, State::Closed, "{}", out.line);
+    assert_eq!(
+        w.commands()[3..],
+        ["undo b on g2", "undo b on g1", "undo a"],
+        "each iteration undone with its own item, the last first"
+    );
+}
+
+#[test]
+fn each_iteration_of_nested_repeats_touches_and_restores_the_fact_it_names() {
+    // A fact whose shape names a repeat variable is a different fact per
+    // iteration: `file:/conf/{o}-{i}` is four files over two lists of two.
+    // Three things were wrong, each hiding the next. The engine used the
+    // shape as written, so every iteration wrote and snapshotted one file
+    // literally named `{o}-{i}`; it keyed markers and snapshots by step
+    // number, so each iteration overwrote the last one's; and it told
+    // applications apart by step and iteration alone, which repeat under
+    // nesting, so the second outer pass found its inner steps "already
+    // applied" and skipped them.
+    let mut w = World::new("nested-repeat");
+    let shape = "file:/conf/{o}-{i}";
+    let mut o = rue_core::model::Op::new(
+        "conf",
+        vec![rue_core::model::FootprintEntry::entry(
+            Kind::Modified,
+            shape,
+        )],
+    );
+    o.do_ = vec![rue_core::body::Prim::Write(rue_core::body::Write {
+        fact: rue_core::body::FactRef {
+            shape: shape.into(),
+            anchor: None,
+        },
+        content: rue_core::body::lit("new"),
+    })];
+    o.undo = Undo::Restore;
+    let over = |list: &str, var: &str, body: Vec<Item>| Item::Repeat {
+        form: rue_core::model::RepeatForm::Over {
+            list: list.into(),
+            max: 3,
+            set_valued: true,
+        },
+        var: var.into(),
+        body,
+    };
+    let plan = world::temp_plan(
+        "p",
+        vec![over(
+            "outer",
+            "o",
+            vec![over("inner", "i", vec![world::step(o)])],
+        )],
+    );
+    let files = ["a-x", "a-y", "b-x", "b-y"];
+    w.ssh.with(|f| {
+        for n in files {
+            f.facts
+                .insert(format!("file:/conf/{n}"), format!("old {n}").into_bytes());
+        }
+    });
+    let mut params = BTreeMap::new();
+    params.insert("outer".to_string(), "a, b".to_string());
+    params.insert("inner".to_string(), "x, y".to_string());
+    let out = w.engine.apply(world::ir(plan), params, opts()).unwrap();
+    assert_eq!(out.state, State::Applied, "{}", out.line);
+    let now = |w: &World| -> Vec<(String, String)> {
+        w.ssh.with(|f| {
+            f.facts
+                .iter()
+                .map(|(k, v)| (k.clone(), String::from_utf8_lossy(v).into_owned()))
+                .collect()
+        })
+    };
+    assert_eq!(
+        now(&w),
+        files
+            .iter()
+            .map(|n| (format!("file:/conf/{n}"), "new".to_string()))
+            .collect::<Vec<_>>(),
+        "every iteration wrote its own file, and nothing else"
+    );
+    let rec = w.engine.status(&out.id).unwrap().unwrap();
+    assert_eq!(rec.applied.len(), 4, "four applications, none skipped");
+    let out = w.engine.recant(&out.id, &[]).unwrap();
+    assert_eq!(out.state, State::Closed, "{}", out.line);
+    assert_eq!(
+        now(&w),
+        files
+            .iter()
+            .map(|n| (format!("file:/conf/{n}"), format!("old {n}")))
+            .collect::<Vec<_>>(),
+        "each restored from its own snapshot"
+    );
+}
+
+#[test]
 fn a_knell_waits_for_its_acknowledgement_unless_acked_up_front() {
     let mut w = World::new("knell");
     let mut k = world::op("fence");
@@ -1224,10 +1365,11 @@ fn a_step_whose_do_the_engine_died_inside_is_undone_on_the_way_back() {
     let mut rec = w.engine.status(&id).unwrap().unwrap();
     rec.state = State::Applying;
     rec.applied.retain(|a| a.step == 1);
-    rec.attempting = Some(rue_engine::lifecycle::AppliedStep {
-        step: 2,
-        iteration: 0,
-    });
+    rec.attempting = Some(rue_engine::lifecycle::AppliedStep::new(
+        2,
+        0,
+        &BTreeMap::new(),
+    ));
     w.engine.store().write_instance(&id, &rec).unwrap();
 
     let mut w = w.restart();

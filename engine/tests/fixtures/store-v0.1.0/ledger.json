@@ -1,0 +1,19 @@
+{
+  "held": [
+    {
+      "exclusivity": null,
+      "host": "h",
+      "id": "vector.h.96925251@h",
+      "umbra": [
+        [
+          "file:/a",
+          null
+        ],
+        [
+          "file:/b",
+          null
+        ]
+      ]
+    }
+  ]
+}

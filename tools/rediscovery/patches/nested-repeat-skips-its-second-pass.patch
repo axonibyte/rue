@@ -1,0 +1,13 @@
+# Reverts: two applications of one step are told apart by their variables as well as their iteration; here by the iteration alone, which repeats under nesting, so the second outer pass skips its inner steps as already applied.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -264,7 +264,7 @@
+     pub fn is_applied(&self, step: u32, iteration: u32, vars: &BTreeMap<String, String>) -> bool {
+         self.applied
+             .iter()
+-            .any(|a| a.step == step && a.iteration == iteration && a.vars == *vars)
++            .any(|a| a.step == step && a.iteration == iteration)
+     }
+ 
+     /// The context the state machine reads (section 5.9).

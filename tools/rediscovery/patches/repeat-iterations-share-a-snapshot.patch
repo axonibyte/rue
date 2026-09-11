@@ -1,0 +1,13 @@
+# Reverts: each application of a step keeps its markers and snapshots under its own variables; here they are keyed by step number, so each iteration overwrites the last one's and restores the wrong content.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -121,7 +121,7 @@
+ /// See [`AppliedStep::key`]. The variables are written as JSON, so no value
+ /// can make two applications' keys collide.
+ pub fn step_key(step: u32, vars: &BTreeMap<String, String>) -> String {
+-    if vars.is_empty() {
++    if !vars.is_empty() {
+         step.to_string()
+     } else {
+         format!("{step}{}", serde_json::to_string(vars).unwrap_or_default())

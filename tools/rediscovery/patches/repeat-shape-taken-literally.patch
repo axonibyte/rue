@@ -1,0 +1,13 @@
+# Reverts: a runtime value in a fact's shape is the value the iteration holds; here the shape is used as written, so every iteration touches one fact literally named {o}-{i}.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/resolve.rs
++++ b/engine/src/resolve.rs
+@@ -88,7 +88,7 @@
+ /// A shape with every `{label}` in it replaced by the value it names. A
+ /// shape with none is returned as it is.
+ pub fn instantiate(shape: &str, host: &Host, env: &Env) -> Result<String, Unbound> {
+-    if !shape.contains('{') {
++    if !shape.is_empty() {
+         return Ok(shape.to_string());
+     }
+     let mut out = String::new();

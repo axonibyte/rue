@@ -1,0 +1,13 @@
+# Reverts: an iteration of a repeat is undone with the variables it ran with; here the undo runs with none, so an undo that names the loop variable cannot resolve and the instance goes Stuck.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2340,7 +2340,7 @@
+         let host = self.step_host(rec, op)?;
+         // The values this application ran with: an iteration of a repeat
+         // is undone as the one it was, not as none of them.
+-        let env = self.env_for(rec, &at.vars);
++        let env = self.env_for(rec, &BTreeMap::new());
+         let op = &concrete_op(op, &host, &env).map_err(|u| format!("step {n}: {u}"))?;
+         let policy = op.effective_drift().unwrap_or(Drift::Clobber);
+         let markers = rec.markers.get(&at.key()).cloned().unwrap_or_default();

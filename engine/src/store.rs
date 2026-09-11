@@ -29,7 +29,13 @@ use rue_core::ledger::{Instance as Held, Ledger};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// The schema this build writes and reads.
-pub const SCHEMA: u32 = 1;
+///
+/// 2: an applied step records the repeat variables it ran with, and its
+/// markers and snapshots are kept under them (docs/DESIGN.md, the store).
+/// A schema 1 record is a valid schema 2 record -- the new fields are
+/// absent when empty -- so 1 -> 2 rewrites nothing; what it changes is
+/// which builds may open the store.
+pub const SCHEMA: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchemaError {
@@ -41,6 +47,8 @@ pub enum SchemaError {
     /// A schema this build does not know (newer, or from a different
     /// lineage).
     Unknown(u32),
+    /// An older schema this build migrates, but only when asked.
+    Older(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +80,10 @@ impl fmt::Display for StoreError {
             StoreError::Schema(SchemaError::Unknown(v)) => write!(
                 f,
                 "R0502: store schema {v} is unknown to this build (which knows {SCHEMA}); a newer rued wrote it"
+            ),
+            StoreError::Schema(SchemaError::Older(v)) => write!(
+                f,
+                "R0502: store schema {v} is older than this build's {SCHEMA}; run `rued migrate`"
             ),
             StoreError::NotOwned { path, owner, me } => write!(
                 f,
@@ -261,6 +273,9 @@ impl Store {
     /// lock must be free.
     pub fn open(root: &Path) -> Result<Store, StoreError> {
         let v = schema_of(root).map_err(StoreError::Schema)?;
+        if v < SCHEMA {
+            return Err(StoreError::Schema(SchemaError::Older(v)));
+        }
         if v != SCHEMA {
             return Err(StoreError::Schema(SchemaError::Unknown(v)));
         }
@@ -452,6 +467,19 @@ pub fn migrate(root: &Path, dry_run: bool, by: &str) -> Result<Migration, StoreE
     // 0 -> 1: the store before schemas. Its instances/ and journal are
     // already in this shape; what it lacks is the schema file and the
     // record of the migration.
+    //
+    // 1 -> 2: an applied step gained the repeat variables it ran with. A
+    // schema 1 record has none, and reads as one with none, so nothing is
+    // rewritten. What the migration cannot do is recover them: an instance
+    // that applied steps inside a repeat under schema 1 undoes them as
+    // schema 1 did, without their variables, and says so if that fails.
+    if from < 2 {
+        steps.push(
+            "applied steps record their repeat variables from here on; records written \
+             before carry none, and read unchanged"
+                .to_string(),
+        );
+    }
     steps.push(format!("write schema {SCHEMA}"));
     steps.push(format!(
         "record Migrated{{from: {from}, to: {SCHEMA}, by: {by}}} for the next start"

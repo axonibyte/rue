@@ -1,0 +1,13 @@
+# Reverts: an older store is refused with R0502 and told to run rued migrate; here it is reported as unknown, written by a newer rued, which sends an operator the wrong way.
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/store.rs
++++ b/engine/src/store.rs
+@@ -274,7 +274,7 @@
+     pub fn open(root: &Path) -> Result<Store, StoreError> {
+         let v = schema_of(root).map_err(StoreError::Schema)?;
+         if v < SCHEMA {
+-            return Err(StoreError::Schema(SchemaError::Older(v)));
++            return Err(StoreError::Schema(SchemaError::Unknown(v)));
+         }
+         if v != SCHEMA {
+             return Err(StoreError::Schema(SchemaError::Unknown(v)));

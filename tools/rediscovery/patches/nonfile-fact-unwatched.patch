@@ -2,12 +2,12 @@
 # Rediscovered by the selector named in tools/rediscovery/table.tsv.
 --- a/engine/src/lifecycle.rs
 +++ b/engine/src/lifecycle.rs
-@@ -1781,7 +1781,7 @@
-                 if self.step_host(rec, o).map(|h| h.name() == host.name()) != Ok(true) {
+@@ -1911,7 +1911,7 @@
+                 if !on_host(self, o) {
                      continue;
                  }
 -                for (_, e, _) in footprint::observed_facts(&o.footprint) {
 +                for (_, e, _) in footprint::file_facts(&o.footprint) {
-                     shapes.push(e.shape.clone());
-                 }
-             }
+                     if !e.shape.contains('{') {
+                         shapes.push(e.shape.clone());
+                     }

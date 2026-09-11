@@ -152,3 +152,8 @@ static-probe-unchecked.patch	1	-	cargo	executor_rules	-
 ack-verified-for-the-operator.patch	1	-	cargo	an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_operator	-
 ack-challenge-unobtainable.patch	1	-	cargo	an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_operator	-
 call-arguments-lost-in-the-body.patch	1	-	cargo	a_call_s_arguments_reach_the_body_as_what_they_were_bound_to	-
+repeat-undo-without-its-item.patch	1	-	cargo	a_repeat_s_steps_are_undone_each_with_its_own_item	-
+repeat-shape-taken-literally.patch	1	-	cargo	each_iteration_of_nested_repeats_touches_and_restores_the_fact_it_names	-
+repeat-iterations-share-a-snapshot.patch	1	-	cargo	each_iteration_of_nested_repeats_touches_and_restores_the_fact_it_names	-
+older-store-reported-as-newer.patch	1	-	cargo	a_v0_1_0_store_is_refused_until_migrated_and_its_instance_then_reverts	-
+nested-repeat-skips-its-second-pass.patch	1	-	cargo	each_iteration_of_nested_repeats_touches_and_restores_the_fact_it_names	-

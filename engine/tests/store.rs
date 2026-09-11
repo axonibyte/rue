@@ -195,3 +195,61 @@ fn unsafe_geteuid() -> u32 {
     // SAFETY: geteuid has no preconditions.
     unsafe { libc::geteuid() }
 }
+
+/// A directory copied whole, for a fixture a test must not write into.
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    fs::create_dir_all(to).unwrap();
+    for e in fs::read_dir(from).unwrap() {
+        let e = e.unwrap();
+        let dst = to.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            copy_tree(&e.path(), &dst);
+        } else {
+            fs::copy(e.path(), &dst).unwrap();
+        }
+    }
+}
+
+#[test]
+fn a_v0_1_0_store_is_refused_until_migrated_and_its_instance_then_reverts() {
+    // The upgrade vector 7.13 asks each release to ship: the store v0.1.0
+    // itself wrote (tests/fixtures/store-v0.1.0), holding one temporary
+    // instance applied across a repeat -- as schema 1 recorded it, with no
+    // variables and both iterations' markers under one key. Schema 2 is the
+    // first change to the record since, so this is the first vector.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/store-v0.1.0");
+    let d = common::TempDir::new("store-v010");
+    let root = d.join("store");
+    copy_tree(&fixture, &root);
+    assert_eq!(schema_of(&root), Ok(1));
+    // Older is refused, and told what to do -- not that a newer build
+    // wrote it, which is what an older schema was once reported as.
+    match Store::open(&root) {
+        Err(StoreError::Schema(SchemaError::Older(1))) => {}
+        other => panic!("{other:?}"),
+    }
+    let err = Store::open(&root).unwrap_err().to_string();
+    assert!(
+        err.starts_with("R0502") && err.contains("run `rued migrate`"),
+        "{err}"
+    );
+    let dry = migrate(&root, true, "admin").unwrap();
+    assert_eq!((dry.from, dry.to, dry.dry_run), (1, SCHEMA, true));
+    assert!(
+        dry.steps.iter().any(|s| s.contains("repeat variables")),
+        "{:?}",
+        dry.steps
+    );
+    assert_eq!(schema_of(&root), Ok(1), "a dry run wrote");
+    let m = migrate(&root, false, "admin").unwrap();
+    assert_eq!((m.from, m.to), (1, SCHEMA));
+    assert_eq!(schema_of(&root), Ok(SCHEMA));
+    // The instance v0.1.0 applied still reverts under this build: its steps
+    // name no variable, so having none recorded costs it nothing.
+    let mut w = common::world::World::over(d);
+    let id = "vector.h.96925251";
+    let out = w.engine.recant(id, &[]).unwrap();
+    assert_eq!(out.state, rue_core::states::State::Closed, "{}", out.line);
+    assert_eq!(w.commands(), vec!["undo b", "undo b", "undo a"]);
+}

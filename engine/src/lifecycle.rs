@@ -53,7 +53,7 @@ use crate::host::Host;
 use crate::journal::{About, Journal, JournalError};
 use crate::notify::{Level, Notify};
 use crate::region;
-use crate::resolve::{resolve_body, Env};
+use crate::resolve::{concrete_op, resolve_body, Env};
 use crate::scheduler::Scheduler;
 use crate::secrets::Acceptor;
 use crate::store::{Store, StoreError};
@@ -91,6 +91,52 @@ mod state_serde {
 pub struct AppliedStep {
     pub step: u32,
     pub iteration: u32,
+    /// The controller values this application ran with: a repeat's
+    /// variables, outer and inner. Its undo reads them, its markers and
+    /// snapshots are kept under them, and they tell two applications of one
+    /// step apart in nested repeats, where the iteration alone repeats.
+    /// Empty outside a repeat and then not written, so a record with no
+    /// repeat reads exactly as store schema 1 wrote it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
+}
+
+impl AppliedStep {
+    pub fn new(step: u32, iteration: u32, vars: &BTreeMap<String, String>) -> AppliedStep {
+        AppliedStep {
+            step,
+            iteration,
+            vars: vars.clone(),
+        }
+    }
+
+    /// The key this application's markers and snapshots are kept under:
+    /// the step number alone outside a repeat (as schema 1 keyed them),
+    /// the step and its variables inside one.
+    pub fn key(&self) -> String {
+        step_key(self.step, &self.vars)
+    }
+}
+
+/// See [`AppliedStep::key`]. The variables are written as JSON, so no value
+/// can make two applications' keys collide.
+pub fn step_key(step: u32, vars: &BTreeMap<String, String>) -> String {
+    if vars.is_empty() {
+        step.to_string()
+    } else {
+        format!("{step}{}", serde_json::to_string(vars).unwrap_or_default())
+    }
+}
+
+/// A key's step and variables: the inverse of [`step_key`].
+pub fn parse_step_key(key: &str) -> Option<(u32, BTreeMap<String, String>)> {
+    let digits = key.find(|c: char| !c.is_ascii_digit()).unwrap_or(key.len());
+    let step = key[..digits].parse().ok()?;
+    let rest = &key[digits..];
+    if rest.is_empty() {
+        return Some((step, BTreeMap::new()));
+    }
+    serde_json::from_str(rest).ok().map(|v| (step, v))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +156,16 @@ pub struct Wait {
 pub struct DeferredAt {
     pub step: u32,
     pub handoff: String,
+    /// Which application of the step waits: inside a repeat, `handoff-done`
+    /// continues that iteration and no other.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub iteration: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// A file `stage()`d for a step, removed after it (7.7).
@@ -205,10 +261,10 @@ impl InstanceRecord {
         }
     }
 
-    pub fn is_applied(&self, step: u32, iteration: u32) -> bool {
+    pub fn is_applied(&self, step: u32, iteration: u32, vars: &BTreeMap<String, String>) -> bool {
         self.applied
             .iter()
-            .any(|a| a.step == step && a.iteration == iteration)
+            .any(|a| a.step == step && a.iteration == iteration && a.vars == *vars)
     }
 
     /// The context the state machine reads (section 5.9).
@@ -1170,7 +1226,7 @@ impl Engine {
                 leaf_item => {
                     let n = *leaf;
                     *leaf += 1;
-                    if rec.is_applied(n, iteration) {
+                    if rec.is_applied(n, iteration, vars) {
                         continue;
                     }
                     self.run_leaf(rec, n, iteration, leaf_item, vars)?
@@ -1328,7 +1384,7 @@ impl Engine {
                     return self.refuse(rec, n, &why);
                 }
                 self.log(rec, J::Confirmed)?;
-                self.mark_applied(rec, n, iteration)?;
+                self.mark_applied(rec, AppliedStep::new(n, iteration, vars))?;
                 Ok(Flow::Continue)
             }
             Item::Commit => {
@@ -1350,7 +1406,7 @@ impl Engine {
                 match self.observe_text(rec, &owner, probe) {
                     Ok(text) => {
                         rec.outputs.insert(alias.clone(), text);
-                        self.mark_applied(rec, n, iteration)?;
+                        self.mark_applied(rec, AppliedStep::new(n, iteration, vars))?;
                         Ok(Flow::Continue)
                     }
                     Err(e) => self.refuse(rec, n, &e),
@@ -1362,7 +1418,7 @@ impl Engine {
                         return Ok(flow);
                     }
                 }
-                self.mark_applied(rec, n, iteration)?;
+                self.mark_applied(rec, AppliedStep::new(n, iteration, vars))?;
                 Ok(Flow::Continue)
             }
             Item::Assert { guard, window, .. } => {
@@ -1370,7 +1426,7 @@ impl Engine {
                 if let Some(flow) = self.guard_blocks_with_bound(rec, n, guard, &[], bound)? {
                     return Ok(flow);
                 }
-                self.mark_applied(rec, n, iteration)?;
+                self.mark_applied(rec, AppliedStep::new(n, iteration, vars))?;
                 Ok(Flow::Continue)
             }
             Item::Slot { name } => Err(EngineError::Internal(format!(
@@ -1385,10 +1441,9 @@ impl Engine {
     fn mark_applied(
         &mut self,
         rec: &mut InstanceRecord,
-        n: u32,
-        iteration: u32,
+        at: AppliedStep,
     ) -> Result<(), EngineError> {
-        rec.applied.push(AppliedStep { step: n, iteration });
+        rec.applied.push(at);
         rec.attempting = None;
         self.persist(rec)
     }
@@ -1488,7 +1543,7 @@ impl Engine {
         // A bound host, or one no transport reaches, defers the step.
         let host = match self.step_host(rec, &op) {
             Ok(h) => h,
-            Err(from) => return self.defer(rec, n, &op, &from),
+            Err(from) => return self.defer(rec, n, iteration, vars, &op, &from),
         };
         // A rehearsal calls no executor, so it is never deferred for the
         // lack of one (the check's own deferrals still stand).
@@ -1496,6 +1551,8 @@ impl Engine {
             return self.defer(
                 rec,
                 n,
+                iteration,
+                vars,
                 &op,
                 &format!("no transport reaches {}", host.name()),
             );
@@ -1604,18 +1661,25 @@ impl Engine {
         // From here until the step ends, the record says which step is
         // in flight: an engine that dies now must undo it on the way back
         // even though it was never marked applied.
-        rec.attempting = Some(AppliedStep { step: n, iteration });
+        let at = AppliedStep::new(n, iteration, vars);
+        rec.attempting = Some(at.clone());
         self.persist(rec)?;
         if rec.rehearsal {
             self.log(rec, J::StepDone { step: n })?;
-            return self.after_step(rec, n, iteration, &op, vars);
+            return self.after_step(rec, &at, &op);
         }
         if let Err(why) = self.ensure_instance_dir(rec, &host)? {
             return self.refuse(rec, n, &why);
         }
-        self.snapshot(rec, n, &op, &host)?;
-        let before = self.watched(rec, &host, n);
         let mut env = self.env_for(rec, vars);
+        // The facts this application touches: a runtime value in a shape
+        // is the value this iteration holds.
+        let op = match concrete_op(&op, &host, &env) {
+            Ok(o) => o,
+            Err(u) => return self.refuse(rec, n, &format!("step {n}: {u}")),
+        };
+        self.snapshot(rec, &at, &op, &host)?;
+        let before = self.watched(rec, &host, &at);
         // A secret the step names is fetched here, once, just before the
         // body that uses it runs.
         if let Err(why) = self.load_secrets(&mut env, &op.do_) {
@@ -1651,11 +1715,11 @@ impl Engine {
                         },
                     )?;
                     rec.refusal = Some(format!("step {n}: {why}"));
-                    self.undo_failed(rec, n, iteration, &op)?;
+                    self.undo_failed(rec, &at, &op)?;
                     return self.refuse_applied(rec, n);
                 }
                 // R0201: nothing outside the step's footprint changed.
-                let after = self.watched(rec, &host, n);
+                let after = self.watched(rec, &host, &at);
                 let changed = footprint::changed_facts(&before, &after);
                 if !changed.is_empty() {
                     self.log(
@@ -1669,10 +1733,10 @@ impl Engine {
                         "step {n}: R0201: footprint violation: {}",
                         changed.join(", ")
                     ));
-                    self.undo_failed(rec, n, iteration, &op)?;
+                    self.undo_failed(rec, &at, &op)?;
                     return self.refuse_applied(rec, n);
                 }
-                self.write_markers(rec, &host, n, &op)?;
+                self.write_markers(rec, &host, &at, &op)?;
                 for p in &op.do_ {
                     if let rue_core::body::Prim::Stage(st) = p {
                         rec.staged.push(Staged {
@@ -1701,7 +1765,7 @@ impl Engine {
                 for (label, value) in &secrets {
                     self.deliver_secret(rec, label, value)?;
                 }
-                self.after_step(rec, n, iteration, &op, vars)
+                self.after_step(rec, &at, &op)
             }
             Err(e) => {
                 self.log(
@@ -1714,7 +1778,7 @@ impl Engine {
                 // The step failed: the instance closes because something
                 // refused it, which is what exit 1 says (6.8).
                 rec.refusal = Some(format!("step {n}: {e}"));
-                self.undo_failed(rec, n, iteration, &op)?;
+                self.undo_failed(rec, &at, &op)?;
                 self.refuse_applied(rec, n)
             }
         }
@@ -1726,13 +1790,13 @@ impl Engine {
     fn undo_failed(
         &mut self,
         rec: &mut InstanceRecord,
-        n: u32,
-        iteration: u32,
+        at: &AppliedStep,
         op: &Op,
     ) -> Result<(), EngineError> {
+        let n = at.step;
         rec.attempting = None;
-        if let Err(why) = self.undo_step(rec, n, op) {
-            rec.applied.push(AppliedStep { step: n, iteration });
+        if let Err(why) = self.undo_step(rec, at, op) {
+            rec.applied.push(at.clone());
             self.log(
                 rec,
                 J::StepFailed {
@@ -1748,12 +1812,11 @@ impl Engine {
     fn after_step(
         &mut self,
         rec: &mut InstanceRecord,
-        n: u32,
-        iteration: u32,
+        at: &AppliedStep,
         op: &Op,
-        _vars: &BTreeMap<String, String>,
     ) -> Result<Flow, EngineError> {
-        self.mark_applied(rec, n, iteration)?;
+        let n = at.step;
+        self.mark_applied(rec, at.clone())?;
         if rec.rehearsal {
             return Ok(Flow::Continue);
         }
@@ -1826,34 +1889,53 @@ impl Engine {
     /// By shape, not by path. "Never destroy what is not in your footprint"
     /// is a rule about facts, and a plan whose footprint is an appliance's
     /// state had nothing watched at all while this read files only.
-    fn watched(&mut self, rec: &InstanceRecord, host: &Host, n: u32) -> Watched {
+    ///
+    /// Each application by the facts it holds: another iteration of a
+    /// repeat is another fact when its shape names the variable, and this
+    /// step must leave it alone like any other. A shape still waiting on a
+    /// runtime value no application has supplied names no fact yet.
+    fn watched(&mut self, rec: &InstanceRecord, host: &Host, at: &AppliedStep) -> Watched {
         let mut w = Watched::new();
         if rec.rehearsal {
             return w;
         }
+        let on_host = |this: &Self, o: &Op| {
+            this.step_host(rec, o).map(|h| h.name() == host.name()) == Ok(true)
+        };
         let mut shapes: Vec<String> = Vec::new();
         for (m, it) in numbered(&rec.plan().body) {
-            if m == n {
+            if m == at.step {
                 continue;
             }
             if let Some(o) = op_of(it) {
-                if self.step_host(rec, o).map(|h| h.name() == host.name()) != Ok(true) {
+                if !on_host(self, o) {
                     continue;
                 }
                 for (_, e, _) in footprint::observed_facts(&o.footprint) {
-                    shapes.push(e.shape.clone());
+                    if !e.shape.contains('{') {
+                        shapes.push(e.shape.clone());
+                    }
                 }
             }
         }
-        let own: Vec<String> = rec
-            .op_at(n)
-            .map(|o| {
-                footprint::observed_facts(&o.footprint)
-                    .into_iter()
-                    .map(|(_, e, _)| e.shape.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let facts_of = |this: &Self, a: &AppliedStep| -> Vec<String> {
+            rec.op_at(a.step)
+                .filter(|o| on_host(this, o))
+                .and_then(|o| concrete_op(o, host, &this.env_for(rec, &a.vars)).ok())
+                .map(|o| {
+                    footprint::observed_facts(&o.footprint)
+                        .into_iter()
+                        .map(|(_, e, _)| e.shape.clone())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        for a in &rec.applied {
+            if !a.vars.is_empty() && !(a.step == at.step && a.vars == at.vars) {
+                shapes.extend(facts_of(self, a));
+            }
+        }
+        let own: Vec<String> = facts_of(self, at);
         if let Some(ex) = self.executor_for(host) {
             for shape in shapes {
                 if own.contains(&shape) || w.contains_key(&shape) {
@@ -1881,9 +1963,10 @@ impl Engine {
         &mut self,
         rec: &mut InstanceRecord,
         host: &Host,
-        n: u32,
+        at: &AppliedStep,
         op: &Op,
     ) -> Result<(), EngineError> {
+        let n = at.step;
         let id = rec.id.clone();
         let has_dir = rec.dirs.contains(&host.name().to_string());
         let mut markers = Vec::new();
@@ -1917,7 +2000,7 @@ impl Engine {
                 .map_err(|e| EngineError::Internal(format!("markers on {}: {e}", host.name())))?;
             }
         }
-        rec.markers.insert(n.to_string(), markers);
+        rec.markers.insert(at.key(), markers);
         if has_dir {
             let regions = self.regions_on(rec, host);
             if let Some(ex) = self.executor_for(host) {
@@ -1937,15 +2020,22 @@ impl Engine {
     /// region facts with their anchors, plus the step being marked.
     fn regions_on(&self, rec: &InstanceRecord, host: &Host) -> Vec<(String, String)> {
         let mut v = Vec::new();
-        let mut steps: Vec<u32> = rec.applied.iter().map(|a| a.step).collect();
-        steps.extend(rec.markers.keys().filter_map(|k| k.parse::<u32>().ok()));
+        let mut steps: Vec<(u32, BTreeMap<String, String>)> = rec
+            .applied
+            .iter()
+            .map(|a| (a.step, a.vars.clone()))
+            .collect();
+        steps.extend(rec.markers.keys().filter_map(|k| parse_step_key(k)));
         steps.sort();
         steps.dedup();
-        for n in steps {
+        for (n, vars) in steps {
             if let Some(o) = rec.op_at(n) {
                 if self.step_host(rec, o).map(|h| h.name() == host.name()) != Ok(true) {
                     continue;
                 }
+                let Ok(o) = concrete_op(o, host, &self.env_for(rec, &vars)) else {
+                    continue;
+                };
                 for e in &o.footprint {
                     if e.kind == Kind::Region {
                         if let (Some(p), Some(anchor)) = (region::file_path(&e.shape), &e.anchor) {
@@ -2028,10 +2118,11 @@ impl Engine {
     fn snapshot(
         &mut self,
         rec: &mut InstanceRecord,
-        n: u32,
+        at: &AppliedStep,
         op: &Op,
         host: &Host,
     ) -> Result<(), EngineError> {
+        let n = at.step;
         for (k, e) in op.footprint.iter().enumerate() {
             if !matches!(e.kind, Kind::Modified | Kind::Region) {
                 continue;
@@ -2068,7 +2159,7 @@ impl Engine {
                     let _ = ex.replace_file(host, &rec.id, &format!("snapshots/{n}/{k}"), &bytes);
                 }
                 rec.snapshots.insert(
-                    format!("{n}/{k}"),
+                    format!("{}/{k}", at.key()),
                     String::from_utf8_lossy(&bytes).into_owned(),
                 );
             }
@@ -2080,6 +2171,8 @@ impl Engine {
         &mut self,
         rec: &mut InstanceRecord,
         n: u32,
+        iteration: u32,
+        vars: &BTreeMap<String, String>,
         op: &Op,
         why: &str,
     ) -> Result<Flow, EngineError> {
@@ -2090,6 +2183,8 @@ impl Engine {
         rec.deferred = Some(DeferredAt {
             step: n,
             handoff: handoff.clone(),
+            iteration,
+            vars: vars.clone(),
         });
         self.step(rec, E::DeferAtStep)?;
         self.log(
@@ -2155,7 +2250,7 @@ impl Engine {
                     continue;
                 }
             };
-            match self.undo_step(rec, a.step, &op) {
+            match self.undo_step(rec, &a, &op) {
                 Ok(report) if !report.held.is_empty() => {
                     rec.drift_held = vec![a.step];
                     self.log(
@@ -2180,7 +2275,7 @@ impl Engine {
                             },
                         )?;
                     }
-                    rec.markers.remove(&a.step.to_string());
+                    rec.markers.remove(&a.key());
                     rec.applied.pop();
                     self.persist(rec)?;
                 }
@@ -2231,15 +2326,24 @@ impl Engine {
     /// and reported `held`; otherwise the undo runs, under the host lock
     /// when the step holds a region, with a damaged region restored whole
     /// from its snapshot where the policy and the ledger allow it.
-    fn undo_step(&mut self, rec: &InstanceRecord, n: u32, op: &Op) -> Result<UndoReport, String> {
+    fn undo_step(
+        &mut self,
+        rec: &InstanceRecord,
+        at: &AppliedStep,
+        op: &Op,
+    ) -> Result<UndoReport, String> {
+        let n = at.step;
         let mut report = UndoReport::default();
         if rec.rehearsal || matches!(op.undo, Undo::NoUndo) {
             return Ok(report);
         }
         let host = self.step_host(rec, op)?;
-        let env = self.env_for(rec, &BTreeMap::new());
+        // The values this application ran with: an iteration of a repeat
+        // is undone as the one it was, not as none of them.
+        let env = self.env_for(rec, &at.vars);
+        let op = &concrete_op(op, &host, &env).map_err(|u| format!("step {n}: {u}"))?;
         let policy = op.effective_drift().unwrap_or(Drift::Clobber);
-        let markers = rec.markers.get(&n.to_string()).cloned().unwrap_or_default();
+        let markers = rec.markers.get(&at.key()).cloned().unwrap_or_default();
         let mut whole: Vec<usize> = Vec::new();
         let has_region = op.footprint.iter().any(|e| e.kind == Kind::Region);
         let id = rec.id.clone();
@@ -2313,7 +2417,7 @@ impl Engine {
         }
         let mut body: Vec<RPrim> = match &op.undo {
             Undo::NoUndo => Vec::new(),
-            Undo::Restore => restore_body(n, &op.footprint, &rec.snapshots)?,
+            Undo::Restore => restore_body(&at.key(), &op.footprint, &rec.snapshots)?,
             Undo::Computed { body, .. } | Undo::Compensate { body, .. } => {
                 resolve_body(body, &host, &env).map_err(|u| u.to_string())?
             }
@@ -2324,7 +2428,7 @@ impl Engine {
             let e = &op.footprint[k];
             let snapshot = rec
                 .snapshots
-                .get(&format!("{n}/{k}"))
+                .get(&format!("{}/{k}", at.key()))
                 .cloned()
                 .ok_or_else(|| format!("no snapshot for {} to restore whole", e.shape))?;
             for prim in body.iter_mut() {
@@ -2536,7 +2640,9 @@ impl Engine {
         }
         self.step(&mut rec, E::HandoffDone)?;
         rec.deferred = None;
-        rec.applied.push(AppliedStep { step, iteration: 0 });
+        let d = d.expect("checked above");
+        rec.applied
+            .push(AppliedStep::new(step, d.iteration, &d.vars));
         self.log(
             &rec,
             J::HandoffDone {
@@ -2859,7 +2965,7 @@ impl Engine {
                 // never took is harmless: that is what makes an undo an
                 // undo.
                 if let Some(a) = rec.attempting.take() {
-                    if !rec.is_applied(a.step, a.iteration) {
+                    if !rec.is_applied(a.step, a.iteration, &a.vars) {
                         report.interrupted.push((rec.id.clone(), a.step));
                         rec.applied.push(a);
                     }
@@ -2895,7 +3001,7 @@ impl Engine {
                     continue;
                 }
                 let ok = match &op.reestablish {
-                    Some(body) => self.run_body(&rec, &op, body).is_ok(),
+                    Some(body) => self.run_body(&rec, &a, &op, body).is_ok(),
                     None => false,
                 };
                 if ok {
@@ -2950,9 +3056,15 @@ impl Engine {
         Ok(report)
     }
 
-    fn run_body(&mut self, rec: &InstanceRecord, op: &Op, body: &Body) -> Result<(), String> {
+    fn run_body(
+        &mut self,
+        rec: &InstanceRecord,
+        at: &AppliedStep,
+        op: &Op,
+        body: &Body,
+    ) -> Result<(), String> {
         let host = self.step_host(rec, op)?;
-        let env = self.env_for(rec, &BTreeMap::new());
+        let env = self.env_for(rec, &at.vars);
         let rb = resolve_body(body, &host, &env).map_err(|u| u.to_string())?;
         let id = rec.id.clone();
         let ex = self
@@ -2999,7 +3111,7 @@ fn umbras(p: &Plan) -> Vec<(String, Vec<rue_core::interference::Fact>)> {
 /// executor's to know how to restore; the engine has nothing to restore it
 /// from, and says so rather than guessing.
 pub fn restore_body(
-    n: u32,
+    key: &str,
     footprint: &[FootprintEntry],
     snapshots: &BTreeMap<String, String>,
 ) -> Result<Vec<RPrim>, String> {
@@ -3013,7 +3125,7 @@ pub fn restore_body(
                 shape: e.shape.clone(),
                 anchor: e.anchor.clone(),
             }),
-            Kind::Modified => match snapshots.get(&format!("{n}/{k}")) {
+            Kind::Modified => match snapshots.get(&format!("{key}/{k}")) {
                 Some(s) => body.push(RPrim::Write {
                     shape: e.shape.clone(),
                     content: Resolved::plain(s),

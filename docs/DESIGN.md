@@ -120,7 +120,14 @@ unit. What is in place:
   Every write goes to a temporary name beside the file and is renamed after
   a sync. An unknown or missing schema is R0502; `rued migrate` is the only
   migration, dry-runnable, refused on a store another account owns, and
-  recorded in `migrated.json` for the daemon's next start to journal.
+  recorded in `migrated.json` for the daemon's next start to journal. An
+  older schema is R0502 too, and says to migrate. Schema 2 (v0.2.0) is the
+  first change to the record since v0.1.0: an applied step carries the
+  repeat variables it ran with. A schema 1 record is a valid schema 2
+  record, so 1 -> 2 rewrites nothing; what it cannot do is recover the
+  variables of steps applied inside a repeat before it, which undo as
+  schema 1 undid them, without. `engine/tests/fixtures/store-v0.1.0` is
+  the store v0.1.0 itself wrote, the first upgrade vector of 7.13.
 - **The journal** (`engine/src/journal.rs`, 7.6): entries chained by core's
   `append`, optionally signed (SSHSIG, Ed25519, namespace `rue-journal`,
   `engine/src/sign.rs`), written to the store, then delivered to every sink
@@ -185,9 +192,16 @@ unit. What is in place:
 - **The lifecycle** (`engine/src/lifecycle.rs`, 5.9, 7.1, 7.8): the driver
   over core's `states::transition`. Events come from verbs, from a step's
   outcome, or from the reap pass observing time. Progress is a set (the
-  applied leaves with their repeat iteration, and the arm each `when`
-  chose), not a cursor: the plan is walked from its start every time,
-  skipping what is done, so a walk after a crash makes the same choices.
+  applied leaves with their repeat iteration and variables, and the arm
+  each `when` chose), not a cursor: the plan is walked from its start every
+  time, skipping what is done, so a walk after a crash makes the same
+  choices. An application of a step is its step, iteration and variables:
+  the variables are what tell the passes of nested repeats apart, what its
+  undo resolves against, and what its markers and snapshots are kept
+  under (`step_key`). A runtime value in a fact's shape (`{g}`) is the
+  value that application holds, in the footprint and in the body alike
+  (`resolve::instantiate`), so an iteration touches, snapshots and
+  restores its own fact.
   The write-ahead `Applying{step, undo_line}` entry is acknowledged and the
   record persisted before a `do` runs. A failed step is undone at once; a
   refusal then holds (an earlier step with `refusal: :hold`) or reverts
