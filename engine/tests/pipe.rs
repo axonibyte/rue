@@ -18,16 +18,18 @@ use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use common::world::World;
 use rue_engine::control::{Daemon, Operator, Operators, UserSpec, CONTROL_PROTOCOL};
 use rue_engine::pipe;
 use serde_json::{json, Value};
 
-/// The world is returned too: its temporary directory holds the store,
-/// and dropping it would take the store with it.
-fn daemon(w: World) -> (Arc<Daemon>, common::TempDir) {
+/// The world's directory is returned too, and first: it holds the store,
+/// and a tuple's bindings drop last to first, so binding it first drops it
+/// after the daemon has closed that store. Windows refuses to remove a
+/// directory with a file still open in it.
+fn daemon(w: World) -> (common::TempDir, Arc<Daemon>) {
     let me = rue_engine::peer::my_account().expect("this account has a name");
     let World { dir, engine, .. } = w;
     let d = Arc::new(Daemon {
@@ -49,13 +51,13 @@ fn daemon(w: World) -> (Arc<Daemon>, common::TempDir) {
         dry_run: false,
         mailbox: Default::default(),
     });
-    (d, dir)
+    (dir, d)
 }
 
 #[test]
 fn a_named_pipe_carries_a_hello_and_names_the_client_or_refuses_it() {
     let w = World::new("pipe-hello");
-    let (d, _dir) = daemon(w);
+    let (_dir, d) = daemon(w);
     // A name of this run's own, so two runs never share an instance.
     let name = format!(
         r"\\.\pipe\rue-test-{}-{}",
@@ -130,7 +132,11 @@ fn a_named_pipe_carries_a_hello_and_names_the_client_or_refuses_it() {
 
     let outcome = rx.recv_timeout(Duration::from_secs(20));
     stop.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _ = served;
+    // The server checks `stop` between polls, so it returns promptly. What
+    // it returns is the platform's to decide under wine; a panic is not.
+    if let Err(e) = served.join().expect("the pipe server thread panicked") {
+        eprintln!("note: the pipe server stopped with {e}");
+    }
     match outcome {
         Ok(Ok(reply)) => {
             let v: Value = serde_json::from_str(reply.trim_end())
@@ -177,5 +183,17 @@ fn a_named_pipe_carries_a_hello_and_names_the_client_or_refuses_it() {
             "note: this platform neither answered nor refused within twenty seconds; \
              the channel is proven on a real machine in Phase 3W"
         ),
+    }
+    // A connection's handler runs on a thread pipe::serve spawns and does
+    // not join, holding the daemon until the client's end closes. The store
+    // is under `_dir`, so the test waits for the last holder before the
+    // directory goes.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Arc::strong_count(&d) > 1 {
+        assert!(
+            Instant::now() < deadline,
+            "a connection handler still held the daemon ten seconds after the exchange"
+        );
+        std::thread::sleep(Duration::from_millis(20));
     }
 }

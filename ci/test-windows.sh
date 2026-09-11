@@ -81,8 +81,11 @@ cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -
 # The windows-gnu target links the C runtime statically (.cargo/config.toml),
 # so the test binaries need no mingw DLLs under wine.
 # rue-e2e is the tier 5 harness; it runs on a reaper guest only (tools/check.sh).
+# --no-fail-fast so one run reports every failing test binary, not only the
+# first: a cycle under wine is long, and a platform difference tends to have
+# siblings. The status is still the suite's.
 status=0
-cargo test --workspace --exclude rue-e2e --release --locked --target x86_64-pc-windows-gnu || status=$?
+cargo test --workspace --exclude rue-e2e --release --locked --target x86_64-pc-windows-gnu --no-fail-fast || status=$?
 # The suite's status is the script's; the server's shutdown is not.
 wineserver -k || echo "wineserver: nothing left to stop"
 exit "$status"

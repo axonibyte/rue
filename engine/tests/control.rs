@@ -29,12 +29,15 @@ use rue_engine::store::Store;
 use serde_json::{json, Value};
 
 /// A daemon over the test world's engine, with the given operators.
-/// The world is returned too: its temporary directory holds the store.
+/// The world is returned too, and first: its temporary directory holds the
+/// daemon's store, and a tuple's bindings drop last to first, so binding it
+/// first drops it after the daemon has closed that store. Bound last, it
+/// was removed with the store still open, which Windows refuses.
 fn daemon(
     w: World,
     ops: Operators,
     dry_run: bool,
-) -> (Arc<Daemon>, MemorySink, Arc<HookRegistry>, World) {
+) -> (World, Arc<Daemon>, MemorySink, Arc<HookRegistry>) {
     let hooks = Arc::new(HookRegistry::new());
     let subscribers = Arc::new(Subscribers::default());
     // A fresh engine whose journal fans out to the subscribers too, and
@@ -73,7 +76,7 @@ fn daemon(
         dry_run,
         mailbox: Default::default(),
     });
-    (d, sink, hooks, w)
+    (w, d, sink, hooks)
 }
 
 fn ops(identities: Vec<Operator>, registrars: Vec<RegistrarDecl>) -> Operators {
@@ -223,7 +226,7 @@ fn plan_ir(id: &str) -> Value {
 #[test]
 fn identity_comes_from_peer_credentials_and_the_declared_operators() {
     let w = World::new("control-identity");
-    let (d, sink, _, _w) = daemon(
+    let (_w, d, sink, _) = daemon(
         w,
         ops(
             vec![
@@ -311,7 +314,7 @@ fn identity_comes_from_peer_credentials_and_the_declared_operators() {
 #[test]
 fn a_sole_identity_needs_no_name_and_an_undeclared_user_is_refused() {
     let w = World::new("control-sole");
-    let (d, _, _, _w) = daemon(
+    let (_w, d, _, _) = daemon(
         w,
         ops(
             vec![operator("ops", UserSpec::Name(me()), &["all"], false)],
@@ -323,7 +326,7 @@ fn a_sole_identity_needs_no_name_and_an_undeclared_user_is_refused() {
     let h = c.hello(None);
     assert_eq!(h.pointer("/hello/identity"), Some(&json!("ops")), "{h}");
     let w2 = World::new("control-none");
-    let (d2, _, _, _w2) = daemon(
+    let (_w2, d2, _, _) = daemon(
         w2,
         ops(
             vec![operator(
@@ -344,7 +347,7 @@ fn a_sole_identity_needs_no_name_and_an_undeclared_user_is_refused() {
 #[test]
 fn every_verb_runs_over_the_channel_within_the_operator_s_scope() {
     let w = World::new("control-verbs");
-    let (d, sink, _, _w) = daemon(
+    let (_w, d, sink, _) = daemon(
         w,
         ops(
             vec![
@@ -416,7 +419,7 @@ fn every_verb_runs_over_the_channel_within_the_operator_s_scope() {
 #[test]
 fn a_hook_registers_by_a_declared_registrar_only_is_journaled_and_serves_execute_and_probe() {
     let w = World::new("control-hook");
-    let (d, sink, hooks, _w) = daemon(
+    let (_w, d, sink, hooks) = daemon(
         w,
         ops(
             vec![operator("ops", UserSpec::Name(me()), &["all"], true)],
@@ -561,7 +564,7 @@ fn a_hook_registers_by_a_declared_registrar_only_is_journaled_and_serves_execute
 #[test]
 fn a_hook_that_goes_silent_refuses_the_step_and_its_departure_is_journaled() {
     let w = World::new("control-silent");
-    let (d, sink, hooks, _w) = daemon(
+    let (_w, d, sink, hooks) = daemon(
         w,
         ops(
             vec![operator("ops", UserSpec::Name(me()), &["all"], true)],
@@ -624,7 +627,7 @@ fn a_subscriber_receives_the_entries_of_its_plans_and_dry_run_forces_rehearsal()
     let w = World::new("control-subscribe");
     let mut sub = operator("watcher", UserSpec::Name(me()), &["all"], false);
     sub.subscribe = vec!["p".into()];
-    let (d, _, _, _w) = daemon(w, ops(vec![sub], vec![]), true);
+    let (_w, d, _, _) = daemon(w, ops(vec![sub], vec![]), true);
     let mut c = Conn::open(&d);
     let h = c.hello(None);
     assert_eq!(h.pointer("/hello/dry_run"), Some(&json!(true)));
@@ -679,7 +682,7 @@ fn a_recant_whose_force_is_not_a_list_of_names_is_a_protocol_refusal() {
     // discarded in silence. T4's host hit exactly this: it asked to force
     // a DriftHeld instance through and was told it could not recant.
     let w = World::new("control-force");
-    let (d, _, _, _w) = daemon(
+    let (_w, d, _, _) = daemon(
         w,
         ops(
             vec![operator("ops", UserSpec::Name(me()), &["all"], true)],
@@ -721,7 +724,7 @@ fn a_registered_hook_connection_may_also_act_as_an_operator() {
     // T4's shape: the host registers its hooks and applies its own plans
     // over the same connection.
     let w = World::new("control-both");
-    let (d, _, _, _w) = daemon(
+    let (_w, d, _, _) = daemon(
         w,
         ops(
             vec![operator("host", UserSpec::SocketOwner, &["p"], true)],
@@ -909,7 +912,7 @@ fn an_acknowledgement_over_the_channel_is_proved_by_its_authenticator_not_the_op
     // published -- and a knell waiting on `oncall` could never open. 8.2's
     // manual knells were unacknowledgeable through `rue ack`.
     let w = World::new("control-ack");
-    let (d, sink, _, _w) = daemon(
+    let (_w, d, sink, _) = daemon(
         w,
         ops(
             vec![operator("ops", UserSpec::Name(me()), &["all"], true)],

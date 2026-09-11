@@ -180,14 +180,19 @@ pub fn on(mut o: Op, host: &str) -> Op {
     o
 }
 
+/// Fields drop in declaration order, so `dir` is last: the engine holds the
+/// store's lock and journal open, and Windows refuses to remove a directory
+/// with an open file in it. Declared first, it was removed while they were
+/// still open: a failed removal on Windows, unseen until the removal
+/// stopped discarding its error.
 pub struct World {
-    pub dir: TempDir,
     pub engine: Engine,
     pub ssh: FakeHandle,
     pub local: FakeHandle,
     pub sink: MemorySink,
     pub clock: Arc<FakeClock>,
     pub sched: FakeSchedulerHandle,
+    pub dir: TempDir,
 }
 
 impl World {
