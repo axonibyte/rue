@@ -13,18 +13,35 @@
 # the provisioning is wrong and saying so is the whole point; a skip here
 # would report success for work nobody did.
 #
-# Usage: sh sdk/conform-all.sh [--rue PATH]
+# With no SDK named, every one is judged. Naming some judges those alone:
+# the pipeline runs each SDK in the image that carries its toolchain, one
+# step per SDK, and those steps together name the same four. A named SDK
+# whose toolchain is absent is still a failure, never a skip.
+#
+# Usage: sh sdk/conform-all.sh [--rue PATH] [python|elixir|java|dotnet ...]
 set -u
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd) || exit 2
+usage() {
+    echo "usage: conform-all.sh [--rue PATH] [python|elixir|java|dotnet ...]" >&2
+    exit 2
+}
 rue=""
+only=""
 while [ $# -gt 0 ]; do
     case $1 in
-        --rue) rue=$2; shift ;;
-        *) echo "usage: conform-all.sh [--rue PATH]" >&2; exit 2 ;;
+        --rue) [ $# -ge 2 ] || usage; rue=$2; shift ;;
+        python|elixir|java|dotnet) only="$only $1" ;;
+        *) usage ;;
     esac
     shift
 done
+
+wanted() { # wanted <sdk>: named on the command line, or nothing was named
+    [ -z "$only" ] && return 0
+    case "$only " in *" $1 "*) return 0 ;; esac
+    return 1
+}
 
 if [ -z "$rue" ]; then
     for candidate in \
@@ -48,6 +65,11 @@ run() { # run <sdk> <interpreter> <command...>
     sdk=$1; shift
     tool=$1; shift
     printf '== %s\n' "$sdk"
+    if [ ! -d "$root/sdk/$sdk" ]; then
+        echo "conform-all: sdk/$sdk is missing from this tree" >&2
+        rc=1
+        return
+    fi
     if ! command -v "$tool" > /dev/null 2>&1; then
         echo "conform-all: $sdk needs $tool, which is not on PATH here" >&2
         rc=1
@@ -61,12 +83,14 @@ run() { # run <sdk> <interpreter> <command...>
     fi
 }
 
-run python python3 "python3 $root/sdk/python/examples/conformance_hook.py conform"
+if wanted python; then
+    run python python3 "python3 $root/sdk/python/examples/conformance_hook.py conform"
+fi
 
 # Elixir is compiled first: `mix compile` is idempotent and cheap once the
 # build directory exists, and a hook that has to compile itself on its
 # first request would be Silent while it did.
-if [ -d "$root/sdk/elixir" ]; then
+if wanted elixir; then
     if command -v mix > /dev/null 2>&1; then
         ( cd "$root/sdk/elixir" && MIX_ENV=dev mix compile > /dev/null ) || {
             echo "conform-all: sdk/elixir does not compile" >&2
@@ -82,7 +106,7 @@ fi
 # its plugins from Maven Central, and a conformance run should not need the
 # network. The POM is the artifact's packaging story and the pipeline's
 # maven step is what proves it builds; what is judged here is the code.
-if [ -d "$root/sdk/java" ]; then
+if wanted java; then
     if command -v javac > /dev/null 2>&1; then
         rm -rf "$root/sdk/java/build"
         mkdir -p "$root/sdk/java/build"
@@ -90,8 +114,8 @@ if [ -d "$root/sdk/java" ]; then
         # the shell, so there is no word splitting to reason about and no
         # lint to suppress.
         sources=$tmp/java-sources
-        find "$root/sdk/java/src/main/java" -name '*.java' > "$sources"
-        if ! ( cd "$root/sdk/java" && javac -d build "@$sources" ); then
+        if ! find "$root/sdk/java/src/main/java" -name '*.java' > "$sources" ||
+            ! ( cd "$root/sdk/java" && javac -d build "@$sources" ); then
             echo "conform-all: sdk/java does not compile" >&2
             rc=1
         fi
@@ -101,7 +125,7 @@ fi
 
 # .NET needs its SDK on PATH and a writable home; the guest keeps both in
 # a cache, because the SDK is most of a gigabyte and the root disk is not.
-if [ -d "$root/sdk/dotnet" ]; then
+if wanted dotnet; then
     if [ -d /tank/cache/dotnet ] && [ -z "${DOTNET_ROOT:-}" ]; then
         DOTNET_ROOT=/tank/cache/dotnet
         DOTNET_CLI_HOME=${DOTNET_CLI_HOME:-/tank/cache/dotnet-home}
@@ -120,6 +144,10 @@ if [ -d "$root/sdk/dotnet" ]; then
 fi
 
 if [ "$rc" -eq 0 ]; then
-    echo "conform-all: every SDK conforms"
+    if [ -z "$only" ]; then
+        echo "conform-all: every SDK conforms"
+    else
+        echo "conform-all:$only conform"
+    fi
 fi
 exit "$rc"
