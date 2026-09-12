@@ -115,7 +115,7 @@ const KINDS: &[Event] = &[
     Event::ApplyPermanent,
     Event::ApplySuccession,
     Event::HandoffDone,
-    Event::ApproveStep(2),
+    Event::ApproveStep(3),
     Event::Approve(0),
     Event::Approve(1),
     Event::Tick(0),

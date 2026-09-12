@@ -335,10 +335,23 @@ pub fn succession() -> Plan {
     ));
     gated.window = Some(Duration::new(3_600));
 
+    // A fenced block in the file the other two plans hold regions on,
+    // under a third anchor. Two *live* region holders is what invariant 12
+    // is about, and the permanent plan commits in one apply -- so until
+    // this step existed, the check had no world it could fire in.
+    let mut share = Op::new(
+        "share-fence",
+        vec![FootprintEntry::anchored(SHARED, "rue-sim-c")],
+    );
+    share.do_ = vec![region(SHARED, "rue-sim-c", "inside c")];
+    share.undo = Undo::Restore;
+    share.undo_locus = UndoLocus::Target;
+
     let mut p = Plan::new(
         "sim-succession",
         TARGET,
         vec![
+            Item::Step(StepI::new(share)),
             Item::Repeat {
                 form: rue_core::model::RepeatForm::Over {
                     list: "guests".into(),
@@ -785,10 +798,17 @@ impl Sim {
                     outputs,
                 }))
         });
-        if let Ok(out) = self.engine.apply(ir(plan), params, Sim::opts()) {
-            if !self.instances.contains(&out.id) {
-                self.instances.push(out.id);
+        let id = plan.id.clone();
+        // A refusal is an outcome, not a violation -- but a refusal nobody
+        // can see is a silent no-op, and an event list full of those is a
+        // sweep that looks twice the size it is.
+        match self.engine.apply(ir(plan), params, Sim::opts()) {
+            Ok(out) => {
+                if !self.instances.contains(&out.id) {
+                    self.instances.push(out.id);
+                }
             }
+            Err(e) => self.notes.push(format!("{id} refused: {e}")),
         }
     }
 }

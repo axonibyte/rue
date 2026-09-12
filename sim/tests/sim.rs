@@ -109,25 +109,35 @@ fn every_invariant_catches_a_planted_violation() {
         Event::ApplyTemporary,
         Event::Approve(0),
         Event::Approve(1),
-        Event::ApplyPermanent,
+        Event::ApplySuccession,
     ] {
         sim.apply(e);
     }
-    let live = sim
+    let live: Vec<String> = sim
         .records()
         .iter()
         .filter(|r| !rue_core::states::terminal(r.state))
-        .count();
-    if live >= 2 {
-        sim.ssh.with(|f| {
-            f.facts
-                .insert(rue_sim::world::SHARED.to_string(), b"wiped\n".to_vec());
-        });
-        if let Some(v) = check_all(&mut sim) {
-            assert_eq!(v.number, 12, "{v:?}");
-            caught.push(12);
-        }
-    }
+        .map(|r| format!("{} {}", r.id, r.state))
+        .collect();
+    // Both plans hold a region on the shared fact, and both must be live
+    // for the plant to mean anything: a check that fires only when the
+    // world happens to line up is a check nobody knows the state of.
+    assert!(
+        live.len() >= 2,
+        "two instances hold regions: {live:?}; every record: {:?}; the sim said {:?}",
+        sim.records()
+            .iter()
+            .map(|r| format!("{} {} {:?}", r.id, r.state, r.closed_reason))
+            .collect::<Vec<_>>(),
+        sim.notes
+    );
+    sim.ssh.with(|f| {
+        f.facts
+            .insert(rue_sim::world::SHARED.to_string(), b"wiped\n".to_vec());
+    });
+    let v = check_all(&mut sim).expect("a wiped shared fact is caught");
+    assert_eq!(v.number, 12, "{v:?}");
+    caught.push(12);
 
     // (15) an armed instance directory removed.
     let mut sim = Sim::new("plant-15");
@@ -155,10 +165,200 @@ fn every_invariant_catches_a_planted_violation() {
     assert_eq!(v.number, 17, "{v:?}");
     caught.push(17);
 
+    // (1) a step applied that the plan does not have, and (3) a stuck set
+    // on an instance that is not stuck: both planted in the record, which
+    // is where an operator would read them.
+    let mut sim = Sim::new("plant-1");
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    let id = sim.current().expect("an instance");
+    let mut rec = sim
+        .records()
+        .into_iter()
+        .find(|r| r.id == id)
+        .expect("its record");
+    let mut bogus = rec.applied[0].clone();
+    bogus.step = 99;
+    rec.applied.push(bogus);
+    sim.engine.store().write_instance(&id, &rec).unwrap();
+    let v = check_all(&mut sim).expect("a step the plan does not have is caught");
+    assert_eq!(v.number, 1, "{v:?}");
+    caught.push(1);
+
+    let mut sim = Sim::new("plant-3");
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    let id = sim.current().expect("an instance");
+    let mut rec = sim
+        .records()
+        .into_iter()
+        .find(|r| r.id == id)
+        .expect("its record");
+    rec.stuck = vec![1];
+    sim.engine.store().write_instance(&id, &rec).unwrap();
+    let v = check_all(&mut sim).expect("a stuck set without the state is caught");
+    assert_eq!(v.number, 3, "{v:?}");
+    caught.push(3);
+
+    // (11) a staged file outliving the applying.
+    let mut sim = Sim::new("plant-11");
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    let id = sim.current().expect("an instance");
+    let mut rec = sim
+        .records()
+        .into_iter()
+        .find(|r| r.id == id)
+        .expect("its record");
+    rec.staged.push(rue_engine::lifecycle::Staged {
+        step: 1,
+        host: rue_sim::world::TARGET.to_string(),
+        name: "left-behind".to_string(),
+    });
+    sim.engine.store().write_instance(&id, &rec).unwrap();
+    let v = check_all(&mut sim).expect("a staged file that outlived the apply is caught");
+    assert_eq!(v.number, 11, "{v:?}");
+    caught.push(11);
+
+    // (16) a wait left an hour past its bound. The third plan waits at a
+    // step gate, which is a `Waiting` state; a plan gate is pending
+    // approval, which is a different one.
+    let mut sim = Sim::new("plant-16");
+    sim.apply(Event::ApplySuccession);
+    let id = sim.current().expect("an instance");
+    let mut rec = sim
+        .records()
+        .into_iter()
+        .find(|r| r.id == id)
+        .expect("its record");
+    if let Some(w) = rec.waiting.as_mut() {
+        w.bound = Some(rue_core::model::Instant::new(1));
+    }
+    sim.engine.store().write_instance(&id, &rec).unwrap();
+    let v = check_all(&mut sim).expect("a wait past its bound is caught");
+    assert_eq!(v.number, 16, "{v:?}");
+    caught.push(16);
+
+    // (5) a secret in a sink, (19) a permanent plan expired and (20) a
+    // committed plan's backstop fired: each planted in the journal the
+    // sink received, which is what an auditor would read.
+    let mut sim = Sim::new("plant-5");
+    sim.apply(Event::ApplyTemporary);
+    plant_entry(&sim, &sim.current().expect("an instance"), |e| {
+        e.event = rue_core::journal::Event::Refused {
+            reason: format!("it said {}", rue_sim::world::SECRET),
+        };
+    });
+    let v = check_all(&mut sim).expect("a secret in a sink is caught");
+    assert_eq!(v.number, 5, "{v:?}");
+    caught.push(5);
+
+    let mut sim = Sim::new("plant-19");
+    sim.apply(Event::ApplyPermanent);
+    let id = sim.current().expect("an instance");
+    plant_entry(&sim, &id, |e| e.event = rue_core::journal::Event::Expired);
+    let v = check_all(&mut sim).expect("a permanent plan expiring is caught");
+    assert_eq!(v.number, 19, "{v:?}");
+    caught.push(19);
+
+    let mut sim = Sim::new("plant-20");
+    sim.apply(Event::ApplyPermanent);
+    let id = sim.current().expect("an instance");
+    plant_entry(&sim, &id, |e| {
+        e.event = rue_core::journal::Event::BackstopFired { step: 1 }
+    });
+    let v = check_all(&mut sim).expect("a committed plan's backstop firing is caught");
+    assert_eq!(v.number, 20, "{v:?}");
+    caught.push(20);
+
+    // (7) and (10): the acts that prove the ordering, removed. A reach
+    // step that ran with no deadline ever written, and a covered step with
+    // no artifact installed, are the two halves of "armed before it ran".
+    for (n, act) in [(7u8, "replace deadline"), (10, "put artifact.sh")] {
+        let mut sim = Sim::new(&format!("plant-{n}"));
+        for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+            sim.apply(e);
+        }
+        sim.ssh.with(|f| {
+            f.acts
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|(_, a)| a != act)
+        });
+        let v = check_all(&mut sim).unwrap_or_else(|| panic!("{n}: {act} removed is caught"));
+        assert_eq!(v.number, n, "{v:?}");
+        caught.push(n);
+    }
+
+    // (13) the ledger emptied under a live instance.
+    let mut sim = Sim::new("plant-13");
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    let empty = rue_core::ledger::Ledger::default();
+    sim.engine.store().write_ledger(&empty).unwrap();
+    let v = check_all(&mut sim).expect("an emptied ledger is caught");
+    assert_eq!(v.number, 13, "{v:?}");
+    caught.push(13);
+
+    // (14) an approval standing on fewer plan-scope proofs than the gate
+    // named: something other than the gate opened it.
+    let mut sim = Sim::new("plant-14");
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    let id = sim.current().expect("an instance");
+    let mut rec = sim
+        .records()
+        .into_iter()
+        .find(|r| r.id == id)
+        .expect("its record");
+    rec.proofs.truncate(1);
+    sim.engine.store().write_instance(&id, &rec).unwrap();
+    let v = check_all(&mut sim).expect("an approval on too few proofs is caught");
+    assert_eq!(v.number, 14, "{v:?}");
+    caught.push(14);
+
+    // (8) one step both held and clobbered: the engine and the artifact
+    // deciding a drift differently is exactly what that cannot be.
+    let mut sim = Sim::new("plant-8");
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    let id = sim.current().expect("an instance");
+    for ev in [
+        rue_core::journal::Event::DriftHeld {
+            step: 2,
+            facts: vec!["file:/etc/kept".into()],
+        },
+        rue_core::journal::Event::DriftClobbered {
+            step: 2,
+            facts: vec!["file:/etc/kept".into()],
+        },
+    ] {
+        append_entry(&sim, &id, ev);
+    }
+    let v = check_all(&mut sim).expect("a step held and clobbered at once is caught");
+    assert_eq!(v.number, 8, "{v:?}");
+    caught.push(8);
+
     assert!(
         caught.contains(&4) && caught.contains(&9) && caught.contains(&15) && caught.contains(&17),
         "the plants that must land, landed: {caught:?}"
     );
+    // Every invariant but the two this world cannot reach, 6 and 18, which
+    // the test below names with where each is proven instead.
+    for n in [
+        1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20,
+    ] {
+        assert!(
+            caught.contains(&n),
+            "{n} was planted and caught: {caught:?}"
+        );
+    }
     // Every invariant is named, whether or not this world plants one.
     assert_eq!(INVARIANTS.len(), 20);
 }
@@ -242,17 +442,17 @@ fn the_succession_plan_runs_its_repeat_its_gate_its_stage_and_its_handoff() {
     // step's (invariant 14), so the plan proof leaves it waiting.
     assert_eq!(
         r.waiting.as_ref().map(|w| w.step),
-        Some(2),
+        Some(3),
         "waiting at the step gate: {:?}",
         r.waiting
     );
     sim.apply(Event::Approve(0));
     assert_eq!(
         rec(&sim).waiting.as_ref().map(|w| w.step),
-        Some(2),
+        Some(3),
         "a plan proof does not open a step gate"
     );
-    sim.apply(Event::ApproveStep(2));
+    sim.apply(Event::ApproveStep(3));
     let r = rec(&sim);
     assert!(
         r.waiting.is_none(),
@@ -263,14 +463,14 @@ fn the_succession_plan_runs_its_repeat_its_gate_its_stage_and_its_handoff() {
     // And the console step defers: no transport of this site reaches it.
     assert_eq!(
         r.deferred.as_ref().map(|d| d.step),
-        Some(3),
+        Some(4),
         "deferred at the console step: {r:?}"
     );
     sim.apply(Event::HandoffDone);
     let r = rec(&sim);
     assert!(r.deferred.is_none(), "the handoff continued it: {r:?}");
     assert!(
-        r.applied.iter().any(|a| a.step == 3),
+        r.applied.iter().any(|a| a.step == 4),
         "the deferred step applied after its handoff: {:?}",
         r.applied
     );
@@ -326,6 +526,44 @@ fn a_dropped_read_and_a_do_that_never_took_leave_the_world_consistent() {
             .iter()
             .map(|e| format!("{:?}", e.event))
             .collect::<Vec<_>>()
+    );
+}
+
+/// Append an entry to the chain the sink holds, as the engine would: for a
+/// plant that needs two entries to mean anything.
+fn append_entry(sim: &Sim, instance: &str, event: rue_core::journal::Event) {
+    let mut entries = sim.sink.entries.lock().unwrap_or_else(|e| e.into_inner());
+    let last = entries[entries.len() - 1].clone();
+    let prev = entries.clone();
+    entries.push(rue_core::journal::append(
+        &prev,
+        last.at,
+        &last.plan,
+        instance,
+        &last.host,
+        event,
+        Vec::new(),
+    ));
+}
+
+/// Rewrite the last entry the sink received, keeping the chain it is part
+/// of intact: a plant that broke the chain would be caught by invariant 4
+/// before the one it was made for ever ran.
+fn plant_entry(sim: &Sim, instance: &str, f: impl Fn(&mut rue_core::journal::Entry)) {
+    let mut entries = sim.sink.entries.lock().unwrap_or_else(|e| e.into_inner());
+    let last = entries.len() - 1;
+    let mut e = entries[last].clone();
+    e.instance = instance.to_string();
+    f(&mut e);
+    let prev = entries[..last].to_vec();
+    entries[last] = rue_core::journal::append(
+        &prev,
+        e.at,
+        &e.plan,
+        &e.instance,
+        &e.host,
+        e.event.clone(),
+        Vec::new(),
     );
 }
 

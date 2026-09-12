@@ -269,26 +269,46 @@ fn i06_no_wane_during_settle(sim: &mut Sim) -> Option<Violation> {
 /// (7) A step declaring `reach` is never applied before the backstop
 /// covering it is armed: on the target that is the deadline landing
 /// before the step's own `do`.
+///
+/// Per instance, for invariant 10's reason: a plan with no `reach` and no
+/// backstop shares the host, and reading one ordering for both would have
+/// its runs answer this plan's question.
 fn i07_reach_after_arming(sim: &mut Sim) -> Option<Violation> {
-    let has_reach = sim.records().iter().any(|r| {
-        r.applied
+    let acts = sim.ssh.acts();
+    for r in sim.records() {
+        let has_reach = r
+            .applied
             .iter()
-            .any(|a| r.op_at(a.step).is_some_and(|o| !o.reach.is_empty()))
-    });
-    if !has_reach {
-        return None;
+            .any(|a| r.op_at(a.step).is_some_and(|o| !o.reach.is_empty()));
+        if !has_reach {
+            continue;
+        }
+        let mine: Vec<&String> = acts
+            .iter()
+            .filter(|(i, _)| *i == r.id)
+            .map(|(_, a)| a)
+            .collect();
+        let deadline = mine.iter().position(|a| a.as_str() == "replace deadline");
+        let first_run = mine.iter().position(|a| a.as_str() == "run");
+        return match (deadline, first_run) {
+            (Some(d), Some(run)) if d > run => broke(
+                7,
+                format!(
+                    "{}: the deadline landed at {d}, after the first run at {run}",
+                    r.id
+                ),
+            ),
+            (None, Some(_)) => broke(
+                7,
+                format!(
+                    "{}: a reach step ran and no deadline was ever written",
+                    r.id
+                ),
+            ),
+            _ => continue,
+        };
     }
-    let events = sim.ssh.events();
-    let deadline = events.iter().position(|e| e == "replace deadline");
-    let first_run = events.iter().position(|e| e == "run");
-    match (deadline, first_run) {
-        (Some(d), Some(r)) if d > r => broke(
-            7,
-            format!("the deadline landed at {d}, after the first run at {r}"),
-        ),
-        (None, Some(_)) => broke(7, "a reach step ran and no deadline was ever written"),
-        _ => None,
-    }
+    None
 }
 
 /// (8) For every drift event, the end state is the same whether the

@@ -1,0 +1,13 @@
+# Reverts: invariant 12 firing on two live region holders; here it reads only the first, so the plant lands in a world that cannot catch it
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sim/src/invariants.rs
++++ b/sim/src/invariants.rs
+@@ -451,7 +451,7 @@
+                 .collect::<Vec<_>>()
+         })
+         .collect();
+-    if live.len() < 2 {
++    if live.len() < 3 {
+         return None;
+     }
+     let text = sim

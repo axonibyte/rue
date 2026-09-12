@@ -243,6 +243,14 @@ remain, no wane during settle and no act by an undeclared identity. Two
 more -- no staged file surviving and a proof scoped to one scope -- were on
 that list until the third plan arrived with a stage and a step gate.
 
+The other eighteen each have a violation planted by hand -- in the world,
+the record, the ledger or the journal, never in the engine -- and the check
+for it must catch it. A check nobody has ever seen fire is a check with no
+evidence behind it, and half of these had none until the plants were
+written; one of them, invariant 12's, had been skipping itself silently for
+want of two live instances holding regions on one file, which is why the
+third plan holds one too.
+
 Two exemptions are part of the contract rather than gaps. Between an
 artifact firing and the engine's next contact, the target has undone
 steps the engine still calls applied; that is R0402 read on the next
