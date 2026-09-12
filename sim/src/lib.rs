@@ -59,6 +59,14 @@ pub enum Event {
     ApplyTemporary,
     /// Request the permanent plan.
     ApplyPermanent,
+    /// Request the third plan: a repeat, a hook-executed step behind a
+    /// step gate, a staged file, a non-file fact read by a probe, and a
+    /// step no transport reaches.
+    ApplySuccession,
+    /// The handoff a deferred step waits on is reported done.
+    HandoffDone,
+    /// A proof for step `n`'s gate, from `oncall`.
+    ApproveStep(u8),
     /// A proof for the plan gate, from the named authenticator.
     Approve(u8),
     /// Time passes.
@@ -85,6 +93,10 @@ pub enum Event {
     Abandon,
     /// The next executor call fails.
     BreakExecutor,
+    /// The next read of a fact fails, as a connection that drops mid-plan
+    /// does (R0205, unit 2). A read that fails is an error the step or its
+    /// undo reports, never the absence of the fact.
+    DropRead,
 }
 
 impl fmt::Display for Event {
@@ -92,6 +104,7 @@ impl fmt::Display for Event {
         match self {
             Event::Tick(s) => write!(f, "Tick({s})"),
             Event::Approve(a) => write!(f, "Approve({a})"),
+            Event::ApproveStep(n) => write!(f, "ApproveStep({n})"),
             other => write!(f, "{other:?}"),
         }
     }
@@ -100,6 +113,9 @@ impl fmt::Display for Event {
 const KINDS: &[Event] = &[
     Event::ApplyTemporary,
     Event::ApplyPermanent,
+    Event::ApplySuccession,
+    Event::HandoffDone,
+    Event::ApproveStep(2),
     Event::Approve(0),
     Event::Approve(1),
     Event::Tick(0),
@@ -114,6 +130,7 @@ const KINDS: &[Event] = &[
     Event::Commit,
     Event::Abandon,
     Event::BreakExecutor,
+    Event::DropRead,
 ];
 
 /// An event list from a seed.

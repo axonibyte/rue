@@ -32,9 +32,19 @@ pub const TARGET: &str = "fw-01";
 /// The value the temporary plan's secret output carries: no sink, no
 /// command line and no artifact may ever hold it (invariants 5 and 9).
 pub const SECRET: &str = "sim-secret-must-never-appear";
-/// The file both plans hold a region on, with different anchors
+/// The file the first two plans hold a region on, with different anchors
 /// (invariant 12).
 pub const SHARED: &str = "file:/etc/shared.conf";
+/// The host the third plan's hook-executed step acts on: an appliance with
+/// no filesystem, so its markers live in the controller's store and its
+/// steps are the T4 shape (`undo_locus: :controller`).
+pub const APPLIANCE: &str = "bmc-01";
+/// The guest whose state the third plan's `modified` fact names: not a
+/// file, and read by the probe that declares it `reads` (5.1, unit 2).
+pub const GUEST_FACT: &str = "guest:state:g1";
+/// The host no transport of this site serves: a step on it is deferred and
+/// continued by `handoff-done`, which is T2's node-c (8.2).
+pub const CONSOLE: &str = "node-c";
 
 /// The names of the twenty invariants of docs/ROADMAP.md 10.3, in order.
 pub const INVARIANTS: [&str; 20] = [
@@ -71,6 +81,18 @@ fn record(name: &str, reach: &[&str]) -> HostRecord {
     }
 }
 
+/// A host of this world by name, for a caller that has only the name: the
+/// invariants resolving a footprint shape need one, and every host here is
+/// known by its name alone.
+pub fn host_named(name: &str) -> Host {
+    match name {
+        APPLIANCE => host(APPLIANCE, &["api"]),
+        CONSOLE => host(CONSOLE, &["console"]),
+        "controller" => host("controller", &["local"]),
+        other => host(other, &["ssh"]),
+    }
+}
+
 fn host(name: &str, reach: &[&str]) -> Host {
     Host {
         record: record(name, reach),
@@ -82,9 +104,18 @@ fn host(name: &str, reach: &[&str]) -> Host {
 }
 
 fn site() -> Site {
+    let mut appliance = record(APPLIANCE, &["api"]);
+    appliance.filesystem = false;
+    let mut console = record(CONSOLE, &["console"]);
+    console.filesystem = false;
     Site {
-        hosts: vec![record(TARGET, &["ssh"]), record("controller", &["local"])],
-        transports: vec!["ssh".into(), "local".into()],
+        hosts: vec![
+            record(TARGET, &["ssh"]),
+            record("controller", &["local"]),
+            appliance,
+            console,
+        ],
+        transports: vec!["ssh".into(), "local".into(), "api".into()],
         authenticators: vec![
             Authenticator {
                 id: "oncall".into(),
@@ -233,6 +264,121 @@ pub fn permanent() -> Plan {
     p
 }
 
+/// The third plan, cut from the shapes T2 and T4 have (8.2, 8.4): a repeat
+/// over a list, a `modified` fact that is not a file and is read by the
+/// probe that declares it `reads`, a step on an appliance with no
+/// filesystem (markers on the controller, `undo_locus: :controller`), a
+/// staged file, a step gate, and a step no transport reaches, which defers
+/// until `handoff-done`.
+///
+/// What it adds to the world is not more language but more orderings: an
+/// iteration undone with its own variable, a deferred step outliving a
+/// boot, a fact only a probe can read, and a proof made for the plan that
+/// must not satisfy a step (invariants 11 and 14, which the first two
+/// plans could not reach).
+pub fn succession() -> Plan {
+    // One iteration per guest, each owning a file of its own and reading
+    // a fact that is not a file.
+    let mut start = Op::new(
+        "start-guest",
+        vec![
+            FootprintEntry::entry(Kind::Owned, "file:/etc/guest-{g}"),
+            FootprintEntry::entry(Kind::Modified, "guest:state:{g}"),
+        ],
+    );
+    start.do_ = vec![
+        Prim::Stage(rue_core::body::Stage {
+            name: "guest.conf".into(),
+            content: lit("a staged file"),
+            mode: 0o640,
+        }),
+        write("file:/etc/guest-{g}", "started"),
+    ];
+    start.undo = Undo::Restore;
+    // A path bound at runtime cannot be baked into a target-side artifact
+    // (E0202), which is exactly why T2's per-guest steps undo while the
+    // engine lives.
+    start.undo_locus = UndoLocus::Controller;
+
+    // The appliance: no filesystem, so its markers live in the store and
+    // its undo runs while the engine lives.
+    let mut fence = Op::new(
+        "fence-node",
+        vec![FootprintEntry::entry(Kind::Modified, "power:node-a")],
+    );
+    fence.do_ = run_body("fence node-a");
+    fence.undo = Undo::Computed {
+        body: run_body("unfence node-a"),
+        undo_pre: vec!["power:node-a".into()],
+    };
+    fence.undo_locus = UndoLocus::Controller;
+    fence.locus = rue_core::model::Locus::Host(rue_core::model::HostRef::Static(APPLIANCE.into()));
+
+    // The console: no transport of this site reaches it, so the step is
+    // deferred and a `handoff-done` continues it.
+    let mut heir = Op::new(
+        "hand-over",
+        vec![FootprintEntry::entry(Kind::Owned, "file:/etc/heir")],
+    );
+    heir.do_ = vec![write("file:/etc/heir", "heir")];
+    heir.undo = Undo::Restore;
+    heir.undo_locus = UndoLocus::Controller;
+    heir.locus = rue_core::model::Locus::Host(rue_core::model::HostRef::Static(CONSOLE.into()));
+    heir.handoff_done = Some("heir_seated".into());
+
+    let mut gated = StepI::new(fence);
+    gated.gate = Some(rue_core::model::GateExpr::Single(
+        rue_core::model::Factor::Auth {
+            id: "oncall".into(),
+            weight: 1,
+        },
+    ));
+    gated.window = Some(Duration::new(3_600));
+
+    let mut p = Plan::new(
+        "sim-succession",
+        TARGET,
+        vec![
+            Item::Repeat {
+                form: rue_core::model::RepeatForm::Over {
+                    list: "guests".into(),
+                    max: 8,
+                    set_valued: true,
+                },
+                var: "g".into(),
+                body: vec![Item::Step(StepI::new(start))],
+            },
+            Item::Step(gated),
+            Item::Step(StepI::new(heir)),
+        ],
+    );
+    p.wane = Some(Duration::new(3_600));
+    p.renew_within = Some(Duration::new(600));
+    // The probe that reads the guest facts: over ssh, which reads files
+    // alone, this is the only way `guest:state:{g}` is a fact at all.
+    p.probes = vec![
+        rue_core::model::ProbeDecl {
+            name: "heir_seated".into(),
+            locus: rue_core::model::Locus::Host(rue_core::model::HostRef::Static(CONSOLE.into())),
+            body: run_body("seated"),
+            produces: vec![],
+            static_: false,
+            equivalence: "bytes".into(),
+            reads: None,
+        },
+        rue_core::model::ProbeDecl {
+            name: "guest_state".into(),
+            locus: rue_core::model::Locus::Target,
+            body: run_body("jls -j {g} -h name"),
+            produces: vec!["state".into()],
+            static_: false,
+            equivalence: "bytes".into(),
+            reads: Some("guest:state:{g}".into()),
+        },
+    ];
+    p
+}
+
 pub fn ir(plan: Plan) -> PlanIr {
     PlanIr {
         ir_version: IR_VERSION,
@@ -271,6 +417,8 @@ pub struct Sim {
     pub dir: Scratch,
     pub engine: Engine,
     pub ssh: FakeHandle,
+    /// The appliance's hook executor (no filesystem).
+    pub api: FakeHandle,
     pub sched: FakeSchedulerHandle,
     pub approval: FakeApprovalHandle,
     pub secrets: FakeAcceptor,
@@ -299,15 +447,40 @@ impl Sim {
             f.facts
                 .insert("file:/etc/kept".to_string(), b"kept\n".to_vec());
             f.clock = Some(Instant::new(1_000_000));
+            // The guest states the third plan's probe reads: not files,
+            // and answered by the probe alone (5.1, unit 2).
+            f.observations.insert(
+                "guest_state".to_string(),
+                rue_engine::executor::Observation {
+                    tri: Some(rue_core::model::Tri::Yes),
+                    text: "running".into(),
+                },
+            );
         });
         let local = FakeExecutor::new(LocusKind::Local).shared();
-        let execs: Vec<Box<dyn Executor>> = vec![Box::new(ssh.clone()), Box::new(local)];
+        // The appliance's executor: a hook, which knows its facts by name
+        // and has no filesystem, so the third plan's step there keeps its
+        // markers in the store and undoes while the engine lives.
+        let api = FakeExecutor::new(LocusKind::Hook("api".into())).shared();
+        api.with(|f| {
+            f.caps.filesystem = false;
+            f.facts.insert("power:node-a".to_string(), b"on\n".to_vec());
+        });
+        let execs: Vec<Box<dyn Executor>> = vec![
+            Box::new(ssh.clone()),
+            Box::new(local),
+            Box::new(api.clone()),
+        ];
         let mut engine = Engine::open(
             store,
             journal,
             clock.clone(),
             execs,
-            vec![host(TARGET, &["ssh"])],
+            vec![
+                host(TARGET, &["ssh"]),
+                host(APPLIANCE, &["api"]),
+                host(CONSOLE, &["console"]),
+            ],
         )
         .unwrap();
         let sched = FakeSchedulerHandle::new();
@@ -320,6 +493,7 @@ impl Sim {
             dir,
             engine,
             ssh,
+            api,
             sched,
             approval,
             secrets,
@@ -343,6 +517,17 @@ impl Sim {
         self.instances.last().cloned()
     }
 
+    /// The facts of a host as its executor holds them, or `None` for a
+    /// host no executor of this world reaches -- whose world the engine
+    /// never touched and cannot read.
+    pub fn facts_on(&self, host: &str) -> Option<BTreeMap<String, Vec<u8>>> {
+        match host {
+            TARGET => Some(self.ssh.with(|f| f.facts.clone())),
+            APPLIANCE => Some(self.api.with(|f| f.facts.clone())),
+            _ => None,
+        }
+    }
+
     /// Every instance record the store holds.
     pub fn records(&self) -> Vec<rue_engine::lifecycle::InstanceRecord> {
         self.engine.instances().unwrap_or_default()
@@ -354,6 +539,33 @@ impl Sim {
         match e {
             Event::ApplyTemporary => self.request(temporary()),
             Event::ApplyPermanent => self.request(permanent()),
+            Event::ApplySuccession => self.request(succession()),
+            Event::HandoffDone => {
+                // The step the instance is actually deferred at; a handoff
+                // reported for another step is a refusal, and the sim
+                // reports the one an operator would be told to report.
+                if let Some(id) = self.current() {
+                    let at = self
+                        .records()
+                        .into_iter()
+                        .find(|r| r.id == id)
+                        .and_then(|r| r.deferred.map(|d| d.step));
+                    if let Some(step) = at {
+                        let _ = self.engine.handoff_done(&id, step, "requester");
+                    }
+                }
+            }
+            Event::ApproveStep(n) => {
+                if let Some(id) = self.current() {
+                    let _ = self.engine.approve_proof(
+                        &id,
+                        rue_core::journal::Scope::Step(n as u32),
+                        "oncall",
+                        "token",
+                        "requester",
+                    );
+                }
+            }
             Event::Approve(which) => {
                 let who = if which == 0 { "oncall" } else { "second" };
                 if let Some(id) = self.current() {
@@ -414,6 +626,14 @@ impl Sim {
                 if let Some(id) = self.current() {
                     let _ = self.engine.abandon(&id, "requester", "the sim said so");
                 }
+            }
+            Event::DropRead => {
+                // The next read of the fact both plans touch fails. What
+                // must not happen is the engine reading the failure as
+                // "the fact is not there" and undoing on that (R0205).
+                self.ssh
+                    .with(|f| f.failing_reads.insert("file:/etc/kept".to_string(), 0));
+                self.notes.push("reads of file:/etc/kept drop".into());
             }
             Event::BreakExecutor => {
                 self.ssh.with(|f| {
@@ -550,6 +770,11 @@ impl Sim {
     }
 
     fn request(&mut self, plan: Plan) {
+        // The list the third plan repeats over, as a plan parameter.
+        let mut params = BTreeMap::new();
+        if plan.id == "sim-succession" {
+            params.insert("guests".to_string(), "g1,g2".to_string());
+        }
         // The secret the first step produces, for the run that reaches it.
         let mut outputs = BTreeMap::new();
         outputs.insert("token".to_string(), SECRET.to_string());
@@ -560,7 +785,7 @@ impl Sim {
                     outputs,
                 }))
         });
-        if let Ok(out) = self.engine.apply(ir(plan), BTreeMap::new(), Sim::opts()) {
+        if let Ok(out) = self.engine.apply(ir(plan), params, Sim::opts()) {
             if !self.instances.contains(&out.id) {
                 self.instances.push(out.id);
             }

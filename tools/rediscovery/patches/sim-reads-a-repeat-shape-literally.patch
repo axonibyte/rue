@@ -1,0 +1,16 @@
+# Reverts: the shadow binding a repeat's variables before it looks for a fact; here it looks for the pattern itself
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sim/src/invariants.rs
++++ b/sim/src/invariants.rs
+@@ -164,10 +164,7 @@
+             let Some(facts) = sim.facts_on(&host_of(&r, op)) else {
+                 continue;
+             };
+-            for e in applied_facts(&r, &a)
+-                .iter()
+-                .filter(|e| e.kind == Kind::Owned)
+-            {
++            for e in op.footprint.iter().filter(|e| e.kind == Kind::Owned) {
+                 if !facts.contains_key(&e.shape) {
+                     return broke(
+                         2,

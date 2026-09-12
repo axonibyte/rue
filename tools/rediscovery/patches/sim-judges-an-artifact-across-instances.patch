@@ -1,0 +1,17 @@
+# Reverts: invariant 10 asking about one instance; here an uncovered instance's runs answer a covered one's question
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/sim/src/invariants.rs
++++ b/sim/src/invariants.rs
+@@ -370,11 +370,7 @@
+         if !covered || r.backstop.is_none() {
+             continue;
+         }
+-        let mine: Vec<&String> = acts
+-            .iter()
+-            .filter(|(i, _)| *i == r.id)
+-            .map(|(_, a)| a)
+-            .collect();
++        let mine: Vec<&String> = acts.iter().map(|(_, a)| a).collect();
+         let put = mine.iter().position(|a| a.as_str() == "put artifact.sh");
+         let first_run = mine.iter().position(|a| a.as_str() == "run");
+         return match (put, first_run) {

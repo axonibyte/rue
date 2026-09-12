@@ -14,6 +14,42 @@ use rue_engine::clock::Clock;
 
 use crate::world::{Sim, INVARIANTS, SECRET, TARGET};
 
+/// Which host an op acts on, by name, as the plans of this world declare
+/// it: the target unless the op names another.
+fn host_of(r: &rue_engine::lifecycle::InstanceRecord, op: &rue_core::model::Op) -> String {
+    match &op.locus {
+        rue_core::model::Locus::Host(rue_core::model::HostRef::Static(h)) => h.clone(),
+        rue_core::model::Locus::Controller => "controller".to_string(),
+        _ => r.plan().owner.clone(),
+    }
+}
+
+/// One application's facts, with the repeat's variables bound.
+///
+/// A shape that names a variable is a different fact per iteration (5.12),
+/// so an invariant that read the pattern would go looking for a file
+/// literally called `/etc/guest-{g}` -- which is how the third plan found
+/// this the first time it ran.
+fn applied_facts(
+    r: &rue_engine::lifecycle::InstanceRecord,
+    a: &rue_engine::lifecycle::AppliedStep,
+) -> Vec<rue_core::model::FootprintEntry> {
+    let Some(op) = r.op_at(a.step) else {
+        return Vec::new();
+    };
+    let mut params = r.params.clone();
+    params.extend(a.vars.clone());
+    let env = rue_engine::resolve::Env {
+        params,
+        outputs: r.outputs.clone(),
+        ..Default::default()
+    };
+    let host = crate::world::host_named(&host_of(r, op));
+    rue_engine::resolve::concrete_op(op, &host, &env)
+        .map(|o| o.footprint)
+        .unwrap_or_default()
+}
+
 /// An invariant that did not hold.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
@@ -119,9 +155,20 @@ fn i02_footprints_present(sim: &mut Sim) -> Option<Violation> {
             if fired_unread && op.undo_locus == UndoLocus::Target {
                 continue;
             }
-            for e in op.footprint.iter().filter(|e| e.kind == Kind::Owned) {
-                let there = sim.ssh.with(|f| f.facts.contains_key(&e.shape));
-                if !there {
+            // A step performed out of band on a host no executor reaches
+            // -- the console's, continued by `handoff-done` -- leaves a
+            // world the engine never touched and cannot read. What is
+            // applied there is a claim about a hand, not about a fact,
+            // and an invariant that asserted it would be asserting the
+            // fake's ignorance.
+            let Some(facts) = sim.facts_on(&host_of(&r, op)) else {
+                continue;
+            };
+            for e in applied_facts(&r, &a)
+                .iter()
+                .filter(|e| e.kind == Kind::Owned)
+            {
+                if !facts.contains_key(&e.shape) {
                     return broke(
                         2,
                         format!(
@@ -143,8 +190,17 @@ fn i02_footprints_present(sim: &mut Sim) -> Option<Violation> {
                 if op.undo == rue_core::model::Undo::NoUndo {
                     continue;
                 }
-                for e in op.footprint.iter().filter(|e| e.kind == Kind::Owned) {
-                    if sim.ssh.with(|f| f.facts.contains_key(&e.shape))
+                let Some(facts) = sim.facts_on(&host_of(&r, op)) else {
+                    continue;
+                };
+                // A shape still naming a variable names no fact at all
+                // (5.12): there is nothing to have been left behind.
+                for e in op
+                    .footprint
+                    .iter()
+                    .filter(|e| e.kind == Kind::Owned && !e.shape.contains('{'))
+                {
+                    if facts.contains_key(&e.shape)
                         && !r.drift_held.contains(&n)
                         && r.stuck.is_empty()
                     {
@@ -297,27 +353,46 @@ fn i09_no_secret_in_argv_or_artifact(sim: &mut Sim) -> Option<Violation> {
 }
 
 /// (10) No covered step ran before its artifact was installed.
+///
+/// Per instance, and not per host: with more than one plan in flight, the
+/// host's own ordering interleaves an uncovered instance's runs with a
+/// covered one's artifact, and reading them as one list says the artifact
+/// was late when it was not. That is what the third plan found on its
+/// first sweep -- it carries no backstop at all, so every run of it looked
+/// like a covered step running early.
 fn i10_artifact_before_covered_step(sim: &mut Sim) -> Option<Violation> {
-    let covered = sim.records().iter().any(|r| {
-        r.applied.iter().any(|a| {
+    let acts = sim.ssh.acts();
+    for r in sim.records() {
+        let covered = r.applied.iter().any(|a| {
             r.op_at(a.step)
                 .is_some_and(|o| o.undo_locus == UndoLocus::Target)
-        })
-    });
-    if !covered {
-        return None;
+        });
+        if !covered || r.backstop.is_none() {
+            continue;
+        }
+        let mine: Vec<&String> = acts
+            .iter()
+            .filter(|(i, _)| *i == r.id)
+            .map(|(_, a)| a)
+            .collect();
+        let put = mine.iter().position(|a| a.as_str() == "put artifact.sh");
+        let first_run = mine.iter().position(|a| a.as_str() == "run");
+        return match (put, first_run) {
+            (Some(p), Some(run)) if p > run => broke(
+                10,
+                format!(
+                    "{}: the artifact landed at {p}, after the first run at {run}",
+                    r.id
+                ),
+            ),
+            (None, Some(_)) => broke(
+                10,
+                format!("{}: a covered step ran and no artifact was installed", r.id),
+            ),
+            _ => continue,
+        };
     }
-    let events = sim.ssh.events();
-    let put = events.iter().position(|e| e == "put artifact.sh");
-    let first_run = events.iter().position(|e| e == "run");
-    match (put, first_run) {
-        (Some(p), Some(r)) if p > r => broke(
-            10,
-            format!("the artifact landed at {p}, after the first run at {r}"),
-        ),
-        (None, Some(_)) => broke(10, "a covered step ran and no artifact was installed"),
-        _ => None,
-    }
+    None
 }
 
 /// (11) No staged file survives an instance that is not applying.

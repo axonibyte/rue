@@ -204,13 +204,28 @@ a real engine over the fake executor, scheduler, approval and acceptor,
 and after every one the twenty invariants of the roadmap's 10.3 are
 checked against the instance records, the journal, the ledger and the
 state of the host. An event is something an operator, a target or the
-clock does: a request, a proof, a tick, a reap, a reboot, a recant with
-and without `--force=drift`, a hand edit of a fact, an artifact firing,
-a scheduler entry lost, a confirm, a commit, an abandon, an executor that
-breaks. The world is two plans cut from the shapes T1 and T3 have: a
-temporary one with a plan gate, a secret output, a region and a
-`modified` fact under `:defer`, and a permanent one with a knell, a
-region on the same file under another anchor, a confirm and a commit.
+clock does: a request, a proof for a plan or for a step, a tick, a reap, a
+reboot, a recant with and without `--force=drift`, a hand edit of a fact, an
+artifact firing, a scheduler entry lost, a handoff reported done, a confirm,
+a commit, an abandon, an executor that breaks, a read that drops. The world
+is three plans, cut from the shapes T1, T3, T2 and T4 have: a temporary one
+with a plan gate, a secret output, a region and a `modified` fact under
+`:defer`; a permanent one with a knell, a region on the same file under
+another anchor, a confirm and a commit; and a third with a repeat over a
+list, a staged file, a `modified` fact that is not a file and is read by
+the probe that declares it `reads`, a step behind a step gate on an
+appliance with no filesystem (markers on the controller), and a step no
+transport reaches, deferred until `handoff-done`.
+
+Three of the checks were written for a world with one plan in flight and
+had to be told about a wider one, which is what the third plan found by
+running: a footprint shape naming a repeat's variable is a different fact
+per iteration and must be bound before it is looked for; a step performed
+out of band on a host no executor reaches leaves a world the engine never
+touched and cannot assert; and "no covered step ran before its artifact was
+installed" is a question about one instance, which an uncovered instance's
+runs on the same host would otherwise answer wrongly. The fake executor
+grew an instance-tagged act log for the last of those.
 
 The suite runs a fixed sweep (seeds 1 to 39, 24 events each) so the gate
 is deterministic; `RUE_SIM_SEED` and `RUE_SIM_STEPS` run one longer
@@ -222,11 +237,11 @@ Two things the simulation does not do, said plainly. It applies the
 artifact's rule to the shadow rather than executing the rendered script:
 what an executed artifact does is proven where a real one runs, in
 `render/tests/execute.rs` under `sh` and Python and in the end-to-end
-harness where a real cron fires a real artifact. And four of the twenty
-invariants this world cannot reach are named in the test that says so,
-each with where it is proven instead: no wane during settle, no staged
-file surviving, a proof scoped to one scope, and no act by an undeclared
-identity.
+harness where a real cron fires a real artifact. And the invariants this world cannot reach are
+named in the test that says so, each with where it is proven instead: two
+remain, no wane during settle and no act by an undeclared identity. Two
+more -- no staged file surviving and a proof scoped to one scope -- were on
+that list until the third plan arrived with a stage and a step gate.
 
 Two exemptions are part of the contract rather than gaps. Between an
 artifact firing and the engine's next contact, the target has undone

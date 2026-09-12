@@ -168,20 +168,11 @@ fn the_invariants_are_all_named_and_the_unreachable_ones_say_so() {
     // What this world cannot reach, and why. Each is proven elsewhere in
     // the suite; the simulation states it rather than implying coverage
     // it does not have.
-    let unreachable: [(usize, &str); 4] = [
+    let unreachable: [(usize, &str); 2] = [
         (
             6,
             "no wane fires during settle: the sim boots and settles inside one call, \
              so no event lands between them (engine/tests/lifecycle.rs drives it)",
-        ),
-        (
-            11,
-            "no staged file survives: neither plan stages one (engine/tests/drift.rs does)",
-        ),
-        (
-            14,
-            "a proof for one scope satisfies no other: the sim's plans have a plan gate \
-             and no step gate (engine/tests/gates.rs drives both)",
         ),
         (
             18,
@@ -189,8 +180,155 @@ fn the_invariants_are_all_named_and_the_unreachable_ones_say_so() {
              control channel (engine/tests/control.rs drives it)",
         ),
     ];
+    // 11 and 14 were on this list until the third plan arrived: it stages
+    // a file and gates a step, so a staged file surviving and a plan proof
+    // opening a step gate are now things this world can do wrong.
     for (n, why) in unreachable {
         assert!(!INVARIANTS[n - 1].is_empty(), "{n} is named");
         assert!(why.len() > 40, "{n} says why");
     }
+}
+
+/// The third plan is not decoration: it checks clean, its repeat runs once
+/// per guest, its hook-executed step waits on a step gate a *plan* proof
+/// does not satisfy, it stages a file, and its console step defers until
+/// the handoff is reported. A plan the checker refused would make every
+/// event naming it a no-op, and the sweep would be as small as before
+/// while looking twice the size.
+#[test]
+fn the_succession_plan_runs_its_repeat_its_gate_its_stage_and_its_handoff() {
+    let mut sim = Sim::new("succession");
+    sim.apply(Event::ApplySuccession);
+    let id = sim
+        .current()
+        .expect("the plan was requested, so it checked");
+    let rec = |s: &Sim| {
+        s.records()
+            .into_iter()
+            .find(|r| r.id == id)
+            .expect("its record")
+    };
+
+    // The repeat ran once per guest, each iteration with its own variable.
+    let r = rec(&sim);
+    let vars: Vec<String> = r
+        .applied
+        .iter()
+        .filter_map(|a| a.vars.get("g").cloned())
+        .collect();
+    assert_eq!(vars, vec!["g1".to_string(), "g2".to_string()], "{r:?}");
+    // The stage() ran on the target: invariant 11 -- no staged file
+    // surviving an instance that is not applying -- has something to be
+    // about in this world now, where before neither plan staged anything.
+    // A staged file is written inside the step's own body, so the proof it
+    // happened is the body the executor was handed; the proof the
+    // invariant holds is that the file is gone again by here, the instance
+    // having stopped applying.
+    assert!(
+        sim.ssh
+            .with(|f| f.calls.iter().any(|c| c.body.iter().any(|p| matches!(
+                p,
+                rue_engine::executor::RPrim::Stage { name, .. } if name == "guest.conf"
+            )))),
+        "the step staged a file"
+    );
+    assert!(
+        sim.ssh.events().iter().any(|e| e == "remove guest.conf"),
+        "and it was removed when the instance stopped applying: {:?}",
+        sim.ssh.events()
+    );
+
+    // The gated step waits: a proof for the plan's scope satisfies no
+    // step's (invariant 14), so the plan proof leaves it waiting.
+    assert_eq!(
+        r.waiting.as_ref().map(|w| w.step),
+        Some(2),
+        "waiting at the step gate: {:?}",
+        r.waiting
+    );
+    sim.apply(Event::Approve(0));
+    assert_eq!(
+        rec(&sim).waiting.as_ref().map(|w| w.step),
+        Some(2),
+        "a plan proof does not open a step gate"
+    );
+    sim.apply(Event::ApproveStep(2));
+    let r = rec(&sim);
+    assert!(
+        r.waiting.is_none(),
+        "the step's own proof opened it: {:?}",
+        r.waiting
+    );
+
+    // And the console step defers: no transport of this site reaches it.
+    assert_eq!(
+        r.deferred.as_ref().map(|d| d.step),
+        Some(3),
+        "deferred at the console step: {r:?}"
+    );
+    sim.apply(Event::HandoffDone);
+    let r = rec(&sim);
+    assert!(r.deferred.is_none(), "the handoff continued it: {r:?}");
+    assert!(
+        r.applied.iter().any(|a| a.step == 3),
+        "the deferred step applied after its handoff: {:?}",
+        r.applied
+    );
+    assert!(check_all(&mut sim).is_none(), "the world is consistent");
+}
+
+/// Unit 2's rules, in the shadow. A read that drops is an error the step
+/// reports and never the absence of the fact, and a `do` that never took
+/// is not undone -- journaled `UndoSkipped`. Both are engine rules with
+/// their own tests; what this asks is whether the simulated world still
+/// agrees with the engine while they fire, which is the only place the two
+/// meet under an arbitrary ordering.
+#[test]
+fn a_dropped_read_and_a_do_that_never_took_leave_the_world_consistent() {
+    let mut sim = Sim::new("unit-two-rules");
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    assert!(check_all(&mut sim).is_none(), "applied cleanly");
+    let kept = || sim_fact(&sim, "file:/etc/kept");
+    let before = kept();
+    assert!(before.is_some(), "the plan's modified fact is there");
+
+    // The link drops for that fact, and the operator recants. The undo
+    // must not read the failure as "the fact is gone" and act on it.
+    sim.apply(Event::DropRead);
+    sim.apply(Event::Recant);
+    assert!(check_all(&mut sim).is_none(), "the world is consistent");
+    assert!(
+        sim.sink.entries().iter().any(|e| {
+            matches!(&e.event, rue_core::journal::Event::Stuck { .. })
+                || matches!(&e.event, rue_core::journal::Event::Reverted)
+        }),
+        "the recant said what happened rather than passing over it"
+    );
+
+    // A step whose `do` fails without taking: the engine skips its undo
+    // and says so, and the fact it never wrote is untouched.
+    let mut sim = Sim::new("never-took");
+    sim.apply(Event::BreakExecutor);
+    for e in [Event::ApplyTemporary, Event::Approve(0), Event::Approve(1)] {
+        sim.apply(e);
+    }
+    assert!(check_all(&mut sim).is_none(), "the world is consistent");
+    assert!(
+        sim.sink
+            .entries()
+            .iter()
+            .any(|e| matches!(&e.event, rue_core::journal::Event::UndoSkipped { .. })),
+        "the do that never took was not undone, and the journal says so: {:?}",
+        sim.sink
+            .entries()
+            .iter()
+            .map(|e| format!("{:?}", e.event))
+            .collect::<Vec<_>>()
+    );
+}
+
+fn sim_fact(sim: &Sim, shape: &str) -> Option<Vec<u8>> {
+    sim.ssh.with(|f| f.facts.get(shape).cloned())
 }

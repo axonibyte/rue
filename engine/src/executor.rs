@@ -176,6 +176,14 @@ pub struct FakeExecutor {
     /// `replace <rel>`, `remove <rel>`), for tests of ordering and of which
     /// write went through which door.
     pub events: Arc<Mutex<Vec<String>>>,
+    /// The same ordering, for the ops that name an instance, with the
+    /// instance beside them: `(instance, act)`. `events` cannot answer a
+    /// question about one instance among several -- the simulation asking
+    /// whether a *covered* step ran before *its* artifact landed had to
+    /// read the interleaving of two instances as one -- and tagging
+    /// `events` itself would rewrite every ordering assertion in the
+    /// suite for a distinction those tests do not make.
+    pub acts: Arc<Mutex<Vec<(String, String)>>>,
     pub observed: Vec<(String, String)>,
     /// The body of every probe observed, resolved, beside its name: what a
     /// reading probe was run with.
@@ -210,6 +218,7 @@ impl FakeExecutor {
             observations: BTreeMap::new(),
             calls: Vec::new(),
             events: Arc::new(Mutex::new(Vec::new())),
+            acts: Arc::new(Mutex::new(Vec::new())),
             observed: Vec::new(),
             probe_bodies: Vec::new(),
             facts: BTreeMap::new(),
@@ -255,10 +264,21 @@ impl FakeHandle {
     pub fn events(&self) -> Vec<String> {
         self.with(|f| f.events.lock().unwrap_or_else(|e| e.into_inner()).clone())
     }
+    /// Every act that named an instance, in order, beside that instance.
+    pub fn acts(&self) -> Vec<(String, String)> {
+        self.with(|f| f.acts.lock().unwrap_or_else(|e| e.into_inner()).clone())
+    }
 }
 
 fn note(events: &Arc<Mutex<Vec<String>>>, what: String) {
     events.lock().unwrap_or_else(|e| e.into_inner()).push(what);
+}
+
+/// The same note, tagged with the instance it was made for.
+fn act(acts: &Arc<Mutex<Vec<(String, String)>>>, instance: &str, what: &str) {
+    acts.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push((instance.to_string(), what.to_string()));
 }
 
 /// The fake lock: its drop is the release, recorded.
@@ -280,6 +300,7 @@ impl Executor for FakeHandle {
     fn run(&mut self, host: &Host, instance: &str, body: &[RPrim]) -> Result<Output, ExecError> {
         self.with(|f| {
             note(&f.events, "run".into());
+            act(&f.acts, instance, "run");
             f.calls.push(Call {
                 host: host.name().to_string(),
                 instance: instance.to_string(),
@@ -434,6 +455,7 @@ impl Executor for FakeHandle {
     ) -> Result<(), ExecError> {
         self.with(|f| {
             note(&f.events, format!("put {rel}"));
+            act(&f.acts, instance, &format!("put {rel}"));
             f.files.insert(
                 (
                     host.name().to_string(),
@@ -454,6 +476,7 @@ impl Executor for FakeHandle {
     ) -> Result<(), ExecError> {
         self.with(|f| {
             note(&f.events, format!("replace {rel}"));
+            act(&f.acts, instance, &format!("replace {rel}"));
             f.files.insert(
                 (
                     host.name().to_string(),
@@ -480,6 +503,7 @@ impl Executor for FakeHandle {
     fn remove_file(&mut self, host: &Host, instance: &str, rel: &str) -> Result<(), ExecError> {
         self.with(|f| {
             note(&f.events, format!("remove {rel}"));
+            act(&f.acts, instance, &format!("remove {rel}"));
             f.files.remove(&(
                 host.name().to_string(),
                 instance.to_string(),
