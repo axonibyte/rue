@@ -189,6 +189,7 @@ events! {
     OperatorConnected { identity: String, admin: bool } => "operator_connected",
     OperatorDisconnected { identity: String } => "operator_disconnected",
     KeyRotated { old_pub: String, new_pub: String } => "key_rotated",
+    DrillAttested { plan: String, host: String, instance: String, restored: bool, facts: Vec<String> } => "drill_attested",
     Migrated { from: u32, to: u32, by: String } => "migrated",
 }
 

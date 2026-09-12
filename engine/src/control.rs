@@ -40,7 +40,7 @@ use serde_json::{json, Value};
 
 use crate::hook::{HookRegistry, LineLink, Registered, Registration, HOOK_PROTOCOL};
 use crate::journal::Sink;
-use crate::lifecycle::{ApplyOptions, Engine, EngineError, InstanceRecord, Outcome};
+use crate::lifecycle::{ApplyOptions, Attestation, Engine, EngineError, InstanceRecord, Outcome};
 use crate::secrets::Mailbox;
 
 pub const CONTROL_PROTOCOL: u32 = 1;
@@ -654,6 +654,21 @@ fn outcome_json(o: &Outcome) -> Value {
     json!({ "id": o.id, "state": o.state.to_string(), "exit": o.exit, "line": o.line })
 }
 
+/// A drill's attestation as the channel carries it: the verdict line and
+/// exit a client prints, and every fact line the journal entry holds, so a
+/// client can show what was attested without reading the journal itself.
+fn attestation_json(a: &Attestation) -> Value {
+    json!({
+        "plan": a.plan,
+        "instance": a.instance,
+        "hosts": a.hosts,
+        "restored": a.restored,
+        "exit": a.exit,
+        "line": a.line,
+        "facts": a.facts.iter().map(|f| f.line()).collect::<Vec<_>>(),
+    })
+}
+
 fn status_json(r: &InstanceRecord) -> Value {
     json!({
         "id": r.id,
@@ -827,6 +842,46 @@ fn dispatch_inner(
             let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
             let out = e.apply(ir, params, opts).map_err(engine_error)?;
             Ok(outcome_json(&out))
+        }
+        // A drill (7.14): the same plan, applied to a canary and recanted,
+        // with an attestation journaled. Scoped like `apply`, because it
+        // *is* an apply -- of a real plan, to a real host.
+        "drill" => {
+            let ir: PlanIr = serde_json::from_value(
+                args.get("ir")
+                    .cloned()
+                    .ok_or_else(|| ControlError::new("protocol", "`ir` is required"))?,
+            )
+            .map_err(|e| ControlError::new("protocol", format!("ir: {e}")))?;
+            if !op.admits_plan(&ir.plan.id) {
+                return Err(ControlError::new(
+                    "R0504",
+                    format!(
+                        "identity :{} is not an operator for plan {}",
+                        op.name, ir.plan.id
+                    ),
+                ));
+            }
+            let params: BTreeMap<String, String> = args
+                .get("params")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|e| ControlError::new("protocol", format!("params: {e}")))?
+                .unwrap_or_default();
+            if daemon.dry_run {
+                return Err(ControlError::new(
+                    "protocol",
+                    "a dry-run daemon cannot drill: a drill is an apply and a recant against                      a real canary, and a rehearsal of one proves nothing",
+                ));
+            }
+            let opts = ApplyOptions {
+                by: op.name.clone(),
+                ..ApplyOptions::default()
+            };
+            let mut e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());
+            let att = e.drill(ir, params, opts).map_err(engine_error)?;
+            Ok(attestation_json(&att))
         }
         "status" => {
             let e = daemon.engine.lock().unwrap_or_else(|e| e.into_inner());

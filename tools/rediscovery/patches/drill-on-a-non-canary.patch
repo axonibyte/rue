@@ -1,0 +1,13 @@
+# Reverts: the canary rule: a drill applies a real plan to a real host, and only a host the inventory declares canary may be it
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -2832,7 +2832,7 @@
+         }
+         for h in &hosts {
+             let roles = h.facts.get("roles").cloned().unwrap_or_default();
+-            if !roles.split(',').any(|r| r.trim() == "canary") {
++            if false {
+                 return Err(EngineError::Runtime(format!(
+                     "R0410: {} is not a canary (roles: {}); a drill applies a real plan to \
+                      a real host, and only a host the inventory declares `canary` may be it",

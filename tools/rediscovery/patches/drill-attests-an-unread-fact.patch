@@ -1,0 +1,13 @@
+# Reverts: a fact the engine could not read attesting to nothing; here an unread fact is counted as restored
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/engine/src/lifecycle.rs
++++ b/engine/src/lifecycle.rs
+@@ -3715,7 +3715,7 @@
+ impl DrilledFact {
+     /// True only when both reads succeeded and agree.
+     pub fn restored(&self) -> bool {
+-        self.unread.is_none() && self.before == self.after
++        self.before == self.after
+     }
+ 
+     /// The attestation's line for this fact, as the journal keeps it.

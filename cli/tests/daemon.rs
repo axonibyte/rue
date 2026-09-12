@@ -689,3 +689,45 @@ fn always_opens_every_gate_so_a_live_daemon_refuses_to_bind_it() {
     daemon.stop();
     let _ = std::io::stderr().flush();
 }
+
+/// A drill is refused on a host the inventory does not declare a canary
+/// (R0410, 7.14): the verb reaches the daemon, the engine refuses before
+/// anything is applied, and the CLI says which host and why.
+#[test]
+fn a_drill_on_a_host_that_is_not_a_canary_is_refused_by_the_daemon() {
+    let d = TempDir::new("drill");
+    let me = user_name(my_uid()).unwrap();
+    fs::write(d.0.join("inventory.toml"), INVENTORY).unwrap();
+    let site_file = d.0.join("plan.rue");
+    fs::write(&site_file, format!("{}{PLAN}", site(&me, true))).unwrap();
+    let daemon = Daemon::start(&d.0, &site_file, &[]);
+    let hook = serve_hook(&daemon.socket, "act");
+
+    let out = rue(
+        &daemon.socket,
+        &[
+            "drill",
+            site_file.to_str().unwrap(),
+            "--host",
+            "h",
+            "--identity",
+            "ops",
+        ],
+    );
+    let said =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    assert_ne!(out.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains("R0410") && said.contains("not a canary"),
+        "{said}"
+    );
+    // Nothing was applied: no instance exists to have a state at all.
+    let out = rue(&daemon.socket, &["status", "--identity", "ops"]);
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("no instances"),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    daemon.stop();
+    let _ = hook.join();
+}

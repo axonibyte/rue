@@ -113,6 +113,23 @@ enum Verb {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Drill a plan against a canary (section 7.14): apply it, recant it,
+    /// and journal an attestation that every fact it touched came back.
+    /// Every host the plan touches must carry the role `canary`.
+    ///
+    /// A timer runs this -- cron, a systemd timer, launchd -- because a
+    /// drill needs the engine alive; rued schedules backstops, not drills.
+    Drill {
+        /// A .rue file, or a plan IR document.
+        plan: PathBuf,
+        #[command(flatten)]
+        select: Select,
+        #[command(flatten)]
+        channel: Channel,
+        /// A plan parameter, `name=value`; repeatable.
+        #[arg(long = "set", value_name = "NAME=VALUE")]
+        set: Vec<String>,
+    },
     /// The observed state of one instance, or of every instance in scope.
     Status {
         instance: Option<String>,
@@ -293,6 +310,12 @@ enum JournalVerb {
         /// The public key (OpenSSH format) every entry must be signed with.
         #[arg(long)]
         key: Option<PathBuf>,
+        /// Print every drill attestation the chain carries (section 7.14),
+        /// once the chain itself verifies. A chain that does not verify
+        /// prints none: an attestation is worth exactly what the chain
+        /// around it is worth.
+        #[arg(long)]
+        attestations: bool,
     },
 }
 
@@ -476,7 +499,12 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             Ok(status_code(&v))
         }
         Verb::Journal {
-            verb: JournalVerb::Verify { file, key },
+            verb:
+                JournalVerb::Verify {
+                    file,
+                    key,
+                    attestations,
+                },
         } => {
             let entries =
                 rue_engine::store::read_ndjson(&file).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -505,6 +533,45 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
                         file.display(),
                         entries.len()
                     )?;
+                    if attestations {
+                        let mut drills = 0;
+                        let mut unattested = 0;
+                        for e in &entries {
+                            let rue_core::journal::Event::DrillAttested {
+                                plan,
+                                host,
+                                instance,
+                                restored,
+                                facts,
+                            } = &e.event
+                            else {
+                                continue;
+                            };
+                            drills += 1;
+                            if !restored {
+                                unattested += 1;
+                            }
+                            writeln!(
+                                out,
+                                "drill {instance}: {plan} on {host}: {}",
+                                if *restored {
+                                    "restored"
+                                } else {
+                                    "NOT attested"
+                                }
+                            )?;
+                            for f in facts {
+                                writeln!(out, "  {f}")?;
+                            }
+                        }
+                        writeln!(
+                            out,
+                            "drills: {drills}, of which {unattested} attested nothing"
+                        )?;
+                        if drills == 0 || unattested > 0 {
+                            return Ok(ExitCode::from(1));
+                        }
+                    }
                     Ok(ExitCode::SUCCESS)
                 }
                 Err(e) => {
@@ -556,6 +623,34 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
                 "rehearsal": dry_run,
             });
             over_channel(&channel, "apply", args, out)
+        }
+        Verb::Drill {
+            plan,
+            select,
+            channel,
+            set,
+        } => {
+            let dry_run_daemon = match daemon_dry_run(&channel) {
+                Ok(d) => d,
+                Err(code) => return Ok(code),
+            };
+            let ir = match load_input_opts(&plan, &select, false, dry_run_daemon)? {
+                Ok(ir) => ir,
+                Err(code) => return Ok(code),
+            };
+            let mut params = serde_json::Map::new();
+            for kv in &set {
+                let (k, v) = kv
+                    .split_once('=')
+                    .ok_or_else(|| anyhow::anyhow!("--set takes NAME=VALUE, not {kv}"))?;
+                params.insert(k.to_string(), serde_json::Value::String(v.to_string()));
+            }
+            over_channel(
+                &channel,
+                "drill",
+                serde_json::json!({ "ir": ir, "params": params }),
+                out,
+            )
         }
         Verb::Status { instance, channel } => over_channel(
             &channel,
@@ -1024,6 +1119,17 @@ fn over_channel(
             ) {
                 writeln!(out, "{label}={value}")?;
                 return Ok(ExitCode::SUCCESS);
+            }
+            // An attestation prints what it attested to, fact by fact,
+            // before its verdict: a drill whose line says "restored" and
+            // shows nothing is the drill nobody should trust.
+            if let (Some(facts), Some(_)) = (
+                result.get("facts").and_then(|f| f.as_array()),
+                result.get("restored"),
+            ) {
+                for f in facts {
+                    writeln!(out, "  {}", f.as_str().unwrap_or(""))?;
+                }
             }
             if result.get("line").is_some() {
                 let line = result.get("line").and_then(|l| l.as_str()).unwrap_or("");

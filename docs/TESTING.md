@@ -63,7 +63,7 @@ prototype's under one tasty suite, and both inside the gate:
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
-| 5 | Rust `tenants/e2e/tests/{smoke,firewall,recovery,breakglass,reactive,succession,partition}.rs` | rue against real hosts on a disposable guest: a plan applied and reverted over a real sshd, a real packet filter, a real cron and real hooks (below, "The scenarios") |
+| 5 | Rust `tenants/e2e/tests/{smoke,firewall,recovery,breakglass,reactive,succession,partition,drill}.rs` | rue against real hosts on a disposable guest: a plan applied and reverted over a real sshd, a real packet filter, a real cron and real hooks (below, "The scenarios") |
 | 6 | Rust `tenants/e2e/tests/{recovery,partition}.rs` | The same, with something killed or cut off: a daemon inside a step's `do`, a daemon before its backstop fires, an operator racing the target, and a controller severed from the host its plan is on |
 | 7 | Rust `sim/tests/sim.rs` | The shadow world: seeded event lists against a real engine, the twenty invariants of the roadmap's 10.3 after every event, and a shrinker over the events that broke one (below) |
 
@@ -101,6 +101,11 @@ directory refuses the apply (R0409) and runs nothing, a spent foreign
 directory -- fired, or with no artifact -- refuses nobody and is left where
 it is, and a directory with no stamp is read as this controller's, so an
 upgrade refuses no host it already holds;
+a drill applies to a canary, recants, and attests
+that each fact came back, journaling `DrillAttested` inside the chain; a
+drill on a host the inventory does not call a canary is R0410 with nothing
+run; a drill whose fact the engine could not read attests nothing and says
+which fact it could not read;
 boot demotes an instance left applying; during settle no wane fires and
 held resources are reestablished first, and the settle flag survives a
 crash; a migrated store is journaled once. `engine/tests/store.rs` requires
@@ -767,6 +772,15 @@ driving it with the real `rue`:
   for the marker it leaves, and removes it whatever happened. That last is
   the one proof no unit test can give: that this host's cron runs what rue
   installs.
+- **Drill** (`drill.rs`, 7.14): a plan applied to a host the inventory
+  declares a canary -- the same guest under a second name, because the role
+  is what a drill refuses on and the fixture has to give it one -- then
+  recanted, with the canary's facts read before and after. The stage
+  requires the attestation to name the fact and both digests, the canary to
+  be as it was, and `rue journal verify --attestations` to print the
+  attestation out of the verified chain: journaled, and verified, which is
+  the acceptance line. A drill on `fw-01`, the same machine by its other
+  name and no canary, is R0410 with nothing applied.
 - **Partition** (`partition.rs`): the dead man under a real severed link
   (`docs/issues/0002`). A plan is applied whose backstop is
   `[after: 1h, unless_heartbeat: 60s]` -- an hour out by time, so nothing

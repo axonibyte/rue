@@ -198,3 +198,5 @@ older-record-unreadable.patch	1	-	cargo	store_migrates_and_its_instance_is_drive
 second-controller-not-refused.patch	1	-	cargo	a_host_holding_another_controllers_armed_instance_directory_is_r0409	-
 foreign-instance-dir-reclaimed.patch	1	-	cargo	boot_leaves_another_controllers_directory_exactly_as_it_is	-
 spent-foreign-dir-blocks-the-host.patch	1	-	cargo	another_controllers_spent_directory_does_not_refuse_the_apply	-
+drill-on-a-non-canary.patch	1	-	cargo	a_drill_on_a_host_that_is_not_a_canary_is_r0410	-
+drill-attests-an-unread-fact.patch	1	-	cargo	a_drill_that_could_not_read_a_fact_does_not_attest	-

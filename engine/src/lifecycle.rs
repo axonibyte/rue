@@ -1074,46 +1074,9 @@ impl Engine {
         if verdict.status != Status::Ok {
             return Err(EngineError::Refused(Box::new(verdict)));
         }
-        let permanent = matches!(infer_intent(&ir.plan), Some(Intent::Permanent));
         let id = Engine::instance_id(&ir, &params, opts.rehearsal);
         let now = self.clock.now();
-        let mut rec = InstanceRecord {
-            id: id.clone(),
-            ir,
-            params,
-            state: State::Unchecked,
-            permanent,
-            rehearsal: opts.rehearsal,
-            requested_at: None,
-            approved_at: None,
-            deadline: None,
-            approval_deadline: None,
-            applied: Vec::new(),
-            choices: BTreeMap::new(),
-            outputs: BTreeMap::new(),
-            snapshots: BTreeMap::new(),
-            waiting: None,
-            held_at: None,
-            deferred: None,
-            stuck: Vec::new(),
-            drift_held: Vec::new(),
-            markers: BTreeMap::new(),
-            dirs: Vec::new(),
-            staged: Vec::new(),
-            force_drift: false,
-            backstop: None,
-            nonce: hex(&nonce()),
-            host_contract: String::new(),
-            proofs: Vec::new(),
-            secret_undelivered: false,
-            attempting: None,
-            attempting_pre: BTreeMap::new(),
-            acks: opts.acks.clone(),
-            forced: opts.forced.clone(),
-            ledger_ids: Vec::new(),
-            refusal: None,
-            closed_reason: None,
-        };
+        let mut rec = blank_record(ir, params, &opts);
         // A rehearsal claims nothing and so nothing stands in its way (7.9,
         // "a rehearsal is never blocked"). Its id is its own, so the only
         // record it can overwrite is an earlier rehearsal's, which held
@@ -2782,6 +2745,219 @@ impl Engine {
         })
     }
 
+    /// A drill (7.14, `docs/issues/0003`): apply a plan to a canary host,
+    /// recant it, and attest that the canary came back to what it was.
+    ///
+    /// The drill is an ordinary instance from the engine's side -- it
+    /// checks, requests, reserves, applies and recants like any other -- so
+    /// it contends with production work in the ledger rather than stepping
+    /// around it. What is not ordinary is the refusal in front of it: every
+    /// host the plan touches must carry the role `canary`, because this
+    /// applies a real plan to a real machine and nothing else stands
+    /// between it and a production host.
+    ///
+    /// The attestation is a journal entry and nothing else, so the chain
+    /// covers it: an attestation with a verification of its own would be a
+    /// second chain to trust.
+    pub fn drill(
+        &mut self,
+        ir: PlanIr,
+        params: BTreeMap<String, String>,
+        opts: ApplyOptions,
+    ) -> Result<Attestation, EngineError> {
+        let reading = blank_record(ir.clone(), params.clone(), &opts);
+        if reading.permanent {
+            return Err(EngineError::Runtime(format!(
+                "R0410: {} is a permanent plan; a drill has to undo what it did, and a \
+                 permanent plan is not recanted",
+                reading.plan().id
+            )));
+        }
+        let hosts = self.drill_hosts(&reading)?;
+        let plan = reading.plan().id.clone();
+        let before = self.drill_facts(&reading, &hosts);
+
+        let out = self.apply(ir, params, opts)?;
+        let id = out.id.clone();
+        if out.state != State::Applied {
+            return self.attest(Attested {
+                plan,
+                instance: id,
+                hosts,
+                before,
+                after: Vec::new(),
+                exit: 3,
+                why: format!("the plan did not apply ({}): {}", out.state, out.line),
+            });
+        }
+        let recanted = self.recant(&id, &[])?;
+        let after = self.drill_facts(&reading, &hosts);
+        let closed = recanted.state == State::Closed;
+        let (exit, why) = if closed {
+            (0, String::new())
+        } else {
+            (
+                1,
+                format!("the recant left it {}: {}", recanted.state, recanted.line),
+            )
+        };
+        self.attest(Attested {
+            plan,
+            instance: id,
+            hosts,
+            before,
+            after,
+            exit,
+            why,
+        })
+    }
+
+    /// The hosts a drill would touch, each of which must be a canary. A
+    /// host bound at runtime is refused: a drill names where it runs before
+    /// it runs, or it is not a drill.
+    fn drill_hosts(&mut self, rec: &InstanceRecord) -> Result<Vec<Host>, EngineError> {
+        let mut hosts: Vec<Host> = Vec::new();
+        for (_, it) in numbered(&rec.plan().body) {
+            let Some(op) = op_of(it) else { continue };
+            let host = self.step_host(rec, op).map_err(|b| {
+                EngineError::Runtime(format!(
+                    "R0410: {} binds a step's host at runtime ({b}); a drill names its \
+                     canary before it runs",
+                    rec.plan().id
+                ))
+            })?;
+            if !hosts.iter().any(|h| h.name() == host.name()) {
+                hosts.push(host);
+            }
+        }
+        for h in &hosts {
+            let roles = h.facts.get("roles").cloned().unwrap_or_default();
+            if !roles.split(',').any(|r| r.trim() == "canary") {
+                return Err(EngineError::Runtime(format!(
+                    "R0410: {} is not a canary (roles: {}); a drill applies a real plan to \
+                     a real host, and only a host the inventory declares `canary` may be it",
+                    h.name(),
+                    if roles.is_empty() { "none" } else { &roles }
+                )));
+            }
+        }
+        Ok(hosts)
+    }
+
+    /// Every fact of the plan's footprint on those hosts, by digest. A
+    /// shape still waiting on a runtime value names no fact yet and is not
+    /// read; a fact no executor can read is kept as unread, which attests
+    /// to nothing and says so.
+    fn drill_facts(&mut self, rec: &InstanceRecord, hosts: &[Host]) -> Vec<DrilledFact> {
+        let mut out: Vec<DrilledFact> = Vec::new();
+        for host in hosts {
+            for (_, it) in numbered(&rec.plan().body) {
+                let Some(op) = op_of(it) else { continue };
+                if self.step_host(rec, op).map(|h| h.name() == host.name()) != Ok(true) {
+                    continue;
+                }
+                for (_, e, _) in footprint::observed_facts(&op.footprint) {
+                    if e.shape.contains('{')
+                        || out
+                            .iter()
+                            .any(|f| f.host == host.name() && f.shape == e.shape)
+                    {
+                        continue;
+                    }
+                    let (read, unread) = match self.fact_bytes(rec, host, &e.shape) {
+                        Ok(bytes) => (
+                            bytes.as_deref().map(|b| footprint::digest_of(Some(b))),
+                            None,
+                        ),
+                        Err(why) => (None, Some(why)),
+                    };
+                    out.push(DrilledFact {
+                        host: host.name().to_string(),
+                        shape: e.shape.clone(),
+                        before: read,
+                        after: None,
+                        unread,
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    /// Pair the two reads, journal the attestation, and say it in a line.
+    fn attest(&mut self, a: Attested) -> Result<Attestation, EngineError> {
+        let Attested {
+            plan,
+            instance,
+            hosts,
+            before,
+            after,
+            exit,
+            why,
+        } = a;
+        let mut facts: Vec<DrilledFact> = Vec::new();
+        for b in before {
+            let a = after
+                .iter()
+                .find(|a| a.host == b.host && a.shape == b.shape);
+            facts.push(DrilledFact {
+                after: a.and_then(|a| a.before.clone()),
+                unread: b
+                    .unread
+                    .clone()
+                    .or_else(|| a.and_then(|a| a.unread.clone())),
+                ..b
+            });
+        }
+        // Nothing read is nothing attested: a plan whose footprint named no
+        // fact this engine could read has proved nothing about its undo.
+        let restored =
+            exit == 0 && !facts.is_empty() && facts.iter().all(|f| f.restored()) && why.is_empty();
+        let names: Vec<String> = hosts.iter().map(|h| h.name().to_string()).collect();
+        self.journal_site_event(J::DrillAttested {
+            plan: plan.clone(),
+            host: names.join(","),
+            instance: instance.clone(),
+            restored,
+            facts: facts.iter().map(|f| f.line()).collect(),
+        })?;
+        let line = if restored {
+            format!(
+                "{plan} on {}: drilled; {} fact(s) restored",
+                names.join(","),
+                facts.len()
+            )
+        } else if !why.is_empty() {
+            format!("{plan} on {}: not attested; {why}", names.join(","))
+        } else if facts.is_empty() {
+            format!(
+                "{plan} on {}: not attested; the plan's footprint named no fact this engine \
+                 could read",
+                names.join(",")
+            )
+        } else {
+            let bad: Vec<String> = facts
+                .iter()
+                .filter(|f| !f.restored())
+                .map(|f| f.line())
+                .collect();
+            format!(
+                "{plan} on {}: not attested; {}",
+                names.join(","),
+                bad.join("; ")
+            )
+        };
+        Ok(Attestation {
+            plan,
+            instance,
+            hosts: names,
+            facts,
+            restored,
+            line,
+            exit: if restored { 0 } else { exit.max(1) },
+        })
+    }
+
     /// Continue an `Applying` instance's walk (after boot or a satisfied
     /// wait); any other state is left as it is.
     pub fn advance(&mut self, id: &str) -> Result<Outcome, EngineError> {
@@ -3459,4 +3635,114 @@ pub(crate) fn foreign_controller(
         return None;
     }
     Some(id.to_string())
+}
+
+/// A record as an instance begins: nothing applied, nothing held, its id
+/// its own. `apply` persists what it makes of this; a reader that needs a
+/// record only to resolve a plan's probes and environment -- `drill`
+/// reading the canary's facts before it applies anything -- makes one and
+/// throws it away.
+fn blank_record(
+    ir: PlanIr,
+    params: BTreeMap<String, String>,
+    opts: &ApplyOptions,
+) -> InstanceRecord {
+    let permanent = matches!(infer_intent(&ir.plan), Some(Intent::Permanent));
+    let id = Engine::instance_id(&ir, &params, opts.rehearsal);
+    InstanceRecord {
+        id,
+        ir,
+        params,
+        state: State::Unchecked,
+        permanent,
+        rehearsal: opts.rehearsal,
+        requested_at: None,
+        approved_at: None,
+        deadline: None,
+        approval_deadline: None,
+        applied: Vec::new(),
+        choices: BTreeMap::new(),
+        outputs: BTreeMap::new(),
+        snapshots: BTreeMap::new(),
+        waiting: None,
+        held_at: None,
+        deferred: None,
+        stuck: Vec::new(),
+        drift_held: Vec::new(),
+        markers: BTreeMap::new(),
+        dirs: Vec::new(),
+        staged: Vec::new(),
+        force_drift: false,
+        backstop: None,
+        nonce: hex(&nonce()),
+        host_contract: String::new(),
+        proofs: Vec::new(),
+        secret_undelivered: false,
+        attempting: None,
+        attempting_pre: BTreeMap::new(),
+        acks: opts.acks.clone(),
+        forced: opts.forced.clone(),
+        ledger_ids: Vec::new(),
+        refusal: None,
+        closed_reason: None,
+    }
+}
+
+/// What `attest` pairs up: the two reads of a drill and how it went.
+struct Attested {
+    plan: String,
+    instance: String,
+    hosts: Vec<Host>,
+    before: Vec<DrilledFact>,
+    after: Vec<DrilledFact>,
+    exit: u8,
+    why: String,
+}
+
+/// One fact of a drill, read before the plan was applied and again after it
+/// was recanted. `None` is a fact that is not there -- which is a state
+/// like any other and restores like one; `unread` is a fact no executor
+/// could read, which attests to nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrilledFact {
+    pub host: String,
+    pub shape: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+    pub unread: Option<String>,
+}
+
+impl DrilledFact {
+    /// True only when both reads succeeded and agree.
+    pub fn restored(&self) -> bool {
+        self.unread.is_none() && self.before == self.after
+    }
+
+    /// The attestation's line for this fact, as the journal keeps it.
+    pub fn line(&self) -> String {
+        let d = |x: &Option<String>| x.clone().unwrap_or_else(|| "absent".into());
+        match &self.unread {
+            Some(why) => format!("{} {} unread={why}", self.host, self.shape),
+            None => format!(
+                "{} {} before={} after={}",
+                self.host,
+                self.shape,
+                d(&self.before),
+                d(&self.after)
+            ),
+        }
+    }
+}
+
+/// What a drill found (7.14).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attestation {
+    pub plan: String,
+    pub instance: String,
+    pub hosts: Vec<String>,
+    pub facts: Vec<DrilledFact>,
+    /// Every fact read, and every one back as it was.
+    pub restored: bool,
+    pub line: String,
+    pub exit: u8,
 }

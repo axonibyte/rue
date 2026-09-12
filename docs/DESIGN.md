@@ -345,6 +345,17 @@ unit. What is in place:
   undelivered` and exit 7. Nothing about a secret reaches the store or a
   journal entry but its label, and a secret in a hook message other than
   the two that may carry one is dropped at the seam (R0305).
+- **Drills** (`engine/src/lifecycle.rs`, 7.14): `rue drill` reads every
+  fact the plan's footprint names on the hosts it touches, applies, recants,
+  reads them again, and journals `DrillAttested` with a line per fact. The
+  attestation lives in the chain and nowhere else, so what verifies it is
+  `rue journal verify`, which verifies the chain; `--attestations` prints
+  them once it has. `restored` is true only when every fact was read and
+  every digest came back, so a fact the engine could not read attests to
+  nothing and says so. Two refusals guard it, both R0410: every host must
+  carry the role `canary`, and the plan must be temporary, since a drill has
+  to undo what it did. The drill reserves in the ledger like any other
+  instance: it contends with production work rather than stepping around it.
 - **One controller per host** (`engine/src/lifecycle.rs`, 7.7, 11): a store
   names its controller once (`<store>/controller`, sixteen random bytes in
   hex) and stamps it into every instance directory it creates. A host

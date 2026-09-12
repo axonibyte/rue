@@ -1605,3 +1605,99 @@ fn an_unstamped_instance_directory_is_not_a_second_controller() {
     assert_eq!((out.state, out.exit), (State::Applied, 0), "{}", out.line);
     assert_eq!(w.commands(), vec!["do a"]);
 }
+
+// --- drills (7.14, docs/issues/0003) -------------------------------------
+
+/// A drill applies to a canary, recants, and attests that every fact it
+/// touched came back to what it was. The attestation is a journal entry,
+/// so the chain covers it.
+#[test]
+fn a_drill_applies_recants_and_attests_the_canary_came_back() {
+    let mut w = World::new("drill");
+    w.engine.set_hosts(vec![
+        world::canary(OWNER, &["ssh"]),
+        world::host(world::FAR, &["carrier-pigeon"]),
+    ]);
+    // A step with a file fact the fake executor can read, restored by undo.
+    let mut op = world::op("a");
+    op.footprint = vec![FootprintEntry::entry(Kind::Owned, "file:/own")];
+    let plan = world::temp_plan("p", vec![world::step(op)]);
+    let att = w
+        .engine
+        .drill(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert!(att.restored, "{}", att.line);
+    assert_eq!(att.exit, 0);
+    assert_eq!(att.hosts, vec![OWNER.to_string()]);
+    assert_eq!(att.facts.len(), 1, "{:?}", att.facts);
+    assert_eq!(att.facts[0].shape, "file:/own");
+    assert_eq!(
+        w.commands(),
+        vec!["do a", "undo a"],
+        "applied, then recanted"
+    );
+    let ev = w.sink.events();
+    assert!(
+        ev.iter()
+            .any(|e| matches!(e, J::DrillAttested { restored, facts, .. }
+            if *restored && facts.iter().any(|f| f.contains("file:/own")))),
+        "{ev:?}"
+    );
+    // The chain the attestation is part of verifies: that is the whole of
+    // its own verification (7.14).
+    let chain = w.engine.store().read_journal().unwrap();
+    rue_core::journal::verify(&chain).unwrap();
+}
+
+/// Only a canary. A drill applies a real plan to a real machine, and the
+/// role is the only thing between it and a production host.
+#[test]
+fn a_drill_on_a_host_that_is_not_a_canary_is_r0410() {
+    let mut w = World::new("drill-not-canary");
+    let plan = world::temp_plan("p", vec![world::step(world::op("a"))]);
+    let err = w
+        .engine
+        .drill(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("R0410") && err.contains("not a canary"),
+        "{err}"
+    );
+    assert!(w.commands().is_empty(), "nothing ran");
+}
+
+/// A fact the engine could not read attests to nothing: a drill that could
+/// not look has proved nothing about the undo it was there to prove. The
+/// link drops after the reads the apply itself makes, which is the shape a
+/// real drill meets -- the plan ran, and the proof that it undid cleanly
+/// cannot be had.
+#[test]
+fn a_drill_that_could_not_read_a_fact_does_not_attest() {
+    let mut w = World::new("drill-unread");
+    w.engine.set_hosts(vec![
+        world::canary(OWNER, &["ssh"]),
+        world::host(world::FAR, &["carrier-pigeon"]),
+    ]);
+    let mut op = world::op("a");
+    op.footprint = vec![FootprintEntry::entry(Kind::Owned, "file:/own")];
+    // Reads of that fact fail from the fifth on: the drill's first read,
+    // the apply's and the recant's go through, and the read that would
+    // attest does not.
+    w.ssh
+        .with(|f| f.failing_reads.insert("file:/own".into(), 4));
+    let plan = world::temp_plan("p", vec![world::step(op)]);
+    let att = w
+        .engine
+        .drill(world::ir(plan), BTreeMap::new(), opts())
+        .unwrap();
+    assert!(!att.restored, "{}", att.line);
+    assert_eq!(att.exit, 1);
+    assert!(att.line.contains("unread"), "{}", att.line);
+    let ev = w.sink.events();
+    assert!(
+        ev.iter()
+            .any(|e| matches!(e, J::DrillAttested { restored, .. } if !*restored)),
+        "{ev:?}"
+    );
+}

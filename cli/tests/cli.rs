@@ -584,3 +584,79 @@ fn every_text_checks_identically_standalone_and_embedded() {
         );
     }
 }
+
+/// `--attestations` prints each drill's attestation once the chain
+/// verifies, and refuses a chain that carries none or carries one that
+/// attested nothing (7.14). An attestation is worth exactly what the chain
+/// around it is worth, so a broken chain prints none at all.
+#[test]
+fn journal_verify_attestations_prints_the_drills_and_refuses_a_chain_with_none() {
+    use rue_core::journal::{append, Event};
+    use rue_core::model::Instant;
+    let d = journal_dir("attestations");
+    let file = d.join("journal.ndjson");
+
+    let drilled = |restored: bool, prev: &[rue_core::journal::Entry]| {
+        append(
+            prev,
+            Instant::new(2),
+            "",
+            "",
+            "",
+            Event::DrillAttested {
+                plan: "open_mgmt_port".into(),
+                host: "canary-01".into(),
+                instance: "open_mgmt_port.canary-01.abcd1234".into(),
+                restored,
+                facts: vec!["canary-01 file:/etc/pf.conf before=aa after=aa".into()],
+            },
+            vec![],
+        )
+    };
+    let e1 = append(&[], Instant::new(1), "p", "i", "h", Event::Checked, vec![]);
+    let e2 = drilled(true, std::slice::from_ref(&e1));
+    write_chain(&file, &[e1.clone(), e2.clone()]);
+    let out = rue(&[
+        "journal",
+        "verify",
+        file.to_str().unwrap(),
+        "--attestations",
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(
+        text.contains("drill open_mgmt_port.canary-01.abcd1234")
+            && text.contains("restored")
+            && text.contains("file:/etc/pf.conf before=aa after=aa")
+            && text.contains("drills: 1, of which 0 attested nothing"),
+        "{text}"
+    );
+
+    // A drill that attested nothing is a failure, not a line in a listing.
+    let e2 = drilled(false, std::slice::from_ref(&e1));
+    write_chain(&file, &[e1.clone(), e2]);
+    let out = rue(&[
+        "journal",
+        "verify",
+        file.to_str().unwrap(),
+        "--attestations",
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("NOT attested"), "{text}");
+
+    // And a chain with no drill in it attests nothing either.
+    write_chain(&file, &[e1]);
+    let out = rue(&[
+        "journal",
+        "verify",
+        file.to_str().unwrap(),
+        "--attestations",
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("drills: 0"),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}

@@ -38,6 +38,13 @@ pub fn record(name: &str, reach: &[&str]) -> HostRecord {
     }
 }
 
+/// The same host, declared a canary: the role a drill requires (7.14).
+pub fn canary(name: &str, reach: &[&str]) -> Host {
+    let mut h = host(name, reach);
+    h.facts.insert("roles".into(), "fw,canary".into());
+    h
+}
+
 pub fn host(name: &str, reach: &[&str]) -> Host {
     Host {
         record: record(name, reach),
