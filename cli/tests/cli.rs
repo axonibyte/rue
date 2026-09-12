@@ -76,6 +76,32 @@ fn explain_prints_the_listing() {
     );
 }
 
+/// The page is the same listing, and a real tenant renders through it end
+/// to end: the verb, the resolver, the checker and the renderer.
+#[test]
+fn explain_html_renders_the_same_listing_as_one_self_contained_page() {
+    let root = repo_root().unwrap();
+    let case = tenant_case("t2", "node-b-manual");
+    let input = root.join(case.input());
+    let text = rue(&["explain", input.to_str().unwrap()]);
+    let html = rue(&["explain", input.to_str().unwrap(), "--html"]);
+    assert_eq!(html.status.code(), text.status.code(), "the same verdict");
+    let page = String::from_utf8_lossy(&html.stdout).to_string();
+    assert!(page.starts_with("<!DOCTYPE html>"), "{page}");
+    assert!(page.trim_end().ends_with("</html>"), "{page}");
+    for fetch in ["http://", "https://", "<script", "<link", "<img"] {
+        assert!(!page.contains(fetch), "the page fetches {fetch}");
+    }
+    // Every op the listing names is on the page.
+    for line in String::from_utf8_lossy(&text.stdout).lines() {
+        let op = line.split_whitespace().nth(1).unwrap_or_default();
+        let op = op.split('(').next().unwrap_or_default();
+        if !op.is_empty() {
+            assert!(page.contains(op), "the page names {op}");
+        }
+    }
+}
+
 #[test]
 fn a_refused_plan_exits_one_with_its_verdict() {
     let root = repo_root().unwrap();

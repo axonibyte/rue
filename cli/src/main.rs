@@ -64,6 +64,11 @@ enum Verb {
         plan: PathBuf,
         #[command(flatten)]
         select: Select,
+        /// Render the same listing as one self-contained HTML page: no
+        /// script, no stylesheet, no font, nothing fetched. For a change
+        /// record, an approver's mailbox, or an incident's notes.
+        #[arg(long)]
+        html: bool,
     },
     /// Print the runtime state machine's transition table.
     States,
@@ -484,13 +489,24 @@ fn run(cli: Cli, out: &mut dyn Write) -> Result<ExitCode> {
             }
             Ok(status_code(&v))
         }
-        Verb::Explain { plan, select } => {
+        Verb::Explain { plan, select, html } => {
             let ir = match load_input(&plan, &select, false)? {
                 Ok(ir) => ir,
                 Err(code) => return Ok(code),
             };
             let v = verdict_of(&ir);
-            out.write_all(explain(&ir.plan, &deferred_steps(&ir.site, &ir.plan)).as_bytes())?;
+            let deferred = deferred_steps(&ir.site, &ir.plan);
+            if html {
+                // The page carries the verdict's prose, refused or not: a
+                // listing mailed to an approver without what the checker
+                // said of it is half the document.
+                let said = prose(&v);
+                out.write_all(
+                    rue_core::explain::explain_html(&ir.plan, &deferred, Some(&said)).as_bytes(),
+                )?;
+                return Ok(status_code(&v));
+            }
+            out.write_all(explain(&ir.plan, &deferred).as_bytes())?;
             if v.status == Status::Refused {
                 // The listing is still useful; the verdict says why it does
                 // not stand, on stderr so stdout stays the listing.

@@ -266,3 +266,156 @@ fn undo_locus_text(u: UndoLocus) -> &'static str {
         UndoLocus::NoLocus => "none",
     }
 }
+
+// ---------------------------------------------------------------------------
+// The same listing as one self-contained page (Phase 5; docs/issues/0007)
+
+/// `explain --html`: the listing above, and the verdict's prose where there
+/// is one, as a single page that depends on nothing.
+///
+/// Self-contained is the whole point: an operator pastes it into a change
+/// record, mails it to an approver, or keeps it beside an incident, and it
+/// has to say the same thing years later on a machine with no network.
+/// There is no script, no font, no stylesheet and no image -- what is not
+/// in the file cannot be fetched, and what cannot be fetched cannot change
+/// what the page says after it was read.
+///
+/// Every value goes through `escape`, because a plan's text is a tenant's
+/// to write: an op named `<script>` renders as characters, not as markup.
+pub fn explain_html(p: &Plan, deferred_steps: &[u32], verdict_prose: Option<&str>) -> String {
+    let mut out = String::new();
+    out.push_str("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
+    out.push_str(&format!(
+        "<title>rue explain: {} on {}</title>\n",
+        escape(&p.id),
+        escape(&p.owner)
+    ));
+    out.push_str(STYLE);
+    out.push_str("</head>\n<body>\n");
+    out.push_str(&format!(
+        "<h1>{} <span class=\"host\">on {}</span></h1>\n",
+        escape(&p.id),
+        escape(&p.owner)
+    ));
+    if let Some(text) = verdict_prose {
+        out.push_str("<section class=\"verdict\">\n");
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            out.push_str(&format!("<p>{}</p>\n", escape(line)));
+        }
+        out.push_str("</section>\n");
+    }
+    out.push_str("<table>\n<thead>\n<tr><th>#</th><th>step</th><th>locus</th><th>refusal</th><th>drift</th><th>undo</th><th>undo locus</th><th>notes</th></tr>\n</thead>\n<tbody>\n");
+    for (n, it) in numbered(&p.body) {
+        out.push_str(&row(n, it, deferred_steps));
+    }
+    out.push_str("</tbody>\n</table>\n");
+    out.push_str(
+        "<p class=\"foot\">Rendered by <code>rue explain --html</code>. \
+         Every mutating step shows the undo it will run before it runs; a step \
+         with <code>NO UNDO</code> is a knell and names its cost.</p>\n",
+    );
+    out.push_str("</body>\n</html>\n");
+    out
+}
+
+/// Enough style to read a plan on a phone at two in the morning, and not a
+/// byte that has to be fetched.
+const STYLE: &str = "<style>\n\
+:root { color-scheme: light dark; }\n\
+body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 60rem; padding: 0 1rem; }\n\
+h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }\n\
+h1 .host { font-weight: normal; opacity: 0.7; }\n\
+.verdict { border-left: 4px solid currentColor; padding-left: 1rem; opacity: 0.9; }\n\
+table { border-collapse: collapse; width: 100%; margin-top: 1.5rem; }\n\
+th, td { border-bottom: 1px solid rgba(128,128,128,0.4); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }\n\
+th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }\n\
+td.n { text-align: right; font-variant-numeric: tabular-nums; opacity: 0.7; }\n\
+td.step { font-weight: 600; }\n\
+code, td.undo { font-family: ui-monospace, monospace; font-size: 0.9em; }\n\
+tr.knell td.undo { font-weight: 600; }\n\
+td.notes { font-size: 0.9em; opacity: 0.85; }\n\
+.foot { margin-top: 2rem; font-size: 0.85em; opacity: 0.7; }\n\
+@media print { body { max-width: none; } }\n\
+</style>\n";
+
+fn cell(class: &str, text: &str) -> String {
+    format!("<td class=\"{class}\">{}</td>", escape(text))
+}
+
+fn row(n: u32, it: &Item, deferred_steps: &[u32]) -> String {
+    let (step, s) = match it {
+        Item::Step(s) | Item::Knell(s) => (s.op.id.clone(), Some(s)),
+        other => (body(n, other, deferred_steps), None),
+    };
+    let Some(s) = s else {
+        // An item that is not a step is its own sentence, and spans the
+        // columns a step fills rather than pretending to have them.
+        return format!(
+            "<tr class=\"item\"><td class=\"n\">{n}</td><td class=\"step\" colspan=\"7\">{}</td></tr>\n",
+            escape(&step)
+        );
+    };
+    let o = &s.op;
+    let args = if s.args.is_empty() {
+        String::new()
+    } else {
+        format!("({})", s.args.join(", "))
+    };
+    let mut notes: Vec<String> = Vec::new();
+    if let Some(g) = &s.gate {
+        notes.push(format!("gate={}", render_gate(g)));
+    }
+    match &o.refusal {
+        Refusal::Knell {
+            ack: Ack::Gate(g), ..
+        } => notes.push(format!("ack={}", render_gate(g))),
+        Refusal::Knell {
+            ack: Ack::NoAck(reason),
+            ..
+        } => notes.push(format!("ack=none ({reason})")),
+        _ => {}
+    }
+    if o.footprint.iter().any(|e| e.kind == Kind::Region)
+        && o.effective_drift() == Some(Drift::Clobber)
+    {
+        notes.push("damaged-marker cost: the whole fact is restored from the do-time snapshot and a stranger's edits outside the region are lost, unless another instance holds a region on it".to_string());
+    }
+    if deferred_steps.contains(&n) {
+        notes.push(format!(
+            "deferred \u{2192} {}",
+            o.handoff_done
+                .as_ref()
+                .map(|h| format!("handoff_done: {h}"))
+                .unwrap_or_else(|| "(handoff command printed at apply)".to_string())
+        ));
+    }
+    let knell = matches!(o.refusal, Refusal::Knell { .. });
+    format!(
+        "<tr{}><td class=\"n\">{n}</td>{}{}{}{}{}{}{}</tr>\n",
+        if knell { " class=\"knell\"" } else { "" },
+        cell("step", &format!("{}{args}", o.id)),
+        cell("locus", &locus_text(&o.locus)),
+        cell("refusal", &refusal_text(&o.refusal)),
+        cell("drift", drift_text(o)),
+        cell("undo", &undo_text(o)),
+        cell("undolocus", undo_locus_text(o.undo_locus)),
+        cell("notes", &notes.join("; ")),
+    )
+}
+
+/// The five characters that are markup, and nothing else: a page that
+/// escaped more would print a plan's own text back wrongly.
+fn escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}

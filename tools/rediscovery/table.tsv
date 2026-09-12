@@ -203,3 +203,4 @@ drill-attests-an-unread-fact.patch	1	-	cargo	a_drill_that_could_not_read_a_fact_
 sim-reads-a-repeat-shape-literally.patch	1	-	cargo	a_sweep_of_seeds_breaks_no_invariant	-
 sim-judges-an-artifact-across-instances.patch	1	-	cargo	a_sweep_of_seeds_breaks_no_invariant	-
 sim-skips-a-plant-in-silence.patch	1	-	cargo	every_invariant_catches_a_planted_violation	-
+explain-html-renders-a-plans-markup.patch	1	-	cargo	markup_in_a_plan_is_escaped_rather_than_rendered	-

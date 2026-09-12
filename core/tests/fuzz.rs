@@ -42,8 +42,22 @@ fn prose_and_explain_never_panic() {
         let v = check(&site, &requester, &plan);
         let p = prose(&v);
         assert!(p.ends_with('\n') && !p.trim().is_empty());
-        let e = explain(&plan, &deferred_steps(&site, &plan));
+        let d = deferred_steps(&site, &plan);
+        let e = explain(&plan, &d);
         assert!(e.is_empty() || e.ends_with('\n'));
+        // The page renders whatever the listing does, and closes every tag
+        // it opens however strange the plan is.
+        let h = rue_core::explain::explain_html(&plan, &d, Some(&p));
+        assert!(h.starts_with("<!DOCTYPE html>") && h.trim_end().ends_with("</html>"));
+        assert_eq!(
+            h.matches("<tr").count(),
+            h.matches("</tr>").count(),
+            "every row is closed"
+        );
+        assert!(
+            !h.contains("<script"),
+            "nothing the plan carries becomes a script"
+        );
     });
 }
 

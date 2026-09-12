@@ -214,3 +214,57 @@ fn the_undo_line_is_derived_from_the_undo() {
     assert_eq!(undo_line(&compensating_plain), "compensate: undo");
     assert_eq!(undo_line(&knell_op()), "");
 }
+
+// --- explain --html (Phase 5; docs/issues/0007) ---------------------------
+
+/// The page says what the listing says, carries the verdict's prose, and
+/// fetches nothing: no script, no stylesheet, no font, no image. What is
+/// not in the file cannot change what the page says after it was read.
+#[test]
+fn the_html_page_is_self_contained_and_says_what_the_listing_says() {
+    use rue_core::explain::explain_html;
+    let p = temp(vec![s(owned("a")), s(knell_op())]);
+    let v = check(&site(), "requester", &p);
+    let said = prose(&v);
+    let html = explain_html(&p, &[], Some(&said));
+
+    assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
+    assert!(html.trim_end().ends_with("</html>"), "{html}");
+    // Nothing is fetched: every one of these would be a request.
+    for fetch in [
+        "http://", "https://", "<script", "<link", "<img", "@import", "url(",
+    ] {
+        assert!(!html.contains(fetch), "the page fetches {fetch}: {html}");
+    }
+    // It says what the text listing says, step by step.
+    let text = explain(&p, &[]);
+    for line in text.lines() {
+        let op = line.split_whitespace().nth(1).unwrap_or_default();
+        assert!(html.contains(op), "the page names {op}: {html}");
+    }
+    assert!(
+        html.contains("NO UNDO"),
+        "the knell keeps its warning: {html}"
+    );
+    assert!(
+        html.contains(said.trim().split('.').next().unwrap_or_default()),
+        "the verdict's prose is on the page: {html}"
+    );
+}
+
+/// A plan's text is a tenant's to write, and a page that pasted it in
+/// unescaped would run it. Markup in an op's own name renders as
+/// characters.
+#[test]
+fn markup_in_a_plan_is_escaped_rather_than_rendered() {
+    use rue_core::explain::explain_html;
+    let mut op = owned("a");
+    op.id = "<script>alert('x')</script>".into();
+    let p = temp(vec![s(op)]);
+    let html = explain_html(&p, &[], None);
+    assert!(!html.contains("<script>"), "{html}");
+    assert!(
+        html.contains("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;"),
+        "{html}"
+    );
+}

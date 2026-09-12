@@ -916,7 +916,7 @@ Golden-tested text with `file:line:col`, expected/found, nearest-name suggestion
 
 ```
 rue check   <plan.rue> [--host H] [--json]           parse, resolve, check; print verdict
-rue explain <plan.rue> [--host H]                    per-host expanded steps with undo lines, loci, policies, gates
+rue explain <plan.rue> [--host H] [--html]           per-host expanded steps with undo lines, loci, policies, gates; --html is the same as one self-contained page
 rue render  <plan.rue> [--host H]                    expected end-state facts; touches nothing
 rue artifact <plan> --host H --instance ID [--set k=v]... print the backstop artifact a :target backstop installs on H (Phase 1: over the plan IR)
 rue apply   <plan.rue> --host H [--set k=v]... [--mode auto] [--ack N:"reason"]... [--dry-run]
