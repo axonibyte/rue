@@ -599,6 +599,119 @@ pub fn target_exists(path: &str) -> bool {
     out.status.success()
 }
 
+/// Where the partition stage puts its severing rule, by family.
+///
+/// pf: an anchor `provision.sh` declares empty in the baseline, because pf
+/// evaluates only the anchors its ruleset names. nftables: a table of the
+/// stage's own, created and destroyed by it, because a table is evaluated
+/// because it exists -- and a chain inside `/etc/nftables.conf` would sit
+/// inside the very fact T3's plan rewrites and reloads, which is how the
+/// first draft of this lost its chain mid-run on the Linux guest.
+///
+/// Neither touches the file a plan under test holds a region in.
+pub const PARTITION_ANCHOR: &str = "rue-e2e-partition";
+const PARTITION_TABLE: &str = "rue_e2e_partition";
+
+/// What to print when severing fails: a failure that cannot say what the
+/// firewall held has to be reproduced by hand.
+fn ruleset_command() -> &'static str {
+    match os_family() {
+        "linux" => "nft list ruleset",
+        _ => "pfctl -s rules; pfctl -s Anchors",
+    }
+}
+
+fn firewall(cmd: &str, stdin: Option<&str>) -> std::process::Output {
+    let mut c = std::process::Command::new("sh");
+    c.arg("-c").arg(cmd).stdin(match stdin {
+        Some(_) => Stdio::piped(),
+        None => Stdio::null(),
+    });
+    let mut child = c
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("{cmd}: {e}"));
+    if let (Some(text), Some(mut w)) = (stdin, child.stdin.take()) {
+        use std::io::Write;
+        w.write_all(text.as_bytes()).expect("the rule");
+    }
+    child.wait_with_output().expect("the firewall command")
+}
+
+/// Sever the controller's path to the target: every new ssh connection to
+/// the target address is dropped, silently, as a severed link drops it.
+/// Nothing else is touched -- the management interface reaper is watching
+/// over is skipped by the pf baseline and is a different address from the
+/// one this names, and the rule names port 22 on the alias alone.
+///
+/// The harness IS the target here, so while this holds, the target is
+/// observed through the filesystem and not through `target_read` and its
+/// siblings, which are ssh and would hang until their connect timeout.
+pub fn sever_target() {
+    let out = match os_family() {
+        // One command, so a half-made table is never left behind: the
+        // table, a filter chain ahead of the baseline's (priority -10,
+        // policy accept, so it decides nothing but this), and the rule.
+        "linux" => firewall(
+            &format!(
+                "nft add table inet {PARTITION_TABLE} && \
+                 nft add chain inet {PARTITION_TABLE} input \
+                 '{{ type filter hook input priority -10; policy accept; }}' && \
+                 nft add rule inet {PARTITION_TABLE} input \
+                 ip daddr {TARGET_ADDRESS} tcp dport 22 drop"
+            ),
+            None,
+        ),
+        _ => firewall(
+            &format!("pfctl -a {PARTITION_ANCHOR} -f -"),
+            Some(&format!(
+                "block drop quick proto tcp to {TARGET_ADDRESS} port 22\n"
+            )),
+        ),
+    };
+    assert!(
+        out.status.success(),
+        "severing the target: {}{}\n--- the firewall holds ---\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+        String::from_utf8_lossy(&firewall(ruleset_command(), None).stdout)
+    );
+}
+
+/// Restore it: the table goes, the anchor is emptied, and the baseline
+/// decides alone again. Safe to call twice, because the stage's guard runs
+/// however the stage leaves.
+pub fn restore_target() {
+    let out = match os_family() {
+        "linux" => firewall(
+            &format!(
+                "if nft list table inet {PARTITION_TABLE} > /dev/null 2>&1; then \
+                 nft delete table inet {PARTITION_TABLE}; fi"
+            ),
+            None,
+        ),
+        _ => firewall(&format!("pfctl -a {PARTITION_ANCHOR} -F rules"), None),
+    };
+    assert!(
+        out.status.success(),
+        "restoring the target: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Whether the target answers ssh at all, asked with a short deadline.
+/// The partition stage asserts it both ways: severed, and restored.
+pub fn target_reachable() -> bool {
+    let root = e2e_root().expect("the harness root");
+    let out = ssh_command(&root, TARGET_ADDRESS, TARGET_USER)
+        .arg("true")
+        .output()
+        .expect("ssh");
+    out.status.success()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -52,7 +52,7 @@ with the title, kind and status the issue itself gives.
 | # | Title | Kind | Status |
 |---|---|---|---|
 | 0001 | Upgrade vectors: an older release's texts and store check and migrate, or say what changed | feature | closed |
-| 0002 | unless_heartbeat under a real network partition | not-proven | open |
+| 0002 | unless_heartbeat under a real network partition | not-proven | closed |
 | 0003 | Drill mode: scheduled apply-and-recant on a canary, with an attestation | feature | open |
 | 0004 | The complete simulation | feature | open |
 | 0005 | tree-sitter-rue: a grammar for editors | feature | open |

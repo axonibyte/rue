@@ -56,6 +56,14 @@ if [ -z "$rue_root" ]; then
 fi
 alias_addr=127.0.0.2
 dropin=/etc/ssh/sshd_config.d/rue-e2e.conf
+# Where a stage's severing rule goes on FreeBSD: an anchor, declared empty
+# in the baseline because pf evaluates only anchors the ruleset names. The
+# harness names the same string (tenants/e2e/src/lib.rs). On Linux the
+# stage needs nothing here: it creates and destroys a table of its own,
+# which is why this is not symmetric -- an nftables table is evaluated
+# because it exists, and one inside `/etc/nftables.conf` would be inside
+# the very fact T3's plan rewrites and reloads.
+partition_anchor=rue-e2e-partition
 
 rc=0
 ok()  { echo "ok      $1"; }
@@ -131,7 +139,11 @@ apply() {
     case $os in
         FreeBSD)
             kldstat -q -m pf || kldload pf || exit 2
-            printf '# rue e2e baseline: the management interface is never filtered.\nset skip on %s\npass all\n' "$mgmt" > /etc/pf.conf.tmp || exit 2
+            # The partition anchor is empty until a stage loads a rule into
+            # it (tenants/e2e/tests/partition.rs severs the controller's
+            # path to the target with it), and is declared here so a stage
+            # never rewrites the file a T3 plan holds a region in.
+            printf '# rue e2e baseline: the management interface is never filtered.\nset skip on %s\nanchor "%s"\npass all\n' "$mgmt" "$partition_anchor" > /etc/pf.conf.tmp || exit 2
             mv /etc/pf.conf.tmp /etc/pf.conf
             sysrc -q pf_enable=YES > /dev/null || exit 2
             pfctl -q -f /etc/pf.conf || exit 2
@@ -236,6 +248,10 @@ alias_present() { ifconfig lo0 | grep -q "inet $alias_addr "; }
 pf_enabled() { pfctl -s info 2> /dev/null | grep -q 'Status: Enabled'; }
 # Only the verbose listing marks skipped interfaces.
 pf_skips_mgmt() { pfctl -s Interfaces -v 2> /dev/null | grep -q "^$mgmt (skip)"; }
+# The partition anchor, empty in the baseline and loaded by a stage: what
+# is asserted is that a stage HAS somewhere to load a rule, not that a rule
+# is there. `pfctl -s Anchors` lists it once the baseline names it.
+pf_partition_anchor() { pfctl -s Anchors 2> /dev/null | grep -q -F "$partition_anchor"; }
 nft_table_present() { nft list table inet rue; }
 nft_input_accepts() { nft list chain inet rue input 2> /dev/null | grep -q 'policy accept'; }
 t2_dataset_split() {
@@ -260,6 +276,7 @@ check() {
             chk "loopback alias $alias_addr" alias_present
             chk "pf enabled" pf_enabled
             chk "pf skips $mgmt (a plan's rule can never sever reaper's transport)" pf_skips_mgmt
+            chk "pf anchor $partition_anchor present (a stage severs the target through it)" pf_partition_anchor
             # The dataset and its @split survive every stage, the rollback
             # knell's included (rollback -r keeps the snapshot it rolls back
             # to). The jails are not checked: a committed promote leaves its

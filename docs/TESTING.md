@@ -63,8 +63,8 @@ prototype's under one tasty suite, and both inside the gate:
 | 2 | Rust `tenants/harness/tests/{goldens,tenants}.rs`, `surface/tests/corpus.rs` | Every artifact byte-identical to its expected file, no orphans and none missing; the terms and the case table 1:1; every tenant clean and every negative refused with exactly its code; the section 8 claims as verdict fields; every artifact golden exactly its covered steps in reverse; every parser corpus snippet's tree dump and diagnostics byte-identical to its goldens; every front-end negative's diagnostics byte-identical to its golden |
 | 3 | Rust `tenants/harness/tests/schema.rs` (plus the shell guards in the gate) | Every verdict validates against `docs/verdict-schema.json`; every declared property path is produced by some verdict |
 | 4 | Rust `core/tests/{states,ledger,fuzz}.rs`, `render/tests/fuzz.rs`, `engine/tests/table.rs`; Haskell `Test.States`, `Test.Ledger` | The five state-machine rules over the generated table; the cross-plan ledger's reservations; expiry and renewal against an injected now; the seeded fuzz properties (below) |
-| 5 | Rust `tenants/e2e/tests/{smoke,firewall,recovery,breakglass,reactive}.rs` | rue against real hosts on a disposable guest: a plan applied and reverted over a real sshd, a real packet filter, a real cron and real hooks (below, "The scenarios") |
-| 6 | Rust `tenants/e2e/tests/recovery.rs` | The same, with something killed: a daemon inside a step's `do`, a daemon before its backstop fires, an operator racing the target |
+| 5 | Rust `tenants/e2e/tests/{smoke,firewall,recovery,breakglass,reactive,succession,partition}.rs` | rue against real hosts on a disposable guest: a plan applied and reverted over a real sshd, a real packet filter, a real cron and real hooks (below, "The scenarios") |
+| 6 | Rust `tenants/e2e/tests/{recovery,partition}.rs` | The same, with something killed or cut off: a daemon inside a step's `do`, a daemon before its backstop fires, an operator racing the target, and a controller severed from the host its plan is on |
 | 7 | Rust `sim/tests/sim.rs` | The shadow world: seeded event lists against a real engine, the twenty invariants of the roadmap's 10.3 after every event, and a shrinker over the events that broke one (below) |
 
 `tenants/harness` (`rue-tenants`) holds the tenants and the negatives as
@@ -767,6 +767,28 @@ driving it with the real `rue`:
   for the marker it leaves, and removes it whatever happened. That last is
   the one proof no unit test can give: that this host's cron runs what rue
   installs.
+- **Partition** (`partition.rs`): the dead man under a real severed link
+  (`docs/issues/0002`). A plan is applied whose backstop is
+  `[after: 1h, unless_heartbeat: 60s]` -- an hour out by time, so nothing
+  fires but the dead man -- and then the controller's path to the target is
+  cut by a firewall rule naming the target address and port 22 alone. Where
+  that rule lives is not symmetric and cannot be: pf evaluates only the
+  anchors its ruleset names, so provisioning declares an empty
+  `rue-e2e-partition` anchor in the baseline; nftables evaluates a table
+  because it exists, so the stage creates and destroys a table of its own
+  ahead of the baseline's. Neither is inside the file a plan under test
+  holds a region in -- a chain declared inside `/etc/nftables.conf` was the
+  first draft, and the Linux guest lost it mid-run to T3's own reload. The daemon stays up and keeps beating; what it cannot do is reach the
+  host, and the stage asserts the heartbeat file stops advancing across two
+  intervals. The target's own cron then fires the artifact on the stale beat
+  and undoes the step with no engine involved. The link is restored -- by a
+  guard that runs however the stage leaves, because a severed guest would
+  fail every stage after it -- and the engine reads the firing on its next
+  contact and journals `backstop_fired` (R0402). This is the one proof that
+  the trigger works when the engine is alive and unreachable, rather than
+  dead: every earlier proof stopped the heartbeat by killing the engine that
+  wrote it. What it does not prove is a separate network stack: the cut is a
+  filter on the loopback path both ends share, not a vnet.
 
 ### Tier 5 and 6: the harness on a disposable guest
 
@@ -789,7 +811,9 @@ second `AuthorizedKeysFile`; the loopback alias `127.0.0.2` every e2e plan
 addresses its target by, so a plan that severs ssh severs only itself and
 never reaper's transport; a firewall baseline that skips the management
 interface (pf `set skip`; an nftables table of rue's own whose input chain
-accepts); a scheduler baseline that removes every `# rue-region` block an
+accepts), with an empty pf anchor `rue-e2e-partition` for the partition
+stage to load its severing rule into (nftables needs nothing here: that
+stage makes a table of its own); a scheduler baseline that removes every `# rue-region` block an
 earlier run left in the crontab, because reaper's reset rolls back the state
 dataset and not `/var/cron`, so an entry outlives the instance directory it
 names and would answer a later run's question about whether a backstop is
