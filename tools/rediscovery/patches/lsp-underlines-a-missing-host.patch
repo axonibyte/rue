@@ -1,0 +1,15 @@
+# Reverts: the server naming a host itself for a clause-dispatched file; here E0112 is reported as though the text were wrong
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/lsp/src/lib.rs
++++ b/lsp/src/lib.rs
+@@ -311,9 +311,7 @@
+         Ok(ir) => return Ok((ir, None)),
+         Err(diags) => diags,
+     };
+-    let needs_a_host = first
+-        .iter()
+-        .all(|d| matches!(d.code, rue_core::diagnostics::Code::E0112));
++    let needs_a_host = false;
+     if !needs_a_host || first.is_empty() {
+         return Err(first);
+     }

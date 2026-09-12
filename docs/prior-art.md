@@ -226,3 +226,85 @@ declarations, with locus and cost in the answer, is."
 - ansistrano/rollback. https://github.com/ansistrano/rollback
 - rust-miniscript, mixed timelock detection. https://github.com/rust-bitcoin/rust-miniscript/pull/121
 - Blockstream, "Don't Mix Your Timelocks". https://medium.com/blockstream/dont-mix-your-timelocks-d9939b665094
+
+---
+
+# The name sweep
+
+ROADMAP section 12 requires a search of crates.io, PyPI, npm and GitHub for
+`rue`, `rued` and `rue-core`, and for the SDKs' publishing names, recorded
+here **before anything is public**; it is one of Phase 5's exit criteria.
+Swept 2026-09-12.
+
+## Verdict
+
+**The name `rue` is taken for a programming language, twice, and the two
+package names rue would publish first are held by one of them.** Nothing is
+blocked today -- rue publishes nothing and its repository is private -- and
+renaming is the owner's decision and nobody else's. What the sweep can say
+is what a public rue would walk into.
+
+## What is taken
+
+| Registry | Name | Held by | Evidence |
+|---|---|---|---|
+| crates.io | `rue` | "The Rue programming language", 0.1.0, 2025-12-21, 35 downloads | `github.com/xch-dev/rue`, homepage `rue-lang.com` — a typed language for Chia targeting CLVM bytecode |
+| crates.io | `rue-lsp` | the same project's language server, 0.10.0, 2026-07-26, 4202 downloads | `github.com/xch-dev/rue` |
+| crates.io | `rue-core` | "A Vue 3-like reactive UI framework", 0.1.0, 2026-05-15, 21 downloads | unrelated |
+| PyPI | `rue` | "Testing Framework for AI Software", 0.1.0 | unrelated |
+| npm | `rue` | "nodejs dependency injection container", 0.9.2 | unrelated |
+| GitHub | `rue-language/rue` | a second language called Rue, 1193 stars | "higher level than Rust but lower level than…" |
+| GitHub | `xch-dev/rue` | the crates.io holder, 47 stars | as above |
+| GitHub | `fasterthanlime/rue` | "a bad version of strace in Rust", 51 stars | unrelated |
+
+## What is free
+
+`rued` (crates.io, PyPI, npm); `rue-hook`, `rue-hook-sdk` (crates.io);
+`rue-hook`, `rue_hook` (PyPI); `rue-hook`, `tree-sitter-rue` (npm);
+`dev.rue` (Maven Central, no group); `Rue` and `Rue.Hook` (NuGet); `rue`
+and `rue_hook` (Hex).
+
+So every name the SDKs need is available under every ecosystem's own
+convention. What is not available is the one name the project is called.
+
+## What this does and does not mean
+
+It is not a legal question — no trademark search was done, and none is
+being claimed here. It is a collision question, and it has two halves.
+
+The **discovery** half: someone searching "rue language" today finds two
+other languages, one with a domain of its own. A third would be hard to
+find and easy to confuse, and every answer to "does rue do X?" would have to
+begin by asking which rue.
+
+The **publishing** half is narrower than it looks. A private repository and
+a tarball need no registry at all. What a registry name is needed for is
+`cargo install rue`, and that name is gone; `rued` is free, and a project
+whose daemon is `rued` could publish the pair as `rued` and `rued-cli`
+without touching `rue` — the binary an operator types would still be `rue`.
+
+## The owner's options, for the record
+
+1. **Keep the name, publish under `rued`.** Nothing in the repository
+   changes. The collision stays a discovery problem, and the README's first
+   line has to disambiguate.
+2. **Keep the name privately, decide at publication.** The sweep is done;
+   the decision waits for the decision to go public, which is the owner's
+   anyway.
+3. **Rename.** The cost is not the code — the seam guard would find every
+   occurrence in a morning — it is every document, every tenant, the
+   protocol's own field names (`rue_root`, `rue-region`, `# rue-region`
+   markers written into strangers' files, `dev.rue`), and the store's
+   on-disk paths. That cost rises with every release, and it is lowest now.
+
+Recorded, not decided.
+
+## Sources
+
+- crates.io: `https://crates.io/api/v1/crates/{rue,rued,rue-core,rue-hook,rue-hook-sdk,rue-lsp}`
+- PyPI: `https://pypi.org/pypi/{rue,rued,rue-hook,rue_hook,rue-core}/json`
+- npm: `https://registry.npmjs.org/{rue,rued,rue-hook,tree-sitter-rue}`
+- GitHub: `https://api.github.com/search/repositories?q=rue+in:name&sort=stars`
+- Maven Central: `https://search.maven.org/solrsearch/select?q=g:dev.rue`
+- NuGet: `https://azuresearch-usnc.nuget.org/query?q=packageid:{Rue,Rue.Hook}`
+- Hex: `https://hex.pm/api/packages/{rue,rue_hook}`

@@ -829,6 +829,48 @@ driving it with the real `rue`:
   wrote it. What it does not prove is a separate network stack: the cut is a
   filter on the loopback path both ends share, not a vnet.
 
+### What cannot be cross-built
+
+`tools/lint-cross-build.sh` (gate phase `cross-build`) keeps two lists in
+agreement: every workspace member whose build script compiles C, and the
+names `ci/build-target.sh` excludes from the cross-target builds. The darwin
+targets are cross-linked from Linux with zig and no macOS SDK, and nothing
+in that build has a C compiler that takes `-arch` or
+`-mmacosx-version-min`, so a member that compiles C cannot be cross-built
+and must be named. `tree-sitter-rue` is the one, and the pipeline found it
+the hard way: four steps and twenty minutes after the gate said yes, two
+darwin builds failed on a generated parser no binary ships. The guard fails
+the same case in the gate now, and fails a stale exclusion too -- a name
+that matches no member excludes nothing, and hiding that is how a guard
+stops guarding.
+
+### The language server
+
+`lsp/` (`rue-lsp`) answers an editor with the front end's own diagnostics
+and `explain`'s own words, and its tests (`lsp/tests/server.rs`) drive the
+handlers directly rather than spawning a process: a notification in, the
+diagnostics an editor would be shown out. They hold what an operator relies
+on -- a clean tenant reports nothing, a parse error is reported at the line
+the front end named with its own code, a refused tenant carries the
+checker's code, closing a document clears what was shown, and hover on a
+step names the op, its locus, its undo, its undo locus, its drift policy and
+its footprint.
+
+Two of those tests are about what the server must *not* do. An unsaved
+buffer is parsed and not checked, because a resolve reads imports and the
+inventory from disk and would otherwise underline a line the author has
+already fixed. And a file whose clauses dispatch on the host cannot be
+resolved without one (E0112) -- which is an argument `rue check` is given
+and an editor is not -- so the server names a host itself, the first its own
+inventory lists, and says so in every diagnostic and hover it then reports.
+Reporting E0112 as though the author had written something wrong would
+underline every clause-dispatched tenant in the project; that is what
+writing the tests found.
+
+Positions are counted in UTF-16 code units, which is what LSP says and what
+an editor holds a server to, and a test pins it with an em dash in a
+comment: counted in bytes, every column after it is out by two.
+
 ### The grammar for editors
 
 `tree-sitter-rue/` holds rue's tree-sitter grammar: `grammar.js`, the parser

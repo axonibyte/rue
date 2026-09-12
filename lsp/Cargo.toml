@@ -1,0 +1,21 @@
+[package]
+name = "rue-lsp"
+description = "a language server for rue: diagnostics as a text is edited, and hover on a step"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+rue-core = { path = "../core" }
+rue-surface = { path = "../surface" }
+lsp-server = "0.10"
+lsp-types = "0.97"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+lsp-server = "0.10"
+serde_json = { workspace = true }

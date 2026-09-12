@@ -33,16 +33,26 @@ install_zigbuild() {
     pip3 install --break-system-packages cargo-zigbuild
 }
 
+# `tree-sitter-rue` is excluded from every cross-target build, and from
+# nothing else. It compiles a generated C parser, and the darwin targets are
+# cross-linked with zig against libSystem and no macOS SDK (ROADMAP.md
+# section 12), where `cc-rs` reaches for a `cc` that takes `-arch` and
+# `-mmacosx-version-min` and this host's does not. Nothing in `dist/`
+# contains it: it is an editor artifact and a test dependency, shipped in no
+# binary, and its own tests run in the gate and in the pipeline's test step,
+# on a host with a C compiler. The exclusion covers that crate and no other.
+NOT_CROSS_BUILT=tree-sitter-rue
+
 # Phase 1 acceptance (ROADMAP.md): clippy clean on every target, with the
 # toolchain that builds it. Clippy needs the target's std, not its linker,
 # so it runs on this host for every target that has a rustup std.
 lint() {
-    cargo clippy --workspace --all-targets --target "$TARGET" --locked -- -D warnings
+    cargo clippy --workspace --exclude "$NOT_CROSS_BUILT" --all-targets --target "$TARGET" --locked -- -D warnings
 }
 
 build() { # tries offline first, falls back to online
-    cargo build --workspace --target "$TARGET" --release --locked --offline ||
-    cargo build --workspace --target "$TARGET" --release --locked
+    cargo build --workspace --exclude "$NOT_CROSS_BUILT" --target "$TARGET" --release --locked --offline ||
+        cargo build --workspace --exclude "$NOT_CROSS_BUILT" --target "$TARGET" --release --locked
 }
 
 rustup component add clippy
@@ -69,15 +79,15 @@ case "$TARGET" in
         install_zigbuild
         rustup target add "$TARGET"
         lint
-        cargo zigbuild --workspace --target "$TARGET" --release --locked
+        cargo zigbuild --workspace --exclude "$NOT_CROSS_BUILT" --target "$TARGET" --release --locked
         ;;
 
     aarch64-unknown-freebsd)
         # Tier 3: no prebuilt std, so compile it with nightly -Z build-std.
         install_zigbuild
         rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src --component clippy
-        cargo "+$NIGHTLY" clippy --workspace --all-targets --target "$TARGET" --locked -Z build-std=std,panic_abort -- -D warnings
-        cargo "+$NIGHTLY" zigbuild --workspace --target "$TARGET" --release --locked -Z build-std=std,panic_abort
+        cargo "+$NIGHTLY" clippy --workspace --exclude "$NOT_CROSS_BUILT" --all-targets --target "$TARGET" --locked -Z build-std=std,panic_abort -- -D warnings
+        cargo "+$NIGHTLY" zigbuild --workspace --exclude "$NOT_CROSS_BUILT" --target "$TARGET" --release --locked -Z build-std=std,panic_abort
         ;;
 
     x86_64-pc-windows-gnu)
@@ -100,7 +110,7 @@ case "$TARGET" in
         install_zigbuild
         rustup target add "$TARGET"
         lint
-        cargo zigbuild --workspace --target "$TARGET" --release --locked
+        cargo zigbuild --workspace --exclude "$NOT_CROSS_BUILT" --target "$TARGET" --release --locked
         ;;
 
     *)
