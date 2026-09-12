@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "rue"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -895,7 +895,7 @@ dependencies = [
 
 [[package]]
 name = "rue-bindings"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "rue-core",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "rue-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -917,7 +917,7 @@ dependencies = [
 
 [[package]]
 name = "rue-e2e"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "serde_json",
@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "rue-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.3.4",
  "libc",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "rue-hook"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rue-engine",
@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "rue-hook-proto"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rue-core",
  "serde",
@@ -963,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "rue-hook-sdk"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rue-engine",
  "rue-hook-proto",
@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "rue-lsp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "lsp-server",
  "lsp-types",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "rue-render"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rue-core",
  "sha2",
@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "rue-sim"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rue-core",
  "rue-engine",
@@ -1003,7 +1003,7 @@ dependencies = [
 
 [[package]]
 name = "rue-surface"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "logos",
  "rowan",
@@ -1014,7 +1014,7 @@ dependencies = [
 
 [[package]]
 name = "rue-tenants"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rue-core",
  "rue-hook-proto",
@@ -1026,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "rued"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1346,7 +1346,7 @@ checksum = "ca0d1bf6fdd806e43ae5198f82f527056d359def39e54e67a0f478ac09dac081"
 
 [[package]]
 name = "tree-sitter-rue"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cc",
  "rue-core",

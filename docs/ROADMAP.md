@@ -1310,6 +1310,10 @@ Each phase has deliverables, tasks, tests, acceptance, exit criteria, a "not pro
 
 **Exit criteria.** Tag v0.3.0; public README with §1.2 as its prior-art section; the name sweep recorded.
 
+**Acceptance, as met (2026-09-12).** Editor highlighting: `tree-sitter-rue/` parses every tenant text and every corpus snippet the front end accepts, and its queries load against the grammar; no editor has painted it, which is what a test cannot say. Hover: `lsp/` answers with the op's locus, undo, undo locus, drift and footprint on every tenant, naming the host it judged where the file dispatches by clause. Drill attestation journaled and verified: `DrillAttested` in the chain, read back by `rue journal verify --attestations`, proven against a real canary over a real sshd on both guests. Partition stage passes on both guests. v0.1.0 and v0.2.0 tenant texts and stores check and migrate under this build (`tenants/_upgrade/`, `engine/tests/upgrade.rs`), which unit 2 settled.
+
+**Not proven at the exit.** No editor has driven either tool: the grammar's queries load and the server's handlers answer, and both are tests, not an editor. Two controllers acting on one host with nothing armed between them stays undecided -- R0409 refuses a live backstop and claims no more, and the lock protocol over a shared fact is still a design nobody has needed. The partition is a filter on a loopback path both ends share, not a routed one. A drill of a plan touching several canaries, or standing behind a gate, is admitted by the code and exercised by no suite. Phase 3W (a real Windows machine) and macOS as a controller are still what they were, and are `docs/issues/0014` and `0015`. The name is undecided: `rue` is taken on crates.io, PyPI and npm and by two other languages on GitHub (`docs/prior-art.md`), and nothing has been published anywhere.
+
 ---
 
 ## 10. Testing portfolio

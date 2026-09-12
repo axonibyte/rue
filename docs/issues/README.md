@@ -66,4 +66,4 @@ with the title, kind and status the issue itself gives.
 | 0013 | Python SDK: the reply-shape check is an assert | defect | closed |
 | 0014 | Phase 3W: task 14 on a real Windows guest | feature | open |
 | 0015 | macOS as a controller | not-proven | open |
-| 0016 | A public README | feature | open |
+| 0016 | A public README | feature | closed |

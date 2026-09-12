@@ -19,7 +19,43 @@ reviewable surface.
 The plan of record is [`docs/ROADMAP.md`](docs/ROADMAP.md). Every rule is
 stated once, in the section that governs it.
 
-## Status: Phase 4 complete; v0.2.0 tagged
+## Status: Phase 5 complete; v0.3.0 tagged
+
+Rue has tools now, and drills. A plan is highlighted by a tree-sitter
+grammar that parses every tenant text the front end accepts and refuses
+every one it refuses, held to that by a guard that runs both parsers over
+every `.rue` file in the repository. A language server answers an editor
+with the checker's own diagnostics and `explain`'s own words -- never a
+second opinion of its own -- and says which host it judged when a file's
+clauses dispatch on one. `rue explain --html` renders a plan as a page that
+fetches nothing, for a change record or an incident's notes.
+
+`rue drill` applies a plan to a host the inventory declares a canary,
+recants it, and leaves an attestation in the journal naming every fact it
+touched with the digest before and after; `rue journal verify
+--attestations` reads them back out of the verified chain. That is the
+difference between "the undo is written" and "the undo ran last night and
+put the machine back". Two refusals guard it, and a fact the engine could
+not read attests to nothing and says so.
+
+The dead man is proven under a real severed link. A plan with
+`unless_heartbeat` is applied, the controller's path to the target is cut,
+and the target's own cron fires the artifact on the stale beat and undoes
+the step with no engine involved -- the engine alive and unreachable, which
+is the case the trigger exists for and the one every earlier proof faked by
+killing the engine. Two controllers on one host is answered too: a store
+names its controller, stamps it into every instance directory it creates,
+and refuses a host holding another controller's live backstop.
+
+## About the name
+
+Two other programming languages are already called Rue, and `rue` is taken
+on crates.io, PyPI and npm; the sweep is in
+[`docs/prior-art.md`](docs/prior-art.md), with what is free and what a
+public rue would walk into. The name has not been decided, and nothing here
+depends on the decision.
+
+## Status: Phase 4
 
 A host process can embed rue. It holds one connection to `rued` and is, on
 that one connection, a declared operator issuing verbs, a registrar whose
@@ -164,8 +200,11 @@ for the owner to reconcile.
 | E0211 | Decided for static hosts only; a `:controller` step and a host bound at runtime are not judged at check |
 | Where section 5 was silent | The prototype took a position and recorded it in `proto/README.md`: thirteen items, from the requester as an input to `check` to the verdict's `mode` field; the Rust crates reproduce each. The roadmap carries the owner's answers where given |
 | Windows beyond wine | The whole suite is built for `x86_64-pc-windows-gnu` and run under wine, which does carry the named pipe end to end and name its client from that client's own SID; the service-control manager, the list as the kernel enforces it against a stranger, the Task Scheduler and PowerShell as `local()`'s shell are Phase 3W's, on a real machine |
-| The simulation's reach | Tier 7 drives a real engine over seeded event lists and checks the twenty invariants of the roadmap's 10.3 after every event, but it applies the artifact's rule to its shadow rather than executing the rendered script, and four of the twenty are out of that world's reach; the test that says so names each and where it is proven instead |
-| `unless_heartbeat` under a partition | The beat is written and read on one machine's clocks; a severed link is Phase 5's vnet stage |
+| The simulation's reach | Tier 7 drives a real engine over seeded event lists and checks the twenty invariants of the roadmap's 10.3 after every event, but it applies the artifact's rule to its shadow rather than executing the rendered script. Two of the twenty are out of that world's reach and the test that says so names each and where it is proven instead; the other eighteen each have a violation planted by hand, so every check is known to fire. 39 seeds of 24 events is a sample, not a proof |
+| `unless_heartbeat` under a partition | Proven on both guests under a severed link (`tenants/e2e/tests/partition.rs`): the cut is a firewall rule on the loopback path both ends share, not a vnet, so what is proven is that the engine is alive and unreachable and the target acts alone |
+| Editors | The grammar parses every tenant text and its queries load; the language server answers the handlers' tests. No editor has painted either, and none is a test |
+| Two controllers with nothing armed | A host holding another controller's *armed* backstop refuses the apply (R0409); two engines acting at once with nothing armed between them is undecided, and is the lock protocol the roadmap defers |
+| A drill of a many-host or gated plan | `rue drill` admits both and neither suite exercises one |
 | Schedulers other than cron | `task_scheduler()` and `launchd()` are written and unit-tested against a fake transport, and have installed nothing anywhere |
 | The seven build targets | Built, clippy-clean per target, and packaged in the pipeline (`ci/build-target.sh`); only the Linux x86-64 and wine-run Windows binaries execute the suite there, the others are cross-built and unexecuted until Phase 3's real machines |
 | Deploy | Uploads the packaged artifacts on a tag equal to the workspace version, and refuses otherwise; nothing about the artifacts beyond the suite that produced them |
@@ -179,6 +218,8 @@ sh tools/lint-ecodes.sh           # the E-code guard alone
 sh tools/lint-rcodes.sh           # every runtime code raised and tested
 sh tests/tier3/t_seam.sh          # a guard's self-test
 sh tools/lint-darwin-deps.sh      # the darwin dependency guard alone
+sh tools/lint-cross-build.sh      # what compiles C is excluded from the cross-target builds
+sh tools/lint-issues.sh           # the tracker and its index agree
 sh tools/rediscovery/run.sh --tier 1   # revert each tier-1 protection in a scratch copy; the suite must fail
 cargo build --workspace --all-targets --locked && cargo test --workspace --locked
 RUE_FUZZ_STEPS=5000 cargo test --workspace --locked --test fuzz   # the seeded properties, longer
@@ -186,6 +227,8 @@ cargo run -q -- check tenants/t1/expected/db-01/plan.json     # the prose verdic
 cargo run -q -- artifact tenants/t3/expected/fw-01/plan.json --instance i-1   # the backstop artifact for the owner
 cargo run -q -- fmt tenants/t1/plan.rue                       # the canonical layout of a .rue file; --check to only compare
 cargo run -q -- check tenants/t3/plan.rue --host fw-01 --json # a .rue text resolved for one host; --plan-name when the file defines several
+cargo run -q -- explain tenants/t3/plan.rue --host fw-01 --html > plan.html  # the same listing as a page that fetches nothing
+cargo run -q -- journal verify journal.ndjson --attestations  # the drills a chain carries, once the chain verifies
 cd proto && cabal build all && cabal test all --test-show-details=direct   # the Phase 0 record's own tests
 ```
 
@@ -225,6 +268,8 @@ on both registered guests. Validate the manifest with
 | `tools/lint-rcodes.sh` | The R-code guard: every runtime code Appendix D documents is raised in the engine and asserted by a test |
 | `tools/lint-goldens.sh` | Golden hygiene: no CR, no trailing whitespace, one trailing LF |
 | `tools/lint-sdk-docs.sh` | The SDK docs guard: every SDK has user docs, and every example a page shows is the file its suite tests |
+| `tools/lint-issues.sh` | The tracker guard: every issue is a file, and the index says what each issue says of itself |
+| `tools/lint-cross-build.sh` | The cross-build guard: every member that compiles C is excluded from the cross-target builds, and every exclusion names a real member |
 | `sdk/` | The embedding SDKs of 7.11 -- `rust/`, `python/`, `elixir/`, `java/`, `dotnet/` -- and `shim/`, the `rue-hook` shim; each has user docs in its own `docs/` |
 | `tools/rediscovery/` | The rediscovery battery: a table of protections, a patch reverting each, `run.sh` to prove the suite catches every reversion, `check-patches.sh` in the gate so no patch rots |
 | `Cargo.toml`, `core/` | The Rust workspace and `rue-core` (Phase 1): the model and its plan-IR shape, the checker, the verdict and its prose, `explain`, the state machine, the ledger; pure, no I/O |
@@ -234,6 +279,8 @@ on both registered guests. Validate the manifest with
 | `engine/` | `rue-engine` (Phase 3): the clock, the store, the journal and its sinks, the executor seam, the lifecycle, footprints and drift, backstops and schedulers, gates and proofs, secrets, the control channel and the hook protocol |
 | `bindings/` | `rue-bindings`: the generic built-ins and no more -- `local()`, `ssh()`, `cron()`, `task_scheduler()`, `launchd()`, `file()`/`stdout()` journals, `key()`, `always()`, `requester()`, `hold()`, `stdout()` notify |
 | `daemon/` | `rued`: the daemon over a site block, its rc.d, systemd and `sc.exe` installation files |
+| `tree-sitter-rue/` | The grammar for editors: `grammar.js`, the parser generated from it, highlight queries, and a guard that holds it to the front end over every `.rue` text here |
+| `lsp/` | `rue-lsp`: the language server -- the checker's diagnostics as a text is edited, and hover on a step |
 | `sim/` | `rue-sim` (tier 7): seeded event lists against a real engine, the twenty invariants of 10.3 after every event, and a shrinker over the events that broke one |
 | `tenants/e2e/` | The tier 5 and 6 harness: provisioning for a disposable guest, and the scenarios of the roadmap's task 14 against real hosts |
 | `tenants/t1/fixtures/` | T1's hooks as a daemon-spawned child: the authority, the escrow and the management-controller simulator, standard library Python |

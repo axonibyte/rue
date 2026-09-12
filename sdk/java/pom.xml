@@ -17,7 +17,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>dev.rue</groupId>
   <artifactId>rue-hook</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <packaging>jar</packaging>
   <name>rue-hook</name>
   <description>A conformance-tested client of rue's hook protocol (docs/hook-protocol.md v1).</description>

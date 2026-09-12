@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rue-hook"
-version = "0.2.0"
+version = "0.3.0"
 description = "A conformance-tested client of rue's hook protocol (docs/hook-protocol.md v1)."
 requires-python = ">=3.11"
 license = "BSD-2-Clause"
