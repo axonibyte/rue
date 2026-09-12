@@ -164,6 +164,49 @@ sed 's/^commit = \(.......\).*/commit = \1/' \
 mv "$tmp/abbrev/tenants/_upgrade/P.new" "$tmp/abbrev/tenants/_upgrade/PROVENANCE"
 fails "$tmp/abbrev" "not 40" "an abbreviated commit is refused"
 
+# 9b. TWO vectors, each internally consistent, each labelled as the other.
+#     Every byte check passes -- each directory really does match the commit
+#     its own record names -- and only the directory-is-a-label rule catches
+#     it. This case exists because the room's rule says a fixture with ONE of
+#     something tests fewer rules than it appears to: every case above has a
+#     single vector, so none of them can tell a vector from the WRONG vector.
+make_tree "$tmp/swapped"
+d=$tmp/swapped
+printf 'plan "one" {\n    step "later"\n}\n' > "$d/tenants/t1/plan.rue"
+g "$d" add -A > /dev/null 2>&1
+g "$d" commit -q -m "the second release" > /dev/null 2>&1
+g "$d" tag -a v0.2.0 -m v0.2.0 > /dev/null 2>&1
+two=$(g "$d" rev-parse "v0.2.0^{commit}")
+one=$(g "$d" rev-parse "v0.1.0^{commit}")
+
+# v0.2.0's directory, built correctly from its own tag.
+mkdir -p "$d/tenants/_upgrade/v0.2.0/t1"
+g "$d" show "v0.2.0:tenants/t1/plan.rue" > "$d/tenants/_upgrade/v0.2.0/t1/plan.rue"
+g "$d" show "v0.2.0:tenants/t1/inventory.toml" > "$d/tenants/_upgrade/v0.2.0/t1/inventory.toml"
+
+# Now swap the two directories' CONTENT and their records together, so each
+# directory matches the commit it names and both are mislabelled.
+g "$d" show "v0.2.0:tenants/t1/plan.rue" > "$d/tenants/_upgrade/v0.1.0/t1/plan.rue"
+g "$d" show "v0.1.0:tenants/t1/plan.rue" > "$d/tenants/_upgrade/v0.2.0/t1/plan.rue"
+cat > "$d/tenants/_upgrade/PROVENANCE" <<EOF
+[v0.1.0]
+kind = tag
+repo = example.invalid/selftest/rue
+ref = v0.2.0
+commit = $two
+prefix = tenants
+made = 2026-09-12
+
+[v0.2.0]
+kind = tag
+repo = example.invalid/selftest/rue
+ref = v0.1.0
+commit = $one
+prefix = tenants
+made = 2026-09-12
+EOF
+fails "$d" "is its label" "two vectors labelled as each other fail, though every byte matches"
+
 # 10. A tree with no repository is exit 2, not a pass: a guard that cannot see
 #     a history has not checked anything, and saying so is the whole point.
 mkdir -p "$tmp/norepo/tenants/_upgrade" "$tmp/norepo/engine/tests/fixtures"

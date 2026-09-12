@@ -164,6 +164,25 @@ for record in $records; do
                     continue
                 fi
 
+                # THE DIRECTORY IS A LABEL AND IT MUST MATCH THE REF.
+                #
+                # Everything else here compares bytes against a commit, which
+                # catches a vector whose CONTENT is wrong. It cannot catch a
+                # vector that is internally consistent and MISLABELLED: swap
+                # two releases' records and each directory still matches the
+                # commit its own record names, so the guard passes while
+                # `tenants/_upgrade/v0.1.0` holds another release's text and
+                # the upgrade test checks the wrong era against today's build.
+                #
+                # Found by the coop room's rule that a fixture with ONE of
+                # something tests fewer rules than it appears to (wren, log
+                # 663): the self-test had one vector per tree, so no case in
+                # it could tell a vector from the wrong vector.
+                if [ "$ref" != "$sec" ]; then
+                    fail "$record [$sec]: the directory is named $sec and its record names ref $ref;\
+ a vector's directory is its label and a mismatch means one of them is another release's"
+                fi
+
                 # A moved tag is reported first: it explains every byte
                 # mismatch below it, and a clone without the tag is not a
                 # failure -- the commit is the record, the tag is the human's
