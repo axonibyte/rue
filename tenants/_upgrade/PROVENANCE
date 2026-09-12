@@ -1,0 +1,48 @@
+# Where each vector came from, in terms a machine can check.
+#
+# The README beside this file says the vectors are the tenant texts "byte for
+# byte from its tag". That was true when each was made and nothing verified it
+# afterwards: a vector edited by hand, or copied from a working tree rather
+# than from the tag, would pass every suite and quietly turn the upgrade test
+# into a test of today's text against today's build -- the thing being checked
+# and the thing doing the checking coming from the same place. Recording the
+# TAG NAME alone does not fix that, because a tag is a movable ref and "the
+# repository" does not have one state; what is checkable is the commit the tag
+# resolved to when the vector was made.
+#
+# `tools/lint-provenance.sh`, a gate phase, regenerates every file below from
+# the commit named here and compares it byte for byte, so a drifted vector
+# fails instead of passing. It also requires that every directory beside this
+# file has a section, so a vector added without a record is a failure and not
+# a silence.
+#
+# Format: [<directory>] opens a section; `key = value` lines follow; a line
+# whose first non-blank character is '#' is a comment.
+#
+#   kind    `tag` -- the files are <prefix>/<path> at <commit>.
+#   repo    the repository, as <host>/<owner>/<name>. Recorded because a
+#           commit means nothing without saying whose it is (coop, 2026-09-12:
+#           cite refs, not repositories).
+#   ref     the tag the vector was cut from. Checked when this clone has it:
+#           if refs/tags/<ref> resolves to any other commit, the tag moved
+#           after the vector was made, which is louder than a byte mismatch.
+#   commit  what that ref resolved to, in full. This is the record; the tag
+#           name is the human's half of it.
+#   prefix  the path the vector's files sit under at that commit.
+#   made    the day the vector was cut, UTC.
+
+[v0.1.0]
+kind = tag
+repo = bitbucket.org/axonibyte/rue
+ref = v0.1.0
+commit = f2477717ee1e8a52f4c2d1b84240c00e29d96f9b
+prefix = tenants
+made = 2026-09-11
+
+[v0.2.0]
+kind = tag
+repo = bitbucket.org/axonibyte/rue
+ref = v0.2.0
+commit = e08fe1e1e73db62888764d92ef9c89ddb1519ecf
+prefix = tenants
+made = 2026-09-11

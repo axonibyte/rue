@@ -1,0 +1,52 @@
+# Where each store fixture came from, in terms a machine can check.
+#
+# `engine/tests/upgrade.rs` migrates each of these to the current schema and
+# drives its instance, and the value of doing that rests entirely on the
+# fixture being what the release's OWN engine wrote. Unlike the tenant vectors
+# (tenants/_upgrade/PROVENANCE), a store fixture CANNOT be regenerated: the
+# engine that wrote it no longer exists in the tree, and rewriting one with
+# today's engine would produce a fixture that tests nothing but today.
+#
+# So the checkable record is different in kind, and this file says so rather
+# than implying the two are equally provable. What is checked, by
+# `tools/lint-provenance.sh` as a gate phase:
+#
+#   * every file is byte for byte what it was at the commit named here, and
+#   * that commit is still the LAST commit to touch the directory.
+#
+# Together those mean the fixture has not been edited since it was recorded --
+# edit it in the working tree and the bytes differ; edit it and commit, and the
+# last-touching commit moves. Either way the gate fails until the record is
+# deliberately updated, which is the same shape as regenerating a golden.
+#
+# What this does NOT prove is that the fixture was written by the release it
+# names. Nothing in the tree can prove that, because the evidence would be the
+# engine that is gone; `written_by` is an assertion by the person who made it,
+# and it is marked as one here instead of being dressed as a check.
+#
+# Format: as tenants/_upgrade/PROVENANCE.
+#
+#   kind        `committed` -- the files are <directory>/<path> at <commit>,
+#               and <commit> is the last commit to touch <directory>.
+#   commit      the commit that added the fixture, in full.
+#   made        the day of that commit, UTC.
+#   written_by  the release whose engine wrote the store. AN ASSERTION, not a
+#               check; see above.
+#   schema      the store schema version the fixture carries. Checked against
+#               the directory's own `schema` file, so the two cannot drift.
+
+[store-v0.1.0]
+kind = committed
+repo = bitbucket.org/axonibyte/rue
+commit = 2d59bcfeb56b243694a86b9e7970af82545e6e34
+made = 2026-09-11
+written_by = v0.1.0
+schema = 1
+
+[store-v0.2.0]
+kind = committed
+repo = bitbucket.org/axonibyte/rue
+commit = e2e01e01046adb405149014d1f033bbc979ecfef
+made = 2026-09-11
+written_by = v0.2.0
+schema = 2

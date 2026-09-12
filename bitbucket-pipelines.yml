@@ -42,14 +42,24 @@ definitions:
         # needs nothing else. The reaper guest runs the same gate in the Rust
         # image with GHC from ghcup, so the gate is proven under both.
         image: haskell:9.10.3-bookworm
+        # FULL DEPTH, deliberately. The provenance phase regenerates the
+        # upgrade vectors from the commits their record names (v0.1.0 and
+        # v0.2.0, both far older than the default depth of 50) and compares
+        # them byte for byte. Under a shallow clone those objects are absent,
+        # and tools/lint-provenance.sh exits 2 and fails the step rather than
+        # passing something it could not read -- which is correct, and is
+        # avoided here by giving it the history instead of excusing the phase.
+        clone:
+          depth: full
         caches:
           - cabal-store
         script:
           - export CABAL_DIR="$BITBUCKET_CLONE_DIR/.cabal_cache"
           # The stock GHC image carries neither shellcheck nor patch; both are
-          # real dependencies of the gate.
+          # real dependencies of the gate, and so is git, which the provenance
+          # phase reads the recorded commits out of.
           - apt-get -qq update
-          - apt-get -qq install -y --no-install-recommends shellcheck patch
+          - apt-get -qq install -y --no-install-recommends shellcheck patch git
           # This image has no cargo. The four cargo phases and the darwin
           # dependency guard are declared skipped here because doFetchAndTest
           # performs exactly those in the Rust image; the pipeline as a whole

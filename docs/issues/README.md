@@ -67,4 +67,4 @@ with the title, kind and status the issue itself gives.
 | 0014 | Phase 3W: task 14 on a real Windows guest | feature | open |
 | 0015 | macOS as a controller | not-proven | open |
 | 0016 | A public README | feature | closed |
-| 0017 | The upgrade vectors assert their provenance and nothing checks it | defect | open |
+| 0017 | The upgrade vectors assert their provenance and nothing checks it | defect | closed |

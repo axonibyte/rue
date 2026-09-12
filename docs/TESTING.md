@@ -844,6 +844,50 @@ the same case in the gate now, and fails a stale exclusion too -- a name
 that matches no member excludes nothing, and hiding that is how a guard
 stops guarding.
 
+### Where the evidence about our own past came from
+
+Two sets of files in this tree are evidence about earlier releases: the
+upgrade vectors (`tenants/_upgrade/<release>/`), which are the tenant texts
+as a release shipped them, and the store fixtures
+(`engine/tests/fixtures/store-<release>/`), which are what that release's
+engine wrote. The upgrade tests are only worth running while both are what
+they claim, and for two releases both claimed it in prose alone: a vector
+edited by hand, or copied from a working tree rather than from the tag,
+would have passed every suite and turned the upgrade test into a test of
+today's text against today's build.
+
+Each set now carries a `PROVENANCE` record naming the **commit**, not just
+the tag -- a tag is a movable ref, and "the repository" does not have one
+state -- and `tools/lint-provenance.sh` (gate phase `provenance`) checks it.
+A vector is regenerated from its commit and compared byte for byte; a tag
+that no longer resolves to the recorded commit is reported before any byte
+comparison, because it explains every mismatch under it. A directory beside
+a record with no section in it fails, so a vector added without a record is
+a failure rather than a silence.
+
+The store fixtures are checked differently and the record says why. They
+**cannot** be regenerated: the engine that wrote them is gone from the tree,
+and rewriting one with today's engine would produce a fixture that tests
+nothing but today. So the guard requires that every file is byte for byte
+what it was at the recorded commit and that the commit is still the last one
+to touch the directory -- together, "unchanged since it was recorded", which
+is the strongest checkable claim available. What no check can establish is
+that the fixture was written by the release it names; `written_by` is marked
+in the record as an assertion rather than dressed as a check.
+
+This guard reads the repository's history, which is the point rather than an
+inconvenience -- the working tree cannot be its own witness. Every
+environment that runs the gate carries `.git` and git itself (reaper syncs
+the tree with its history; the pipeline's gate step clones at full depth and
+installs git), so the phase is declared skippable nowhere. Where it cannot
+read a history it exits 2 and fails, and never passes what it could not
+check. `tests/tier3/t_provenance.sh` builds scratch repositories with `git
+init` and requires the guard to fail on each way a record can stop being
+true: an edited vector, a file the tag never had, a moved tag, a fixture
+edited in the tree, a fixture rewritten and committed, a schema that
+disagrees with its record, an unrecorded directory, and an abbreviated
+commit.
+
 ### The language server
 
 `lsp/` (`rue-lsp`) answers an editor with the front end's own diagnostics

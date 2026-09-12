@@ -75,7 +75,7 @@ find . -name '*.rs' -not -path './target/*' -exec touch {} + && \
 find . -name '*.toml' -not -path './target/*' -exec touch {} + && \
 export GHCUP_INSTALL_BASE_PREFIX=$REAPER_CACHE_GHCUP PATH=$REAPER_CACHE_GHCUP/.ghcup/bin:$PATH && \
 apt-get -qq update && \
-apt-get -qq install -y --no-install-recommends shellcheck patch libgmp-dev libffi-dev libncurses-dev libtinfo6 gcc-mingw-w64-x86-64 wine python3-pip && \
+apt-get -qq install -y --no-install-recommends git shellcheck patch libgmp-dev libffi-dev libncurses-dev libtinfo6 gcc-mingw-w64-x86-64 wine python3-pip && \
 { test -x $REAPER_CACHE_GHCUP/.ghcup/bin/ghc || { \
     mkdir -p $REAPER_CACHE_GHCUP && \
     curl -sSf https://downloads.haskell.org/~ghcup/x86_64-linux-ghcup -o $REAPER_CACHE_GHCUP/ghcup && \
@@ -113,7 +113,7 @@ exec = "host"
 
 [guests.build]
 cmd = """
-pkg install -qy uv python312 && \
+pkg install -qy git uv python312 && \
 mkdir -p $REAPER_CACHE_RUSTUP && \
 { test -x $REAPER_CACHE_CARGO/bin/cargo || { \
     fetch -q -o $REAPER_CACHE_RUSTUP/rustup-init https://static.rust-lang.org/rustup/dist/x86_64-unknown-freebsd/rustup-init && \

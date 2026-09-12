@@ -269,6 +269,7 @@ phase golden-hygiene   sh tools/lint-goldens.sh
 phase rediscovery-patches sh tools/rediscovery/check-patches.sh
 phase darwin-deps      sh tools/lint-darwin-deps.sh
 phase cross-build      sh tools/lint-cross-build.sh
+phase provenance       sh tools/lint-provenance.sh
 phase tier3-selftests  p_tier3
 phase cargo-fmt        p_cargo_fmt
 phase cargo-clippy     p_cargo_clippy
