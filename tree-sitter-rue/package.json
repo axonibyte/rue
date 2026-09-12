@@ -1,0 +1,17 @@
+{
+  "name": "tree-sitter-rue",
+  "version": "0.3.0",
+  "description": "rue's tree-sitter grammar",
+  "license": "BSD-2-Clause",
+  "repository": "https://bitbucket.org/axonibyte/rue",
+  "main": "bindings/node",
+  "keywords": ["parser", "tree-sitter", "rue"],
+  "files": ["grammar.js", "queries/*", "src/**"],
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.10"
+  },
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  }
+}

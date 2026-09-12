@@ -1,0 +1,13 @@
+# Reverts: the checked-in parser and grammar.js describing the same rules; here grammar.js is edited and the parser is not regenerated
+# Rediscovered by the selector named in tools/rediscovery/table.tsv.
+--- a/tree-sitter-rue/grammar.js
++++ b/tree-sitter-rue/grammar.js
+@@ -292,7 +292,7 @@
+     // A grammar stricter than the parser would report a parse error where
+     // rue reports a diagnostic, and an editor would underline the wrong
+     // thing.
+-    repeat_over: $ => seq('repeat', 'over:', $._expr, optional(','),
++    repeat_over_a_list: $ => seq('repeat', 'over:', $._expr, optional(','),
+       'as', field('var', $.name), optional(seq(',', 'max:', $.integer)),
+       'do', $._nl, repeat($._item), 'end', $._nl),
+ 

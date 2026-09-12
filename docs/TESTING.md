@@ -829,6 +829,28 @@ driving it with the real `rue`:
   wrote it. What it does not prove is a separate network stack: the cut is a
   filter on the loopback path both ends share, not a vnet.
 
+### The grammar for editors
+
+`tree-sitter-rue/` holds rue's tree-sitter grammar: `grammar.js`, the parser
+generated from it and checked in, and `queries/highlights.scm`. Its guard
+(`tree-sitter-rue/tests/drift.rs`, an ordinary workspace test) parses every
+`.rue` text under `tenants/` and `surface/tests/corpus/` with both that
+grammar and the Rust front end and requires them to agree on which files are
+rue: a text the front end accepts must have no error node, and one it
+refuses with a parse error must have one. Two parsers over one language
+drift apart the moment nobody compares them, and an editor that underlines a
+valid plan teaches an operator to distrust the tool that is right.
+
+`E0105` is outside the comparison, named in the test rather than dropped
+from it: it judges the version marker, and the grammar requires the marker
+without reading its number, so that an editor is not blinded the day rue's
+version turns over. The guard also loads the highlight queries against the
+grammar, which is how a query naming a node the grammar does not have is
+caught here rather than by every editor in turn. Regenerating the parser
+needs Node and the tree-sitter CLI and happens where those are; the gate
+needs neither, and checks instead that the checked-in parser and
+`grammar.js` describe the same rules.
+
 ### Tier 5 and 6: the harness on a disposable guest
 
 `tenants/e2e` (crate `rue-e2e`) holds the tests that run rue against real

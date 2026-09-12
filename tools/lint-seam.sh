@@ -50,7 +50,7 @@ fi
 # The directories the guard reads. Every non-tenant workspace member's
 # top directory belongs here; tests/tier3/t_seam.sh fails when one does
 # not, so a crate added in a later phase cannot quietly fall outside.
-SCAN="core render surface hook-proto engine bindings cli daemon sim sdk proto tools ci tests"
+SCAN="core render surface hook-proto engine bindings cli daemon sim sdk tree-sitter-rue proto tools ci tests"
 
 dirs=''
 for d in $SCAN; do

@@ -1,0 +1,26 @@
+[package]
+name = "tree-sitter-rue"
+description = "rue's tree-sitter grammar: highlighting and navigation for editors"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+build = "bindings/rust/build.rs"
+include = ["bindings/rust/*", "grammar.js", "queries/*", "src/*"]
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter-language = "0.1"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+rue-core = { path = "../core" }
+rue-surface = { path = "../surface" }
+serde_json = { workspace = true }
+tree-sitter = "0.25"

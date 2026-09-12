@@ -1,0 +1,3552 @@
+[
+  {
+    "type": "assert",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "guard",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "backstop",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "binary",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          },
+          {
+            "type": "binary",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "float",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "list",
+            "named": true
+          },
+          {
+            "type": "parenthesized",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "reference",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "and",
+            "named": false
+          },
+          {
+            "type": "or",
+            "named": false
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          },
+          {
+            "type": "binary",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "float",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "list",
+            "named": true
+          },
+          {
+            "type": "parenthesized",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "reference",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "bindexpr",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "binding",
+    "named": true,
+    "fields": {
+      "slot": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "binding_slot",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bindexpr",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "binding_slot",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "boolean",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "call",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "qualified_name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "commit",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "confirm",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "contribution",
+    "named": true,
+    "fields": {
+      "priority": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "integer",
+            "named": true
+          }
+        ]
+      },
+      "slot": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "defimpl",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      },
+      "role": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "defop",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "do_line",
+          "named": true
+        },
+        {
+          "type": "drift",
+          "named": true
+        },
+        {
+          "type": "exclusivity",
+          "named": true
+        },
+        {
+          "type": "footprint",
+          "named": true
+        },
+        {
+          "type": "handoff_done",
+          "named": true
+        },
+        {
+          "type": "locus_line",
+          "named": true
+        },
+        {
+          "type": "outputs",
+          "named": true
+        },
+        {
+          "type": "params",
+          "named": true
+        },
+        {
+          "type": "post",
+          "named": true
+        },
+        {
+          "type": "pre",
+          "named": true
+        },
+        {
+          "type": "reach",
+          "named": true
+        },
+        {
+          "type": "reestablish",
+          "named": true
+        },
+        {
+          "type": "refusal",
+          "named": true
+        },
+        {
+          "type": "suspend",
+          "named": true
+        },
+        {
+          "type": "undo_line",
+          "named": true
+        },
+        {
+          "type": "undo_locus",
+          "named": true
+        },
+        {
+          "type": "undo_pre",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "defplan",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "backstop",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "gate",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "params",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "plan_option",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "require_journal",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "wane",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "defprim",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "params",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "defprobe",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "params",
+          "named": true
+        },
+        {
+          "type": "probe_equivalence",
+          "named": true
+        },
+        {
+          "type": "probe_hook",
+          "named": true
+        },
+        {
+          "type": "probe_locus",
+          "named": true
+        },
+        {
+          "type": "probe_produces",
+          "named": true
+        },
+        {
+          "type": "probe_reads",
+          "named": true
+        },
+        {
+          "type": "probe_run",
+          "named": true
+        },
+        {
+          "type": "probe_static",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "defprotocol",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "defrole",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "contribution",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "do_line",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "body",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "drift",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "exclusivity",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "factshape",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "footprint",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "fpentry",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fpentry",
+    "named": true,
+    "fields": {
+      "kind": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "kind",
+            "named": true
+          }
+        ]
+      },
+      "shape": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "factshape",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "gate",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "guard",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "handoff_done",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "hold_refusal",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "hooks",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "registrar",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "identity",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "import",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "interpolation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "knell",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "step",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "knell_refusal",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "kwarg",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "kwarg_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          },
+          {
+            "type": "binary",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "float",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "list",
+            "named": true
+          },
+          {
+            "type": "parenthesized",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "reference",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "list_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "list_pattern",
+          "named": true
+        },
+        {
+          "type": "name",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "locus_line",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "max_wait",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "duration",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "observe",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "operators",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "identity",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "output",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "outputs",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "output",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pair",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "kwarg_name",
+            "named": true
+          },
+          {
+            "type": "name",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "upper_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          },
+          {
+            "type": "binary",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "float",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "list",
+            "named": true
+          },
+          {
+            "type": "parenthesized",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "reference",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "par",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "params",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "parenthesized",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pattern",
+    "named": true,
+    "fields": {
+      "bind": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "name",
+          "named": true
+        },
+        {
+          "type": "record_pattern",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pattern_pair",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "kwarg_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_",
+            "named": false
+          },
+          {
+            "type": "atom",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "list_pattern",
+            "named": true
+          },
+          {
+            "type": "name",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "pipeline",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "plan_option",
+    "named": true,
+    "fields": {
+      "option": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "exclusivity:",
+            "named": false
+          },
+          {
+            "type": "fires_by_construction:",
+            "named": false
+          },
+          {
+            "type": "mode:",
+            "named": false
+          },
+          {
+            "type": "strictness:",
+            "named": false
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          },
+          {
+            "type": "binary",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "call",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "float",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "list",
+            "named": true
+          },
+          {
+            "type": "parenthesized",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "reference",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "post",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "guard",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pre",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "guard",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "preflight",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "guard",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "probe_equivalence",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "probe_hook",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "probe_locus",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "probe_produces",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "factshape",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "probe_reads",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "factshape",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "probe_run",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "probe_static",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "boolean",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "qualified_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "reach",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "record",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "pair",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "record_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "pattern_pair",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "reestablish",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "body",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "reference",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "refusal",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "hold_refusal",
+          "named": true
+        },
+        {
+          "type": "knell_refusal",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "registrar",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "atom",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "repeat_count",
+    "named": true,
+    "fields": {
+      "var": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "repeat_over",
+    "named": true,
+    "fields": {
+      "var": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "require_journal",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "site",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "binding",
+          "named": true
+        },
+        {
+          "type": "hooks",
+          "named": true
+        },
+        {
+          "type": "max_wait",
+          "named": true
+        },
+        {
+          "type": "operators",
+          "named": true
+        },
+        {
+          "type": "skew_tolerance",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "skew_tolerance",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "duration",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "slot",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "defimpl",
+          "named": true
+        },
+        {
+          "type": "defop",
+          "named": true
+        },
+        {
+          "type": "defplan",
+          "named": true
+        },
+        {
+          "type": "defprim",
+          "named": true
+        },
+        {
+          "type": "defprobe",
+          "named": true
+        },
+        {
+          "type": "defprotocol",
+          "named": true
+        },
+        {
+          "type": "defrole",
+          "named": true
+        },
+        {
+          "type": "import",
+          "named": true
+        },
+        {
+          "type": "site",
+          "named": true
+        },
+        {
+          "type": "version",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "step",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      },
+      "call": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "call",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "string",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "interpolation",
+          "named": true
+        },
+        {
+          "type": "string_content",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "suspend",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "body",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "unary",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "binary",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "parenthesized",
+          "named": true
+        },
+        {
+          "type": "record",
+          "named": true
+        },
+        {
+          "type": "reference",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "undo",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        },
+        {
+          "type": "body",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "undo_line",
+    "named": true,
+    "fields": {
+      "undo": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "undo",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "undo_locus",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "atom",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "undo_pre",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "factshape",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "version",
+    "named": true,
+    "fields": {
+      "version": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "integer",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wane",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "when",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "commit",
+          "named": true
+        },
+        {
+          "type": "confirm",
+          "named": true
+        },
+        {
+          "type": "guard",
+          "named": true
+        },
+        {
+          "type": "knell",
+          "named": true
+        },
+        {
+          "type": "kwarg",
+          "named": true
+        },
+        {
+          "type": "observe",
+          "named": true
+        },
+        {
+          "type": "par",
+          "named": true
+        },
+        {
+          "type": "pipeline",
+          "named": true
+        },
+        {
+          "type": "preflight",
+          "named": true
+        },
+        {
+          "type": "repeat_count",
+          "named": true
+        },
+        {
+          "type": "repeat_over",
+          "named": true
+        },
+        {
+          "type": "slot",
+          "named": true
+        },
+        {
+          "type": "step",
+          "named": true
+        },
+        {
+          "type": "when",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "!=",
+    "named": false
+  },
+  {
+    "type": "\"",
+    "named": false
+  },
+  {
+    "type": "#{",
+    "named": false
+  },
+  {
+    "type": "%",
+    "named": false
+  },
+  {
+    "type": "%{",
+    "named": false
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "*",
+    "named": false
+  },
+  {
+    "type": "+",
+    "named": false
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
+    "named": false
+  },
+  {
+    "type": ".",
+    "named": false
+  },
+  {
+    "type": "/",
+    "named": false
+  },
+  {
+    "type": ":",
+    "named": false
+  },
+  {
+    "type": ":hold",
+    "named": false
+  },
+  {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "==",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
+    "named": false
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "_",
+    "named": false
+  },
+  {
+    "type": "and",
+    "named": false
+  },
+  {
+    "type": "approval",
+    "named": false
+  },
+  {
+    "type": "as",
+    "named": false
+  },
+  {
+    "type": "assert",
+    "named": false
+  },
+  {
+    "type": "atom",
+    "named": true
+  },
+  {
+    "type": "backstop",
+    "named": false
+  },
+  {
+    "type": "comment",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "commit",
+    "named": false
+  },
+  {
+    "type": "compensate:",
+    "named": false
+  },
+  {
+    "type": "confirm",
+    "named": false
+  },
+  {
+    "type": "default",
+    "named": false
+  },
+  {
+    "type": "defimpl",
+    "named": false
+  },
+  {
+    "type": "defop",
+    "named": false
+  },
+  {
+    "type": "defplan",
+    "named": false
+  },
+  {
+    "type": "defprim",
+    "named": false
+  },
+  {
+    "type": "defprobe",
+    "named": false
+  },
+  {
+    "type": "defprotocol",
+    "named": false
+  },
+  {
+    "type": "defrole",
+    "named": false
+  },
+  {
+    "type": "deliver_to:",
+    "named": false
+  },
+  {
+    "type": "do",
+    "named": false
+  },
+  {
+    "type": "do:",
+    "named": false
+  },
+  {
+    "type": "drift:",
+    "named": false
+  },
+  {
+    "type": "duration",
+    "named": true
+  },
+  {
+    "type": "else",
+    "named": false
+  },
+  {
+    "type": "end",
+    "named": false
+  },
+  {
+    "type": "equivalence",
+    "named": false
+  },
+  {
+    "type": "exclusivity:",
+    "named": false
+  },
+  {
+    "type": "execute",
+    "named": false
+  },
+  {
+    "type": "false",
+    "named": false
+  },
+  {
+    "type": "fires_by_construction:",
+    "named": false
+  },
+  {
+    "type": "float",
+    "named": true
+  },
+  {
+    "type": "footprint",
+    "named": false
+  },
+  {
+    "type": "for:",
+    "named": false
+  },
+  {
+    "type": "force:",
+    "named": false
+  },
+  {
+    "type": "from:",
+    "named": false
+  },
+  {
+    "type": "gate",
+    "named": false
+  },
+  {
+    "type": "handoff_done:",
+    "named": false
+  },
+  {
+    "type": "hook",
+    "named": false
+  },
+  {
+    "type": "hooks",
+    "named": false
+  },
+  {
+    "type": "identity",
+    "named": false
+  },
+  {
+    "type": "import",
+    "named": false
+  },
+  {
+    "type": "integer",
+    "named": true
+  },
+  {
+    "type": "inventory",
+    "named": false
+  },
+  {
+    "type": "journal",
+    "named": false
+  },
+  {
+    "type": "journal:",
+    "named": false
+  },
+  {
+    "type": "kind",
+    "named": true
+  },
+  {
+    "type": "knell",
+    "named": false
+  },
+  {
+    "type": "kwarg_name",
+    "named": true
+  },
+  {
+    "type": "locus",
+    "named": false
+  },
+  {
+    "type": "locus:",
+    "named": false
+  },
+  {
+    "type": "max:",
+    "named": false
+  },
+  {
+    "type": "max_wait",
+    "named": false
+  },
+  {
+    "type": "mode:",
+    "named": false
+  },
+  {
+    "type": "name",
+    "named": true
+  },
+  {
+    "type": "never",
+    "named": false
+  },
+  {
+    "type": "not",
+    "named": false
+  },
+  {
+    "type": "notify",
+    "named": false
+  },
+  {
+    "type": "observe",
+    "named": false
+  },
+  {
+    "type": "operators",
+    "named": false
+  },
+  {
+    "type": "or",
+    "named": false
+  },
+  {
+    "type": "outputs",
+    "named": false
+  },
+  {
+    "type": "over:",
+    "named": false
+  },
+  {
+    "type": "par",
+    "named": false
+  },
+  {
+    "type": "post",
+    "named": false
+  },
+  {
+    "type": "pre",
+    "named": false
+  },
+  {
+    "type": "preflight",
+    "named": false
+  },
+  {
+    "type": "produces",
+    "named": false
+  },
+  {
+    "type": "reach",
+    "named": false
+  },
+  {
+    "type": "reads",
+    "named": false
+  },
+  {
+    "type": "reestablish:",
+    "named": false
+  },
+  {
+    "type": "refusal:",
+    "named": false
+  },
+  {
+    "type": "registrar",
+    "named": false
+  },
+  {
+    "type": "repeat",
+    "named": false
+  },
+  {
+    "type": "require",
+    "named": false
+  },
+  {
+    "type": "rue",
+    "named": false
+  },
+  {
+    "type": "run",
+    "named": false
+  },
+  {
+    "type": "scheduler:",
+    "named": false
+  },
+  {
+    "type": "secrets",
+    "named": false
+  },
+  {
+    "type": "site",
+    "named": false
+  },
+  {
+    "type": "skew_tolerance",
+    "named": false
+  },
+  {
+    "type": "slot",
+    "named": false
+  },
+  {
+    "type": "static",
+    "named": false
+  },
+  {
+    "type": "strictness:",
+    "named": false
+  },
+  {
+    "type": "string_content",
+    "named": true
+  },
+  {
+    "type": "suspend:",
+    "named": false
+  },
+  {
+    "type": "to:",
+    "named": false
+  },
+  {
+    "type": "trigger:",
+    "named": false
+  },
+  {
+    "type": "true",
+    "named": false
+  },
+  {
+    "type": "undo:",
+    "named": false
+  },
+  {
+    "type": "undo_locus:",
+    "named": false
+  },
+  {
+    "type": "undo_pre",
+    "named": false
+  },
+  {
+    "type": "upper_name",
+    "named": true
+  },
+  {
+    "type": "via:",
+    "named": false
+  },
+  {
+    "type": "wane",
+    "named": false
+  },
+  {
+    "type": "when",
+    "named": false
+  },
+  {
+    "type": "|>",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
+  }
+]
